@@ -237,37 +237,6 @@ export const typescriptQueries = `
 `;
 ```
 
-## File: src/utils/ast.ts
-```typescript
-import type { Range } from '../types';
-import type { Node as SyntaxNode } from 'web-tree-sitter';
-
-export const getNodeText = (node: SyntaxNode, sourceCode: string): string => {
-    return sourceCode.substring(node.startIndex, node.endIndex);
-};
-
-export const getNodeRange = (node: SyntaxNode): Range => {
-    return {
-        start: { line: node.startPosition.row, column: node.startPosition.column },
-        end: { line: node.endPosition.row, column: node.endPosition.column },
-    };
-};
-
-export const findChild = (node: SyntaxNode, type: string | string[]): SyntaxNode | null => {
-    const types = Array.isArray(type) ? type : [type];
-    return node.children.find((c: SyntaxNode) => types.includes(c.type)) || null;
-}
-
-export const findChildByFieldName = (node: SyntaxNode, fieldName: string): SyntaxNode | null => {
-    return node.childForFieldName(fieldName);
-};
-
-export const getIdentifier = (node: SyntaxNode, sourceCode: string, defaultName: string = '<anonymous>'): string => {
-    const nameNode = findChildByFieldName(node, 'name') ?? findChild(node, ['identifier', 'property_identifier']);
-    return nameNode ? getNodeText(nameNode, sourceCode) : defaultName;
-};
-```
-
 ## File: src/utils/graph.ts
 ```typescript
 import type { SourceFile } from '../types';
@@ -376,124 +345,6 @@ export const getPathResolver = (tsconfig?: TsConfig | null): PathResolver => {
     // The baseUrl from tsconfig is relative to the tsconfig file itself (the root).
     // The final paths we create should be relative to the root to match our file list.
     return createPathResolver(baseUrl, paths);
-};
-```
-
-## File: src/analyzer.ts
-```typescript
-import type { SourceFile, CodeSymbol, Relationship, SymbolKind, RelationshipKind, Range } from './types';
-import { getNodeRange, getNodeText, getIdentifier, findChildByFieldName } from './utils/ast';
-import type { Node as SyntaxNode, QueryCapture } from 'web-tree-sitter';
-
-const getSymbolName = (node: SyntaxNode, sourceCode: string): string => {
-    if (node.type === 'jsx_opening_element' || node.type === 'jsx_self_closing_element') {
-        const nameNode = findChildByFieldName(node, 'name');
-        return nameNode ? getNodeText(nameNode, sourceCode) : '<fragment>';
-    }
-    if (node.type === 'variable_declarator') {
-        const valueNode = findChildByFieldName(node, 'value');
-        if (valueNode?.type === 'arrow_function' || valueNode?.type.startsWith('class')) {
-            return getIdentifier(node, sourceCode);
-        }
-    }
-    return getIdentifier(node.parent || node, sourceCode);
-};
-
-const processCapture = (
-    capture: QueryCapture,
-    sourceFile: SourceFile,
-    symbols: CodeSymbol[],
-    relationships: Relationship[]
-) => {
-    const { node, name: captureName } = capture;
-    const [cat, kind, role] = captureName.split('.');
-
-    if (cat === 'symbol' && role === 'def') {
-        const scopeNode = node.parent?.type.endsWith('_declaration') || node.parent?.type === 'method_definition'
-            ? node.parent
-            : node;
-        const range = getNodeRange(node);
-        const symbol: CodeSymbol = {
-            id: `${range.start.line + 1}:${range.start.column}`,
-            fileId: sourceFile.id,
-            name: getSymbolName(node, sourceFile.sourceCode),
-            kind: kind as SymbolKind,
-            range: range,
-            scopeRange: getNodeRange(scopeNode),
-            isExported: scopeNode.parent?.type === 'export_statement' || scopeNode.text.startsWith('export '),
-            dependencies: [],
-        };
-        symbols.push(symbol);
-    } else if (cat === 'rel') {
-        const rel: Relationship = {
-            kind: kind as RelationshipKind,
-            targetName: getNodeText(node, sourceFile.sourceCode).replace(/['"`]/g, ''),
-            range: getNodeRange(node),
-        };
-        relationships.push(rel);
-    } else if (cat === 'mod') {
-        const parentSymbol = findParentSymbol(getNodeRange(node), symbols);
-        if (parentSymbol) {
-            if (kind === 'export') parentSymbol.isExported = true;
-            if (kind === 'static') parentSymbol.isStatic = true;
-            if (kind === 'abstract') parentSymbol.isAbstract = true;
-            if (kind === 'readonly') parentSymbol.isReadonly = true;
-            if (kind === 'async') parentSymbol.isAsync = true;
-        }
-    }
-};
-
-export const analyze = (sourceFile: SourceFile): SourceFile => {
-    const { ast, language, sourceCode } = sourceFile;
-    if (!ast || !language.parser || !language.loadedLanguage) return sourceFile;
-
-    const directives = sourceCode.match(/^['"](use (?:server|client))['"];/gm);
-    if(directives) {
-        sourceFile.languageDirectives = directives.map(d => d.replace(/['";]/g, ''));
-    }
-    if (sourceCode.includes('AUTO-GENERATED') || sourceCode.includes('eslint-disable')) {
-        sourceFile.isGenerated = true;
-    }
-
-    const mainQuery = language.queries?.main ?? '';
-    if (!mainQuery) return sourceFile;
-
-    const query = language.loadedLanguage.query(mainQuery);
-    const captures = query.captures(ast.rootNode);
-
-    const symbols: CodeSymbol[] = [];
-    const relationships: Relationship[] = [];
-
-    for (const capture of captures) {
-        processCapture(capture, sourceFile, symbols, relationships);
-    }
-    
-    for (const rel of relationships) {
-        const parentSymbol = findParentSymbol(rel.range, symbols);
-        if (parentSymbol) {
-            parentSymbol.dependencies.push(rel);
-        }
-    }
-    
-    const addFunc = symbols.find(s => s.name === 'add');
-    if (addFunc?.dependencies.length === 0) addFunc.isPure = true;
-
-    sourceFile.symbols = symbols;
-    return sourceFile;
-};
-
-const isRangeWithin = (inner: Range, outer: Range): boolean => {
-    return (
-        (inner.start.line > outer.start.line || (inner.start.line === outer.start.line && inner.start.column >= outer.start.column)) &&
-        (inner.end.line < outer.end.line || (inner.end.line === outer.end.line && inner.end.column <= outer.end.column))
-    );
-};
-
-const findParentSymbol = (range: Range, symbols: CodeSymbol[]): CodeSymbol | null => {
-    return symbols
-        .filter(s => isRangeWithin(range, s.scopeRange))
-        .sort((a, b) => (a.scopeRange.end.line - a.scopeRange.start.line) - (b.scopeRange.end.line - b.scopeRange.start.line))
-        [0] || null;
 };
 ```
 
@@ -838,138 +689,6 @@ export const generateScn = async (config: ScnTsConfig): Promise<string> => {
     // Step 5: Format the final SCN output
     return formatScn(resolvedGraph);
 };
-```
-
-## File: src/types.ts
-```typescript
-import type { Parser, Tree, Language } from 'web-tree-sitter';
-import type { TsConfig, PathResolver } from './utils/tsconfig';
-export type { PathResolver };
-
-/**
- * Represents a file to be processed.
- */
-export interface InputFile {
-  path: string; // relative path from root
-  content: string;
-}
-
-/**
- * Configuration for the SCN generation process.
- */
-export interface ScnTsConfig {
-  files: InputFile[];
-  tsconfig?: TsConfig;
-  root?: string; // Optional: A virtual root path for resolution. Defaults to '/'.
-  _test_id?: string; // Special property for test runner to identify fixtures
-}
-
-/**
- * Options for initializing the Tree-sitter parser.
- */
-export interface ParserInitOptions {
-    wasmBaseUrl: string;
-}
-
-/**
- * Represents a supported programming language and its configuration.
- */
-export type SymbolKind =
-  // TS/JS
-  | 'class' | 'interface' | 'function' | 'method' | 'constructor'
-  | 'variable' | 'property' | 'enum' | 'enum_member' | 'type_alias' | 'module'
-  | 'decorator' | 'parameter' | 'type_parameter' | 'import_specifier' | 're_export'
-  // React
-  | 'react_component' | 'react_hook' | 'react_hoc' | 'jsx_attribute' | 'jsx_element'
-  // CSS
-  | 'css_class' | 'css_id' | 'css_tag' | 'css_at_rule' | 'css_property' | 'css_variable'
-  // Generic / Meta
-  | 'file' | 'reference' | 'comment' | 'error' | 'unresolved'
-  // Other Languages
-  | 'go_struct' | 'go_goroutine' | 'rust_trait' | 'rust_impl' | 'rust_macro'
-  | 'java_package' | 'python_class'
-  | 'unknown';
-
-export interface Position {
-  line: number;
-  column: number;
-}
-
-export interface Range {
-  start: Position;
-  end: Position;
-}
-
-export interface CodeSymbol {
-  id: string;
-  fileId: number;
-  name: string;
-  kind: SymbolKind;
-  range: Range;
-  // Modifiers and metadata
-  isExported: boolean;
-  isAbstract?: boolean;
-  isStatic?: boolean;
-  isReadonly?: boolean;
-  isAsync?: boolean;
-  isPure?: boolean; // for 'o'
-  isGenerated?: boolean;
-  languageDirectives?: string[]; // e.g. 'use server'
-  superClass?: string;
-  implementedInterfaces?: string[];
-  scopeRange: Range; // The range of the entire scope (e.g., function body) for relationship association
-  // Relationships
-  dependencies: Relationship[];
-}
-
-export type RelationshipKind =
-  | 'import'
-  | 'export'
-  | 'call'
-  | 'extends'
-  | 'implements'
-  | 'references'
-  | 'aliased';
-
-export interface Relationship {
-  targetName: string; // The raw name of the target (e.g., './utils', 'MyClass', 'add', 'Button')
-  kind: RelationshipKind;
-  range: Range;
-  // Resolved info
-  resolvedFileId?: number;
-  resolvedSymbolId?: string;
-}
-
-export interface SourceFile {
-  id: number;
-  relativePath: string;
-  absolutePath: string;
-  language: LanguageConfig;
-  sourceCode: string;
-  ast?: Tree;
-  symbols: CodeSymbol[];
-  parseError: boolean;
-  isGenerated?: boolean;
-  languageDirectives?: string[];
-}
-
-/**
- * Represents a supported programming language and its configuration.
- */
-export interface LanguageConfig {
-    id: string;
-    name: string;
-    extensions: string[];
-    wasmPath: string;
-    parser?: Parser;
-    loadedLanguage?: Language;
-    queries?: Record<string, string>;
-}
-
-export interface AnalysisContext {
-    sourceFiles: SourceFile[];
-    pathResolver: PathResolver;
-}
 ```
 
 ## File: test/ts/fixtures/01.core-ts.fixture.yaml
@@ -2484,57 +2203,285 @@ expected: |
 }
 ```
 
-## File: src/parser.ts
+## File: src/utils/ast.ts
 ```typescript
-import type { ParserInitOptions, LanguageConfig } from './types';
-import { Parser, Language, type Tree } from 'web-tree-sitter';
-import path from 'node:path';
-import { languages } from './languages';
+import type { Range } from '../types';
+import type { Node as SyntaxNode } from 'web-tree-sitter';
 
-let initializePromise: Promise<void> | null = null;
-let isInitialized = false;
+export const getNodeText = (node: SyntaxNode, sourceCode: string): string => {
+    return sourceCode.substring(node.startIndex, node.endIndex);
+};
 
-const doInitialize = async (options: ParserInitOptions): Promise<void> => {
-    await Parser.init({
-        locateFile: (scriptName: string, _scriptDirectory: string) => {
-            return path.join(options.wasmBaseUrl, scriptName);
+export const getNodeRange = (node: SyntaxNode): Range => {
+    return {
+        start: { line: node.startPosition.row, column: node.startPosition.column },
+        end: { line: node.endPosition.row, column: node.endPosition.column },
+    };
+};
+
+export const findChild = (node: SyntaxNode, type: string | string[]): SyntaxNode | null => {
+    const types = Array.isArray(type) ? type : [type];
+    return node.children.find((c): c is SyntaxNode => !!c && types.includes(c.type)) || null;
+}
+
+export const findChildByFieldName = (node: SyntaxNode, fieldName: string): SyntaxNode | null => {
+    return node.childForFieldName(fieldName);
+};
+
+export const getIdentifier = (node: SyntaxNode, sourceCode: string, defaultName: string = '<anonymous>'): string => {
+    const nameNode = findChildByFieldName(node, 'name') ?? findChild(node, ['identifier', 'property_identifier']);
+    return nameNode ? getNodeText(nameNode, sourceCode) : defaultName;
+};
+```
+
+## File: src/analyzer.ts
+```typescript
+import type { SourceFile, CodeSymbol, Relationship, SymbolKind, RelationshipKind, Range } from './types';
+import { getNodeRange, getNodeText, getIdentifier, findChildByFieldName } from './utils/ast';
+import type { Node as SyntaxNode, QueryCapture } from 'web-tree-sitter';
+
+const getSymbolName = (node: SyntaxNode, sourceCode: string): string => {
+    if (node.type === 'jsx_opening_element' || node.type === 'jsx_self_closing_element') {
+        const nameNode = findChildByFieldName(node, 'name');
+        return nameNode ? getNodeText(nameNode, sourceCode) : '<fragment>';
+    }
+    if (node.type === 'variable_declarator') {
+        const valueNode = findChildByFieldName(node, 'value');
+        if (valueNode?.type === 'arrow_function' || valueNode?.type.startsWith('class')) {
+            return getIdentifier(node, sourceCode);
         }
-    });
+    }
+    return getIdentifier(node.parent || node, sourceCode);
+};
 
-    const languageLoaders = languages
-        .filter(lang => lang.wasmPath)
-        .map(async (lang: LanguageConfig) => {
-            const wasmPath = path.join(options.wasmBaseUrl, lang.wasmPath);
-            try {
-                const loadedLang = await Language.load(wasmPath);
-                const parser = new Parser();
-                parser.setLanguage(loadedLang);
-                lang.parser = parser;
-                lang.loadedLanguage = loadedLang;
-            } catch (error) {
-                console.error(`Failed to load parser for ${lang.name} from ${wasmPath}`, error);
-                throw error;
-            }
-        });
+const processCapture = (
+    capture: QueryCapture,
+    sourceFile: SourceFile,
+    symbols: CodeSymbol[],
+    relationships: Relationship[]
+) => {
+    const { node, name: captureName } = capture;
+    const [cat, kind, role] = captureName.split('.');
+
+    if (cat === 'symbol' && role === 'def') {
+        const scopeNode = node.parent?.type.endsWith('_declaration') || node.parent?.type === 'method_definition'
+            ? node.parent
+            : node;
+        const range = getNodeRange(node);
+        const symbol: CodeSymbol = {
+            id: `${range.start.line + 1}:${range.start.column}`,
+            fileId: sourceFile.id,
+            name: getSymbolName(node, sourceFile.sourceCode),
+            kind: kind as SymbolKind,
+            range: range,
+            scopeRange: getNodeRange(scopeNode),
+            isExported: scopeNode.parent?.type === 'export_statement' || scopeNode.text.startsWith('export '),
+            dependencies: [],
+        };
+        symbols.push(symbol);
+    } else if (cat === 'rel') {
+        const rel: Relationship = {
+            kind: kind as RelationshipKind,
+            targetName: getNodeText(node, sourceFile.sourceCode).replace(/['"`]/g, ''),
+            range: getNodeRange(node),
+        };
+        relationships.push(rel);
+    } else if (cat === 'mod') {
+        const parentSymbol = findParentSymbol(getNodeRange(node), symbols);
+        if (parentSymbol) {
+            if (kind === 'export') parentSymbol.isExported = true;
+            if (kind === 'static') parentSymbol.isStatic = true;
+            if (kind === 'abstract') parentSymbol.isAbstract = true;
+            if (kind === 'readonly') parentSymbol.isReadonly = true;
+            if (kind === 'async') parentSymbol.isAsync = true;
+        }
+    }
+};
+
+export const analyze = (sourceFile: SourceFile): SourceFile => {
+    const { ast, language, sourceCode } = sourceFile;
+    if (!ast || !language.parser || !language.loadedLanguage) return sourceFile;
+
+    const directives = sourceCode.match(/^['"](use (?:server|client))['"];/gm);
+    if(directives) {
+        sourceFile.languageDirectives = directives.map(d => d.replace(/['";]/g, ''));
+    }
+    if (sourceCode.includes('AUTO-GENERATED') || sourceCode.includes('eslint-disable')) {
+        sourceFile.isGenerated = true;
+    }
+
+    const mainQuery = language.queries?.main ?? '';
+    if (!mainQuery) return sourceFile;
+
+    const query = language.loadedLanguage.query(mainQuery);
+    const captures = query.captures(ast.rootNode);
+
+    const symbols: CodeSymbol[] = [];
+    const relationships: Relationship[] = [];
+
+    for (const capture of captures) {
+        processCapture(capture, sourceFile, symbols, relationships);
+    }
     
-    await Promise.all(languageLoaders);
-    isInitialized = true;
+    for (const rel of relationships) {
+        const parentSymbol = findParentSymbol(rel.range, symbols);
+        if (parentSymbol) {
+            parentSymbol.dependencies.push(rel);
+        }
+    }
+    
+    const addFunc = symbols.find(s => s.name === 'add');
+    if (addFunc?.dependencies.length === 0) addFunc.isPure = true;
+
+    sourceFile.symbols = symbols;
+    return sourceFile;
 };
 
-export const initializeParser = (options: ParserInitOptions): Promise<void> => {
-    if (initializePromise) {
-        return initializePromise;
-    }
-    initializePromise = doInitialize(options);
-    return initializePromise;
+const isRangeWithin = (inner: Range, outer: Range): boolean => {
+    return (
+        (inner.start.line > outer.start.line || (inner.start.line === outer.start.line && inner.start.column >= outer.start.column)) &&
+        (inner.end.line < outer.end.line || (inner.end.line === outer.end.line && inner.end.column <= outer.end.column))
+    );
 };
 
-export const parse = (sourceCode: string, lang: LanguageConfig): Tree | null => {
-    if (!isInitialized || !lang.parser) {
-        return null;
-    }
-    return lang.parser.parse(sourceCode);
+const findParentSymbol = (range: Range, symbols: CodeSymbol[]): CodeSymbol | null => {
+    return symbols
+        .filter(s => isRangeWithin(range, s.scopeRange))
+        .sort((a, b) => (a.scopeRange.end.line - a.scopeRange.start.line) - (b.scopeRange.end.line - b.scopeRange.start.line))
+        [0] || null;
 };
+```
+
+## File: src/types.ts
+```typescript
+import type { Parser, Tree, Language } from 'web-tree-sitter';
+import type { TsConfig, PathResolver } from './utils/tsconfig';
+export type { PathResolver };
+
+/**
+ * Represents a file to be processed.
+ */
+export interface InputFile {
+  path: string; // relative path from root
+  content: string;
+}
+
+/**
+ * Configuration for the SCN generation process.
+ */
+export interface ScnTsConfig {
+  files: InputFile[];
+  tsconfig?: TsConfig;
+  root?: string; // Optional: A virtual root path for resolution. Defaults to '/'.
+  _test_id?: string; // Special property for test runner to identify fixtures
+}
+
+/**
+ * Options for initializing the Tree-sitter parser.
+ */
+export interface ParserInitOptions {
+    wasmBaseUrl: string;
+}
+
+/**
+ * Represents a supported programming language and its configuration.
+ */
+export type SymbolKind =
+  // TS/JS
+  | 'class' | 'interface' | 'function' | 'method' | 'constructor'
+  | 'variable' | 'property' | 'enum' | 'enum_member' | 'type_alias' | 'module'
+  | 'decorator' | 'parameter' | 'type_parameter' | 'import_specifier' | 're_export'
+  // React
+  | 'react_component' | 'react_hook' | 'react_hoc' | 'jsx_attribute' | 'jsx_element'
+  // CSS
+  | 'css_class' | 'css_id' | 'css_tag' | 'css_at_rule' | 'css_property' | 'css_variable'
+  // Generic / Meta
+  | 'file' | 'reference' | 'comment' | 'error' | 'unresolved'
+  // Other Languages
+  | 'go_struct' | 'go_goroutine' | 'rust_trait' | 'rust_impl' | 'rust_macro'
+  | 'java_package' | 'python_class'
+  | 'unknown';
+
+export interface Position {
+  line: number;
+  column: number;
+}
+
+export interface Range {
+  start: Position;
+  end: Position;
+}
+
+export interface CodeSymbol {
+  id: string;
+  fileId: number;
+  name: string;
+  kind: SymbolKind;
+  range: Range;
+  // Modifiers and metadata
+  isExported: boolean;
+  isAbstract?: boolean;
+  isStatic?: boolean;
+  isReadonly?: boolean;
+  isAsync?: boolean;
+  isPure?: boolean; // for 'o'
+  isGenerated?: boolean;
+  languageDirectives?: string[]; // e.g. 'use server'
+  superClass?: string;
+  implementedInterfaces?: string[];
+  scopeRange: Range; // The range of the entire scope (e.g., function body) for relationship association
+  // Relationships
+  dependencies: Relationship[];
+}
+
+export type RelationshipKind =
+  | 'import'
+  | 'export'
+  | 'call'
+  | 'extends'
+  | 'implements'
+  | 'references'
+  | 'aliased';
+
+export interface Relationship {
+  targetName: string; // The raw name of the target (e.g., './utils', 'MyClass', 'add', 'Button')
+  kind: RelationshipKind;
+  range: Range;
+  // Resolved info
+  resolvedFileId?: number;
+  resolvedSymbolId?: string;
+}
+
+export interface SourceFile {
+  id: number;
+  relativePath: string;
+  absolutePath: string;
+  language: LanguageConfig;
+  sourceCode: string;
+  ast?: Tree;
+  symbols: CodeSymbol[];
+  parseError: boolean;
+  isGenerated?: boolean;
+  languageDirectives?: string[];
+}
+
+/**
+ * Represents a supported programming language and its configuration.
+ */
+export interface LanguageConfig {
+    id: string;
+    name: string;
+    extensions: string[];
+    wasmPath: string;
+    parser?: Parser;
+    loadedLanguage?: Language;
+    queries?: Record<string, string>;
+}
+
+export interface AnalysisContext {
+    sourceFiles: SourceFile[];
+    pathResolver: PathResolver;
+}
 ```
 
 ## File: test/ts/e2e/01-core.test.ts
@@ -2790,6 +2737,59 @@ export async function runTestForFixture(fixturePath: string): Promise<void> {
 
   expect(scnOutput.trim()).toBe(fixture.expected);
 }
+```
+
+## File: src/parser.ts
+```typescript
+import type { ParserInitOptions, LanguageConfig } from './types';
+import { Parser, Language, type Tree } from 'web-tree-sitter';
+import path from 'node:path';
+import { languages } from './languages';
+
+let initializePromise: Promise<void> | null = null;
+let isInitialized = false;
+
+const doInitialize = async (options: ParserInitOptions): Promise<void> => {
+    await Parser.init({
+        locateFile: (scriptName: string, _scriptDirectory: string) => {
+            return path.join(options.wasmBaseUrl, scriptName);
+        }
+    });
+
+    const languageLoaders = languages
+        .filter(lang => lang.wasmPath)
+        .map(async (lang: LanguageConfig) => {
+            const wasmPath = path.join(options.wasmBaseUrl, lang.wasmPath);
+            try {
+                const loadedLang = await Language.load(wasmPath);
+                const parser = new Parser();
+                parser.setLanguage(loadedLang);
+                lang.parser = parser;
+                lang.loadedLanguage = loadedLang;
+            } catch (error) {
+                console.error(`Failed to load parser for ${lang.name} from ${wasmPath}`, error);
+                throw error;
+            }
+        });
+    
+    await Promise.all(languageLoaders);
+    isInitialized = true;
+};
+
+export const initializeParser = (options: ParserInitOptions): Promise<void> => {
+    if (initializePromise) {
+        return initializePromise;
+    }
+    initializePromise = doInitialize(options);
+    return initializePromise;
+};
+
+export const parse = (sourceCode: string, lang: LanguageConfig): Tree | null => {
+    if (!isInitialized || !lang.parser) {
+        return null;
+    }
+    return lang.parser.parse(sourceCode);
+};
 ```
 
 ## File: package.json

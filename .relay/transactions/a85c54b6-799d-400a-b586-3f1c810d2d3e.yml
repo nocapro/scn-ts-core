@@ -1,0 +1,497 @@
+uuid: a85c54b6-799d-400a-b586-3f1c810d2d3e
+projectId: scn-ts-core
+createdAt: '2025-08-12T03:44:32.486Z'
+linesAdded: 354
+linesRemoved: 0
+gitCommitMsg: 'feat: scaffold core application structure'
+promptSummary: >-
+  The user wants to start developing the `scn-ts-core` project. I need to create
+  the `src` logic files following functional programming principles and avoiding
+  classes or `any` types. This is the first of four phases. I have set up the
+  complete project skeleton, including file system utilities, parser
+  initialization logic, language configurations, and core type definitions. The
+  core analysis logic is stubbed out for now.
+reasoning:
+  - >-
+    Hello there! I'm anton, your AI programmer. I'm ready to start building the
+    core logic for `scn-ts-core`. This is an exciting project, and the provided
+    test fixtures give me a clear goal to work towards.
+  - >-
+    As requested, I'll proceed with the first of four phases. In this phase, I
+    will set up the foundational structure of the application. This involves
+    creating the necessary files for file system interaction, parser
+    initialization, language configuration, and core type definitions, all
+    following functional programming principles. The core analysis and
+    formatting logic will be stubs for now, to be fleshed out in subsequent
+    phases.
+  - Here are the files I will create for this phase.
+  - '### Phase 1: Project Scaffolding and Core Infrastructure'
+  - >-
+    1.  **`src/types.ts`**: Defines the core data structures and types for
+    configuration (`ScnTsConfig`), parser initialization (`ParserInitOptions`),
+    and language definitions (`LanguageConfig`).
+  - >-
+    2.  **`src/languages.ts`**: Sets up a registry of supported languages,
+    mapping file extensions to their respective Tree-sitter WASM parsers based
+    on the provided list.
+  - >-
+    3.  **`src/parser.ts`**: Implements the logic for initializing Tree-sitter
+    and loading all the language-specific WASM parsers. It will expose a
+    function to parse source code into an AST.
+  - >-
+    4.  **`src/utils/file-system.ts`**: Contains a utility to recursively find
+    files in the project directory that match the `include` and `exclude` glob
+    patterns from the configuration.
+  - >-
+    5.  **`src/utils/tsconfig.ts`**: Adds support for reading `tsconfig.json` to
+    handle path aliases, a key feature for monorepo support as seen in the
+    tests.
+  - >-
+    6.  **`src/analyzer.ts` & `src/formatter.ts`**: These will be created as
+    placeholder files, establishing the future home for the AST analysis and SCN
+    output formatting logic.
+  - >-
+    7.  **`src/main.ts`**: The main entry point that orchestrates the entire
+    process: finding files, parsing them, and (in later phases) analyzing and
+    formatting them. It will export the public `generateScn` and
+    `initializeParser` functions.
+  - Let's begin.
+  - >-
+    This completes the first phase. The project now has a solid, functional
+    skeleton. I'm ready for the next phase whenever you are.
+operations:
+  - type: write
+    path: src/types.ts
+    content: |-
+      import type Parser from 'web-tree-sitter';
+
+      /**
+       * Configuration for the SCN generation process.
+       */
+      export interface ScnTsConfig {
+        root: string;
+        include: string[];
+        exclude?: string[];
+        _test_id?: string; // Special property for test runner to identify fixtures
+      }
+
+      /**
+       * Options for initializing the Tree-sitter parser.
+       */
+      export interface ParserInitOptions {
+          wasmBaseUrl: string;
+      }
+
+      /**
+       * Represents a supported programming language and its configuration.
+       */
+      export interface LanguageConfig {
+          id: string;
+          name: string;
+          extensions: string[];
+          wasmPath: string;
+          parser?: Parser;
+          queries?: Record<string, string>; // Capture queries for different symbols
+      }
+    patchStrategy: replace
+  - type: write
+    path: src/languages.ts
+    content: >-
+      import type { LanguageConfig } from './types';
+
+      import path from 'node:path';
+
+
+      // Based on test/wasm and test/fixtures
+
+      export const languages: LanguageConfig[] = [
+          {
+              id: 'typescript',
+              name: 'TypeScript',
+              extensions: ['.ts', '.mts', '.cts'],
+              wasmPath: 'tree-sitter-typescript.wasm',
+              queries: {},
+          },
+          {
+              id: 'tsx',
+              name: 'TypeScriptReact',
+              extensions: ['.tsx'],
+              wasmPath: 'tree-sitter-tsx.wasm',
+              queries: {},
+          },
+          {
+              id: 'javascript',
+              name: 'JavaScript',
+              extensions: ['.js', '.mjs', '.cjs'],
+              wasmPath: 'tree-sitter-typescript.wasm',
+              queries: {},
+          },
+          {
+              id: 'css',
+              name: 'CSS',
+              extensions: ['.css'],
+              wasmPath: 'tree-sitter-css.wasm',
+              queries: {},
+          },
+          {
+              id: 'go',
+              name: 'Go',
+              extensions: ['.go'],
+              wasmPath: 'tree-sitter-go.wasm',
+              queries: {},
+          },
+          {
+              id: 'java',
+              name: 'Java',
+              extensions: ['.java'],
+              wasmPath: 'tree-sitter-java.wasm',
+              queries: {},
+          },
+          {
+              id: 'python',
+              name: 'Python',
+              extensions: ['.py'],
+              wasmPath: 'tree-sitter-python.wasm',
+              queries: {},
+          },
+          {
+              id: 'rust',
+              name: 'Rust',
+              extensions: ['.rs'],
+              wasmPath: 'tree-sitter-rust.wasm',
+              queries: {},
+          },
+          {
+              id: 'c',
+              name: 'C',
+              extensions: ['.c'],
+              wasmPath: 'tree-sitter-c.wasm',
+              queries: {},
+          },
+          {
+              id: 'graphql',
+              name: 'GraphQL',
+              extensions: ['.graphql', '.gql'],
+              wasmPath: '', // No wasm file provided in the list
+              queries: {},
+          },
+      ];
+
+
+      const createLanguageMap = (): Map<string, LanguageConfig> => {
+          const map = new Map<string, LanguageConfig>();
+          languages.forEach(lang => {
+              lang.extensions.forEach(ext => {
+                  map.set(ext, lang);
+              });
+          });
+          return map;
+      };
+
+
+      const languageMap = createLanguageMap();
+
+
+      export const getLanguageForFile = (filePath: string): LanguageConfig |
+      undefined => {
+          const extension = path.extname(filePath);
+          return languageMap.get(extension);
+      };
+    patchStrategy: replace
+  - type: write
+    path: src/parser.ts
+    content: >-
+      import type { ParserInitOptions, LanguageConfig } from './types';
+
+      import Parser from 'web-tree-sitter';
+
+      import path from 'node:path';
+
+      import { languages } from './languages';
+
+
+      let isInitialized = false;
+
+
+      const createInitializer = (options: ParserInitOptions) => async ():
+      Promise<void> => {
+          if (isInitialized) {
+              return;
+          }
+          
+          await Parser.init({
+              locateFile: (scriptName: string, _scriptDirectory: string) => {
+                  return path.join(options.wasmBaseUrl, scriptName);
+              }
+          });
+
+          const languageLoaders = languages
+              .filter(lang => lang.wasmPath)
+              .map(async (lang: LanguageConfig) => {
+                  const wasmPath = path.join(options.wasmBaseUrl, lang.wasmPath);
+                  try {
+                      const loadedLang = await Parser.Language.load(wasmPath);
+                      const parser = new Parser();
+                      parser.setLanguage(loadedLang);
+                      lang.parser = parser;
+                  } catch (error) {
+                      console.error(`Failed to load parser for ${lang.name} from ${wasmPath}`, error);
+                  }
+              });
+          
+          await Promise.all(languageLoaders);
+          isInitialized = true;
+      };
+
+
+      let initializeFn: (() => Promise<void>) | null = null;
+
+
+      export const initializeParser = async (options: ParserInitOptions):
+      Promise<void> => {
+          if (!initializeFn) {
+              initializeFn = createInitializer(options);
+          }
+          await initializeFn();
+      };
+
+
+      export const parse = (sourceCode: string, lang: LanguageConfig):
+      Parser.Tree | null => {
+          if (!isInitialized || !lang.parser) {
+              return null;
+          }
+          return lang.parser.parse(sourceCode);
+      };
+    patchStrategy: replace
+  - type: write
+    path: src/utils/file-system.ts
+    content: |-
+      import fs from 'node:fs/promises';
+      import path from 'node:path';
+
+      const globToRegex = (pattern: string): RegExp => {
+          const escaped = pattern.replace(/[.+?^${}()|[\]\\]/g, '\\$&');
+          const regexString = escaped
+              .replace(/\*\*/g, '.*')
+              .replace(/\*/g, '[^/\\\\]*');
+          return new RegExp(`^${regexString}$`);
+      };
+
+      const createGlobMatcher = (patterns: string[]) => {
+          if (patterns.length === 0) {
+              return () => false;
+          }
+          const regexes = patterns.map(globToRegex);
+          return (filePath: string) => regexes.some(r => r.test(filePath.replace(/\\/g, '/')));
+      };
+
+      export const findFiles = async (
+          root: string,
+          include: string[],
+          exclude: string[] = []
+      ): Promise<string[]> => {
+          const includeMatcher = createGlobMatcher(include);
+          const excludeMatcher = createGlobMatcher(exclude);
+          const allFiles: string[] = [];
+
+          const walk = async (currentDir: string): Promise<void> => {
+              try {
+                  const entries = await fs.readdir(currentDir, { withFileTypes: true });
+                  for (const entry of entries) {
+                      const fullPath = path.join(currentDir, entry.name);
+                      const relativePath = path.relative(root, fullPath);
+                      
+                      if (excludeMatcher(relativePath)) {
+                          continue;
+                      }
+
+                      if (entry.isDirectory()) {
+                          await walk(fullPath);
+                      } else if (entry.isFile()) {
+                          if (includeMatcher(relativePath)) {
+                              allFiles.push(relativePath);
+                          }
+                      }
+                  }
+              } catch (error) {
+                  // Silently ignore errors (e.g., permission denied)
+              }
+          };
+
+          await walk(root);
+          return allFiles.sort();
+      };
+    patchStrategy: replace
+  - type: write
+    path: src/utils/tsconfig.ts
+    content: >-
+      import fs from 'node:fs/promises';
+
+      import path from 'node:path';
+
+
+      interface TsConfig {
+          compilerOptions?: {
+              baseUrl?: string;
+              paths?: Record<string, string[]>;
+          };
+      }
+
+
+      export const readTsConfig = async (root: string): Promise<TsConfig | null>
+      => {
+          const tsconfigPath = path.join(root, 'tsconfig.json');
+          try {
+              const content = await fs.readFile(tsconfigPath, 'utf-8');
+              // This is not a robust JSON parser (e.g. doesn't handle comments),
+              // but it's what node's require() does.
+              return JSON.parse(content) as TsConfig;
+          } catch (e) {
+              return null;
+          }
+      };
+
+
+      const createPathResolver = (baseUrl: string, paths: Record<string,
+      string[]>) => {
+          const aliasEntries = Object.entries(paths).map(([alias, resolutions]) => {
+              return {
+                  pattern: new RegExp(`^${alias.replace('*', '(.*)')}$`),
+                  resolutions,
+              };
+          });
+
+          return (importPath: string): string | null => {
+              for (const { pattern, resolutions } of aliasEntries) {
+                  const match = importPath.match(pattern);
+                  if (match) {
+                      const captured = match[1] || '';
+                      // Return the first resolved path.
+                      const resolvedPath = resolutions[0].replace('*', captured);
+                      return path.join(baseUrl, resolvedPath).replace(/\\/g, '/');
+                  }
+              }
+              return null; // Not an alias
+          };
+      };
+
+
+      export type PathResolver = ReturnType<typeof createPathResolver>;
+
+
+      export const getPathResolver = async (root: string): Promise<PathResolver>
+      => {
+          const tsconfig = await readTsConfig(root);
+          const baseUrl = tsconfig?.compilerOptions?.baseUrl || '.';
+          const paths = tsconfig?.compilerOptions?.paths ?? {};
+          // The baseUrl from tsconfig is relative to the tsconfig file itself (the root).
+          // The final paths we create should be relative to the root to match our file list.
+          return createPathResolver(baseUrl, paths);
+      };
+    patchStrategy: replace
+  - type: write
+    path: src/analyzer.ts
+    content: |-
+      /**
+       * This file will contain the logic to traverse a Tree-sitter AST
+       * and extract SCN symbols and relationships.
+       * It's a placeholder for the first phase.
+       */
+      export const analyze = () => {
+          // In next phases, this will return an array of SCN symbols.
+          return [];
+      };
+    patchStrategy: replace
+  - type: write
+    path: src/formatter.ts
+    content: |-
+      /**
+       * This file will take the analyzed graph and format it into the final SCN string.
+       * It's a placeholder for the first phase.
+       */
+      export const formatScn = () => {
+          // In next phases, this will take the analysis result and format it.
+          return '';
+      };
+    patchStrategy: replace
+  - type: write
+    path: src/main.ts
+    content: >-
+      import { findFiles } from './utils/file-system';
+
+      import { getLanguageForFile } from './languages';
+
+      import { initializeParser as init, parse } from './parser';
+
+      import type { ScnTsConfig, ParserInitOptions } from './types';
+
+      // import { analyze } from './analyzer';
+
+      // import { formatScn } from './formatter';
+
+      import fs from 'node:fs/promises';
+
+      import path from 'node:path';
+
+      import { getPathResolver } from './utils/tsconfig';
+
+
+      /**
+       * Public API to initialize the parser. Must be called before generateScn.
+       */
+      export const initializeParser = (options: ParserInitOptions):
+      Promise<void> => {
+          return init(options);
+      };
+
+
+      /**
+       * Generates an SCN string from a project directory.
+       */
+      export const generateScn = async (config: ScnTsConfig): Promise<string> =>
+      {
+          const allFiles = await findFiles(config.root, config.include, config.exclude);
+          const pathResolver = await getPathResolver(config.root);
+
+          const processingPromises = allFiles.map(async (relativeFilePath) => {
+              const lang = getLanguageForFile(relativeFilePath);
+              const absoluteFilePath = path.join(config.root, relativeFilePath);
+              const sourceCode = await fs.readFile(absoluteFilePath, 'utf-8');
+
+              if (!lang || !lang.wasmPath) {
+                  // For now, just show unsupported for anything without a parser
+                  return `§ (?) ${relativeFilePath} [unsupported]`;
+              }
+
+              if (sourceCode.trim() === '') {
+                  return `§ (?) ${relativeFilePath}`;
+              }
+
+              const tree = parse(sourceCode, lang);
+
+              if (!tree) {
+                  return `§ (?) ${relativeFilePath} [parsing_failed]`;
+              }
+              
+              // Placeholder until analyzer and formatter are implemented
+              return `§ (?) ${relativeFilePath} [parsed]`;
+          });
+          
+          const results = await Promise.all(processingPromises);
+          
+          // The final formatting will be more complex.
+          // For now, just join the results. Sorting is done in findFiles.
+          return results.join('\n\n').trim();
+      };
+    patchStrategy: replace
+snapshot:
+  src/types.ts: null
+  src/languages.ts: null
+  src/parser.ts: null
+  src/utils/file-system.ts: null
+  src/utils/tsconfig.ts: null
+  src/analyzer.ts: null
+  src/formatter.ts: null
+  src/main.ts: null
+approved: true

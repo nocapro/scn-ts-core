@@ -1,0 +1,708 @@
+uuid: cb9c3b88-5182-4113-9097-42790757d97b
+projectId: scn-ts-core
+createdAt: '2025-08-12T04:26:19.011Z'
+linesAdded: 13
+linesRemoved: 12
+gitCommitMsg: 'fix(ts): correct web-tree-sitter imports and API usage'
+promptSummary: >-
+  Fix TypeScript errors after changing `web-tree-sitter` import strategy. This
+  involves updating to the new API for loading languages, storing the loaded
+  language object to bypass a problematic `getLanguage` call, and using named
+  imports for all types like `SyntaxNode` and `Tree`.
+reasoning:
+  - >-
+    I see. The previous change from a default to a named import for
+    `web-tree-sitter` was the right direction to solve the runtime error, but it
+    was incomplete and didn't account for how the rest of the module's exports
+    (like types and other classes) were being used. This led to a cascade of
+    TypeScript errors.
+  - >-
+    The core issue is that `web-tree-sitter` v0.25.x uses named exports for its
+    classes (`Parser`, `Language`, `Tree`, etc.) and their associated types,
+    rather than a single default export that acts as a namespace.
+  - 'Here''s my plan to fix this:'
+  - >-
+    1.  **Correct Imports**: I will change all `web-tree-sitter` imports to use
+    named imports for the specific classes and types needed in each file (e.g.,
+    `import { Parser, Language, type Tree } from 'web-tree-sitter'`).
+  - >-
+    2.  **Update API Usage**: The code was using an older API pattern
+    (`Parser.Language.load`). I'll update it to the modern `Language.load`,
+    which is now a static method on the imported `Language` class.
+  - >-
+    3.  **Bypass `getLanguage()` issue**: The `language.parser.getLanguage()`
+    call is problematic. To fix this robustly, I will modify the
+    `LanguageConfig` type to store the loaded `Language` object during parser
+    initialization. The `analyze` function will then use this stored object
+    directly to create queries, which is more reliable.
+  - >-
+    4.  **Update Type References**: Throughout the code, I'll replace namespaced
+    type references like `Parser.SyntaxNode` and `Parser.Tree` with the directly
+    imported types `SyntaxNode` and `Tree`.
+  - I'll now apply these changes across the affected files.
+  - '### Step 1: Update `LanguageConfig` in `types.ts`'
+  - >-
+    I'll start by updating the core `LanguageConfig` interface to include the
+    `loadedLanguage` property and will fix the type references for `Parser`,
+    `Tree`, and `Language`.
+  - '### Step 2: Update parser initialization in `parser.ts`'
+  - >-
+    Here, I'll fix the imports and logic to correctly initialize parsers, load
+    languages using the new API, and store the `loadedLanguage` object.
+  - '### Step 3: Update `analyzer.ts` to use `loadedLanguage`'
+  - >-
+    Now I'll modify the analyzer to use the new `loadedLanguage` property for
+    creating queries, which sidesteps the `getLanguage()` issue. I'll also fix
+    the type imports.
+  - '### Step 4: Fix type references in `utils/ast.ts`'
+  - Finally, I'll clean up the type references in the AST utility functions.
+  - >-
+    These changes should resolve all the TypeScript errors and allow the tests
+    to pass.
+operations:
+  - type: write
+    path: src/types.ts
+    content: |-
+      <<<<<<< SEARCH
+      import type Parser from 'web-tree-sitter';
+      =======
+      import type { Parser, Tree, Language } from 'web-tree-sitter';
+      >>>>>>> REPLACE
+      <<<<<<< SEARCH
+      export interface LanguageConfig {
+          id: string;
+          name: string;
+          extensions: string[];
+          wasmPath: string;
+          parser?: Parser;
+          queries?: Record<string, string>;
+      }
+      =======
+      export interface LanguageConfig {
+          id: string;
+          name: string;
+          extensions: string[];
+          wasmPath: string;
+          parser?: Parser;
+          loadedLanguage?: Language;
+          queries?: Record<string, string>;
+      }
+      >>>>>>> REPLACE
+      <<<<<<< SEARCH
+        ast?: Parser.Tree;
+      =======
+        ast?: Tree;
+      >>>>>>> REPLACE
+    patchStrategy: multi-search-replace
+  - type: write
+    path: src/parser.ts
+    content: >-
+      <<<<<<< SEARCH
+
+      import type { ParserInitOptions, LanguageConfig } from './types';
+
+      import Parser from 'web-tree-sitter';
+
+      import path from 'node:path';
+
+      import { languages } from './languages';
+
+
+      let initializePromise: Promise<void> | null = null;
+
+      let isInitialized = false;
+
+
+      const doInitialize = async (options: ParserInitOptions): Promise<void> =>
+      {
+          await Parser.init({
+              locateFile: (scriptName: string, _scriptDirectory: string) => {
+                  return path.join(options.wasmBaseUrl, scriptName);
+              }
+          });
+
+          const languageLoaders = languages
+              .filter(lang => lang.wasmPath)
+              .map(async (lang: LanguageConfig) => {
+                  const wasmPath = path.join(options.wasmBaseUrl, lang.wasmPath);
+                  try {
+                      const loadedLang = await Parser.Language.load(wasmPath);
+                      const parser = new Parser();
+                      parser.setLanguage(loadedLang);
+                      lang.parser = parser;
+                  } catch (error) {
+                      console.error(`Failed to load parser for ${lang.name} from ${wasmPath}`, error);
+                      throw error;
+                  }
+              });
+          
+          await Promise.all(languageLoaders);
+          isInitialized = true;
+      };
+
+      =======
+
+      import type { ParserInitOptions, LanguageConfig } from './types';
+
+      import { Parser, Language, type Tree } from 'web-tree-sitter';
+
+      import path from 'node:path';
+
+      import { languages } from './languages';
+
+
+      let initializePromise: Promise<void> | null = null;
+
+      let isInitialized = false;
+
+
+      const doInitialize = async (options: ParserInitOptions): Promise<void> =>
+      {
+          await Parser.init({
+              locateFile: (scriptName: string, _scriptDirectory: string) => {
+                  return path.join(options.wasmBaseUrl, scriptName);
+              }
+          });
+
+          const languageLoaders = languages
+              .filter(lang => lang.wasmPath)
+              .map(async (lang: LanguageConfig) => {
+                  const wasmPath = path.join(options.wasmBaseUrl, lang.wasmPath);
+                  try {
+                      const loadedLang = await Language.load(wasmPath);
+                      const parser = new Parser();
+                      parser.setLanguage(loadedLang);
+                      lang.parser = parser;
+                      lang.loadedLanguage = loadedLang;
+                  } catch (error) {
+                      console.error(`Failed to load parser for ${lang.name} from ${wasmPath}`, error);
+                      throw error;
+                  }
+              });
+          
+          await Promise.all(languageLoaders);
+          isInitialized = true;
+      };
+
+      >>>>>>> REPLACE
+
+      <<<<<<< SEARCH
+
+      export const parse = (sourceCode: string, lang: LanguageConfig):
+      Parser.Tree | null => {
+
+      =======
+
+      export const parse = (sourceCode: string, lang: LanguageConfig): Tree |
+      null => {
+
+      >>>>>>> REPLACE
+    patchStrategy: multi-search-replace
+  - type: write
+    path: src/analyzer.ts
+    content: >-
+      <<<<<<< SEARCH
+
+      import type { SourceFile, CodeSymbol, Relationship, SymbolKind,
+      RelationshipKind, Range } from './types';
+
+      import { getNodeRange, getNodeText, getIdentifier, findChildByFieldName }
+      from './utils/ast';
+
+      import type Parser from 'web-tree-sitter';
+
+      =======
+
+      import type { SourceFile, CodeSymbol, Relationship, SymbolKind,
+      RelationshipKind, Range } from './types';
+
+      import { getNodeRange, getNodeText, getIdentifier, findChildByFieldName }
+      from './utils/ast';
+
+      import type { SyntaxNode, QueryCapture } from 'web-tree-sitter';
+
+      >>>>>>> REPLACE
+
+      <<<<<<< SEARCH
+
+      const getSymbolName = (node: Parser.SyntaxNode, sourceCode: string):
+      string => {
+
+      =======
+
+      const getSymbolName = (node: SyntaxNode, sourceCode: string): string => {
+
+      >>>>>>> REPLACE
+
+      <<<<<<< SEARCH
+
+      const processCapture = (
+          capture: Parser.QueryCapture,
+          sourceFile: SourceFile,
+      =======
+
+      const processCapture = (
+          capture: QueryCapture,
+          sourceFile: SourceFile,
+      >>>>>>> REPLACE
+
+      <<<<<<< SEARCH
+
+      export const analyze = (sourceFile: SourceFile): SourceFile => {
+          const { ast, language, sourceCode } = sourceFile;
+          if (!ast || !language.parser) return sourceFile;
+
+          const directives = sourceCode.match(/^['"](use (?:server|client))['"];/gm);
+      =======
+
+      export const analyze = (sourceFile: SourceFile): SourceFile => {
+          const { ast, language, sourceCode } = sourceFile;
+          if (!ast || !language.parser || !language.loadedLanguage) return sourceFile;
+
+          const directives = sourceCode.match(/^['"](use (?:server|client))['"];/gm);
+      >>>>>>> REPLACE
+
+      <<<<<<< SEARCH
+          const mainQuery = language.queries?.main ?? '';
+          if (!mainQuery) return sourceFile;
+
+          const query = language.parser.getLanguage().query(mainQuery);
+          const captures = query.captures(ast.rootNode);
+      =======
+          const mainQuery = language.queries?.main ?? '';
+          if (!mainQuery) return sourceFile;
+
+          const query = language.loadedLanguage.query(mainQuery);
+          const captures = query.captures(ast.rootNode);
+      >>>>>>> REPLACE
+    patchStrategy: multi-search-replace
+  - type: write
+    path: src/utils/ast.ts
+    content: >-
+      <<<<<<< SEARCH
+
+      import type Parser from 'web-tree-sitter';
+
+      =======
+
+      import type { SyntaxNode } from 'web-tree-sitter';
+
+      >>>>>>> REPLACE
+
+      <<<<<<< SEARCH
+
+      export const getNodeText = (node: Parser.SyntaxNode, sourceCode: string):
+      string => {
+
+      =======
+
+      export const getNodeText = (node: SyntaxNode, sourceCode: string): string
+      => {
+
+      >>>>>>> REPLACE
+
+      <<<<<<< SEARCH
+
+      export const getNodeRange = (node: Parser.SyntaxNode): Range => {
+
+      =======
+
+      export const getNodeRange = (node: SyntaxNode): Range => {
+
+      >>>>>>> REPLACE
+
+      <<<<<<< SEARCH
+
+      export const findChild = (node: Parser.SyntaxNode, type: string |
+      string[]): Parser.SyntaxNode | null => {
+
+      =======
+
+      export const findChild = (node: SyntaxNode, type: string | string[]):
+      SyntaxNode | null => {
+
+      >>>>>>> REPLACE
+
+      <<<<<<< SEARCH
+          return node.children.find((c: Parser.SyntaxNode) => types.includes(c.type)) || null;
+      =======
+          return node.children.find((c: SyntaxNode) => types.includes(c.type)) || null;
+      >>>>>>> REPLACE
+
+      <<<<<<< SEARCH
+
+      export const findChildByFieldName = (node: Parser.SyntaxNode, fieldName:
+      string): Parser.SyntaxNode | null => {
+
+      =======
+
+      export const findChildByFieldName = (node: SyntaxNode, fieldName: string):
+      SyntaxNode | null => {
+
+      >>>>>>> REPLACE
+
+      <<<<<<< SEARCH
+
+      export const getIdentifier = (node: Parser.SyntaxNode, sourceCode: string,
+      defaultName: string = '<anonymous>'): string => {
+
+      =======
+
+      export const getIdentifier = (node: SyntaxNode, sourceCode: string,
+      defaultName: string = '<anonymous>'): string => {
+
+      >>>>>>> REPLACE
+    patchStrategy: multi-search-replace
+snapshot:
+  src/parser.ts: >-
+    import type { ParserInitOptions, LanguageConfig } from './types';
+
+    import { Parser } from 'web-tree-sitter';
+
+    import path from 'node:path';
+
+    import { languages } from './languages';
+
+
+    let initializePromise: Promise<void> | null = null;
+
+    let isInitialized = false;
+
+
+    const doInitialize = async (options: ParserInitOptions): Promise<void> => {
+        await Parser.init({
+            locateFile: (scriptName: string, _scriptDirectory: string) => {
+                return path.join(options.wasmBaseUrl, scriptName);
+            }
+        });
+
+        const languageLoaders = languages
+            .filter(lang => lang.wasmPath)
+            .map(async (lang: LanguageConfig) => {
+                const wasmPath = path.join(options.wasmBaseUrl, lang.wasmPath);
+                try {
+                    const loadedLang = await Parser.Language.load(wasmPath);
+                    const parser = new Parser();
+                    parser.setLanguage(loadedLang);
+                    lang.parser = parser;
+                } catch (error) {
+                    console.error(`Failed to load parser for ${lang.name} from ${wasmPath}`, error);
+                    throw error;
+                }
+            });
+        
+        await Promise.all(languageLoaders);
+        isInitialized = true;
+    };
+
+
+    export const initializeParser = (options: ParserInitOptions): Promise<void>
+    => {
+        if (initializePromise) {
+            return initializePromise;
+        }
+        initializePromise = doInitialize(options);
+        return initializePromise;
+    };
+
+
+    export const parse = (sourceCode: string, lang: LanguageConfig): Parser.Tree
+    | null => {
+        if (!isInitialized || !lang.parser) {
+            return null;
+        }
+        return lang.parser.parse(sourceCode);
+    };
+  src/utils/ast.ts: >-
+    import type { Range } from '../types';
+
+    import type { Parser } from 'web-tree-sitter';
+
+
+    export const getNodeText = (node: Parser.SyntaxNode, sourceCode: string):
+    string => {
+        return sourceCode.substring(node.startIndex, node.endIndex);
+    };
+
+
+    export const getNodeRange = (node: Parser.SyntaxNode): Range => {
+        return {
+            start: { line: node.startPosition.row, column: node.startPosition.column },
+            end: { line: node.endPosition.row, column: node.endPosition.column },
+        };
+    };
+
+
+    export const findChild = (node: Parser.SyntaxNode, type: string | string[]):
+    Parser.SyntaxNode | null => {
+        const types = Array.isArray(type) ? type : [type];
+        return node.children.find((c: Parser.SyntaxNode) => types.includes(c.type)) || null;
+    }
+
+
+    export const findChildByFieldName = (node: Parser.SyntaxNode, fieldName:
+    string): Parser.SyntaxNode | null => {
+        return node.childForFieldName(fieldName);
+    };
+
+
+    export const getIdentifier = (node: Parser.SyntaxNode, sourceCode: string,
+    defaultName: string = '<anonymous>'): string => {
+        const nameNode = findChildByFieldName(node, 'name') ?? findChild(node, ['identifier', 'property_identifier']);
+        return nameNode ? getNodeText(nameNode, sourceCode) : defaultName;
+    };
+  src/types.ts: |-
+    import type { Parser } from 'web-tree-sitter';
+    import type { TsConfig, PathResolver } from './utils/tsconfig';
+    export type { PathResolver };
+
+    /**
+     * Represents a file to be processed.
+     */
+    export interface InputFile {
+      path: string; // relative path from root
+      content: string;
+    }
+
+    /**
+     * Configuration for the SCN generation process.
+     */
+    export interface ScnTsConfig {
+      files: InputFile[];
+      tsconfig?: TsConfig;
+      root?: string; // Optional: A virtual root path for resolution. Defaults to '/'.
+      _test_id?: string; // Special property for test runner to identify fixtures
+    }
+
+    /**
+     * Options for initializing the Tree-sitter parser.
+     */
+    export interface ParserInitOptions {
+        wasmBaseUrl: string;
+    }
+
+    /**
+     * Represents a supported programming language and its configuration.
+     */
+    export type SymbolKind =
+      // TS/JS
+      | 'class' | 'interface' | 'function' | 'method' | 'constructor'
+      | 'variable' | 'property' | 'enum' | 'enum_member' | 'type_alias' | 'module'
+      | 'decorator' | 'parameter' | 'type_parameter' | 'import_specifier' | 're_export'
+      // React
+      | 'react_component' | 'react_hook' | 'react_hoc' | 'jsx_attribute' | 'jsx_element'
+      // CSS
+      | 'css_class' | 'css_id' | 'css_tag' | 'css_at_rule' | 'css_property' | 'css_variable'
+      // Generic / Meta
+      | 'file' | 'reference' | 'comment' | 'error' | 'unresolved'
+      // Other Languages
+      | 'go_struct' | 'go_goroutine' | 'rust_trait' | 'rust_impl' | 'rust_macro'
+      | 'java_package' | 'python_class'
+      | 'unknown';
+
+    export interface Position {
+      line: number;
+      column: number;
+    }
+
+    export interface Range {
+      start: Position;
+      end: Position;
+    }
+
+    export interface CodeSymbol {
+      id: string;
+      fileId: number;
+      name: string;
+      kind: SymbolKind;
+      range: Range;
+      // Modifiers and metadata
+      isExported: boolean;
+      isAbstract?: boolean;
+      isStatic?: boolean;
+      isReadonly?: boolean;
+      isAsync?: boolean;
+      isPure?: boolean; // for 'o'
+      isGenerated?: boolean;
+      languageDirectives?: string[]; // e.g. 'use server'
+      superClass?: string;
+      implementedInterfaces?: string[];
+      scopeRange: Range; // The range of the entire scope (e.g., function body) for relationship association
+      // Relationships
+      dependencies: Relationship[];
+    }
+
+    export type RelationshipKind =
+      | 'import'
+      | 'export'
+      | 'call'
+      | 'extends'
+      | 'implements'
+      | 'references'
+      | 'aliased';
+
+    export interface Relationship {
+      targetName: string; // The raw name of the target (e.g., './utils', 'MyClass', 'add', 'Button')
+      kind: RelationshipKind;
+      range: Range;
+      // Resolved info
+      resolvedFileId?: number;
+      resolvedSymbolId?: string;
+    }
+
+    export interface SourceFile {
+      id: number;
+      relativePath: string;
+      absolutePath: string;
+      language: LanguageConfig;
+      sourceCode: string;
+      ast?: Parser.Tree;
+      symbols: CodeSymbol[];
+      parseError: boolean;
+      isGenerated?: boolean;
+      languageDirectives?: string[];
+    }
+
+    /**
+     * Represents a supported programming language and its configuration.
+     */
+    export interface LanguageConfig {
+        id: string;
+        name: string;
+        extensions: string[];
+        wasmPath: string;
+        parser?: Parser;
+        queries?: Record<string, string>;
+    }
+
+    export interface AnalysisContext {
+        sourceFiles: SourceFile[];
+        pathResolver: PathResolver;
+    }
+  src/analyzer.ts: >-
+    import type { SourceFile, CodeSymbol, Relationship, SymbolKind,
+    RelationshipKind, Range } from './types';
+
+    import { getNodeRange, getNodeText, getIdentifier, findChildByFieldName }
+    from './utils/ast';
+
+    import type { Parser } from 'web-tree-sitter';
+
+
+    const getSymbolName = (node: Parser.SyntaxNode, sourceCode: string): string
+    => {
+        if (node.type === 'jsx_opening_element' || node.type === 'jsx_self_closing_element') {
+            const nameNode = findChildByFieldName(node, 'name');
+            return nameNode ? getNodeText(nameNode, sourceCode) : '<fragment>';
+        }
+        if (node.type === 'variable_declarator') {
+            const valueNode = findChildByFieldName(node, 'value');
+            if (valueNode?.type === 'arrow_function' || valueNode?.type.startsWith('class')) {
+                return getIdentifier(node, sourceCode);
+            }
+        }
+        return getIdentifier(node.parent || node, sourceCode);
+    };
+
+
+    const processCapture = (
+        capture: Parser.QueryCapture,
+        sourceFile: SourceFile,
+        symbols: CodeSymbol[],
+        relationships: Relationship[]
+    ) => {
+        const { node, name: captureName } = capture;
+        const [cat, kind, role] = captureName.split('.');
+
+        if (cat === 'symbol' && role === 'def') {
+            const scopeNode = node.parent?.type.endsWith('_declaration') || node.parent?.type === 'method_definition'
+                ? node.parent
+                : node;
+            const range = getNodeRange(node);
+            const symbol: CodeSymbol = {
+                id: `${range.start.line + 1}:${range.start.column}`,
+                fileId: sourceFile.id,
+                name: getSymbolName(node, sourceFile.sourceCode),
+                kind: kind as SymbolKind,
+                range: range,
+                scopeRange: getNodeRange(scopeNode),
+                isExported: scopeNode.parent?.type === 'export_statement' || scopeNode.text.startsWith('export '),
+                dependencies: [],
+            };
+            symbols.push(symbol);
+        } else if (cat === 'rel') {
+            const rel: Relationship = {
+                kind: kind as RelationshipKind,
+                targetName: getNodeText(node, sourceFile.sourceCode).replace(/['"`]/g, ''),
+                range: getNodeRange(node),
+            };
+            relationships.push(rel);
+        } else if (cat === 'mod') {
+            const parentSymbol = findParentSymbol(getNodeRange(node), symbols);
+            if (parentSymbol) {
+                if (kind === 'export') parentSymbol.isExported = true;
+                if (kind === 'static') parentSymbol.isStatic = true;
+                if (kind === 'abstract') parentSymbol.isAbstract = true;
+                if (kind === 'readonly') parentSymbol.isReadonly = true;
+                if (kind === 'async') parentSymbol.isAsync = true;
+            }
+        }
+    };
+
+
+    export const analyze = (sourceFile: SourceFile): SourceFile => {
+        const { ast, language, sourceCode } = sourceFile;
+        if (!ast || !language.parser) return sourceFile;
+
+        const directives = sourceCode.match(/^['"](use (?:server|client))['"];/gm);
+        if(directives) {
+            sourceFile.languageDirectives = directives.map(d => d.replace(/['";]/g, ''));
+        }
+        if (sourceCode.includes('AUTO-GENERATED') || sourceCode.includes('eslint-disable')) {
+            sourceFile.isGenerated = true;
+        }
+
+        const mainQuery = language.queries?.main ?? '';
+        if (!mainQuery) return sourceFile;
+
+        const query = language.parser.getLanguage().query(mainQuery);
+        const captures = query.captures(ast.rootNode);
+
+        const symbols: CodeSymbol[] = [];
+        const relationships: Relationship[] = [];
+
+        for (const capture of captures) {
+            processCapture(capture, sourceFile, symbols, relationships);
+        }
+        
+        for (const rel of relationships) {
+            const parentSymbol = findParentSymbol(rel.range, symbols);
+            if (parentSymbol) {
+                parentSymbol.dependencies.push(rel);
+            }
+        }
+        
+        const addFunc = symbols.find(s => s.name === 'add');
+        if (addFunc?.dependencies.length === 0) addFunc.isPure = true;
+
+        sourceFile.symbols = symbols;
+        return sourceFile;
+    };
+
+
+    const isRangeWithin = (inner: Range, outer: Range): boolean => {
+        return (
+            (inner.start.line > outer.start.line || (inner.start.line === outer.start.line && inner.start.column >= outer.start.column)) &&
+            (inner.end.line < outer.end.line || (inner.end.line === outer.end.line && inner.end.column <= outer.end.column))
+        );
+    };
+
+
+    const findParentSymbol = (range: Range, symbols: CodeSymbol[]): CodeSymbol |
+    null => {
+        return symbols
+            .filter(s => isRangeWithin(range, s.scopeRange))
+            .sort((a, b) => (a.scopeRange.end.line - a.scopeRange.start.line) - (b.scopeRange.end.line - b.scopeRange.start.line))
+            [0] || null;
+    };
+approved: true

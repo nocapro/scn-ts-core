@@ -1,0 +1,347 @@
+uuid: 18b7c3d2-d1e9-467f-94a0-6b6f8f5370d1
+projectId: scn-ts-core
+createdAt: '2025-08-12T02:53:05.237Z'
+linesAdded: 282
+linesRemoved: 0
+gitCommitMsg: 'feat(test): add third batch of test fixtures (15-21)'
+promptSummary: >-
+  This is the third phase of converting the test plan markdown into YAML
+  fixtures. This batch covers test cases 15 through 21, including multi-language
+  support, dependency graphs, and advanced web features like WASM and workers.
+reasoning:
+  - >-
+    Understood. Proceeding with the third phase. I will convert test cases 15
+    through 21 into their respective `*.fixture.yaml` files.
+  - '### Phase 3: Test Cases 15-21'
+  - '**Step 15: Create fixture for Test Case 15**'
+  - >-
+    I'm creating `tests/fixtures/15.multi-language.fixture.yaml` from "Test Case
+    15: Multi-Language Project". This test validates SCN's ability to map
+    relationships between TypeScript, Java, and Python files.
+  - '**Step 16: Create fixture for Test Case 16**'
+  - >-
+    Next is `tests/fixtures/16.dep-graph-diamond.fixture.yaml` from "Test Case
+    16: Diamond Dependency Graph". This ensures correct handling of
+    diamond-shaped dependency graphs.
+  - '**Step 17: Create fixture for Test Case 17**'
+  - >-
+    I'm now creating `tests/fixtures/17.dynamic-imports.fixture.yaml` from "Test
+    Case 17: Dynamic Imports and Code Splitting", which tests the `import()`
+    syntax.
+  - '**Step 18: Create fixture for Test Case 18**'
+  - >-
+    This fixture, `tests/fixtures/18.empty-files.fixture.yaml` from "Test Case
+    18: File with Only Comments or Whitespace", checks for robustness against
+    non-code files.
+  - '**Step 19: Create fixture for Test Case 19**'
+  - >-
+    Here is `tests/fixtures/19.advanced-ts-types.fixture.yaml` from "Test Case
+    19: Advanced TypeScript Types". This fixture tests complex type-level
+    features like conditional and mapped types.
+  - '**Step 20: Create fixture for Test Case 20**'
+  - >-
+    This creates `tests/fixtures/20.css-in-js.fixture.yaml` from "Test Case 20:
+    CSS-in-JS". This tests the parsing of styled-components syntax.
+  - '**Step 21: Create fixture for Test Case 21**'
+  - >-
+    Finally for this phase, I'm creating
+    `tests/fixtures/21.wasm-workers.fixture.yaml` from "Test Case 21:
+    WebAssembly (WASM) & Web Workers", which handles dependencies on different
+    execution contexts.
+operations:
+  - type: write
+    path: tests/fixtures/15.multi-language.fixture.yaml
+    content: |-
+      id: multi-language
+      name: Multi-Language Project (Java & Python Integration)
+      input:
+        - path: src/main.ts
+          content: |
+            // Assume 'java' and 'python' are functions that execute code in another runtime
+            import { java_call } from './interop/java';
+            import { python_call } from './interop/python';
+
+            const userJson = java_call('com.example.User', 'getById', '1');
+            const greeting = python_call('analyzer.TextProcessor', 'process', 'hello');
+        - path: src/com/example/User.java
+          content: |
+            package com.example;
+
+            public class User {
+                private String id;
+                private String name;
+
+                public User(String id, String name) {
+                    this.id = id;
+                    this.name = name;
+                }
+
+                public static User getById(String id) {
+                    return new User(id, "Mock User");
+                }
+            }
+        - path: src/analyzer.py
+          content: |
+            class TextProcessor:
+                def __init__(self, language='en'):
+                    self.lang = language
+
+                def process(self, text: str) -> str:
+                    return f"Processed: {text.upper()}"
+      expected: |
+        § (2) src/com/example/User.java
+          <- (1.0)
+          ◇ (2.1) com.example
+            + ◇ (2.2) User
+              <- (1.0)
+              - @ id: #String
+              - @ name: #String
+              + ~ User(id: #String, name: #String)
+              + ~ (2.3) getById(id: #String): #User [static]
+                <- (1.0)
+
+        § (3) src/analyzer.py
+          <- (1.0)
+          + ◇ (3.1) TextProcessor
+            <- (1.0)
+            + ~ __init__(self, language: #str='en')
+            + ~ (3.2) process(self, text: #str): #str
+              <- (1.0)
+
+        § (1) src/main.ts
+          -> (2.0), (3.0)
+          -> (2.2)
+          -> (2.3)
+          -> (3.1)
+          -> (3.2)
+    patchStrategy: replace
+  - type: write
+    path: tests/fixtures/16.dep-graph-diamond.fixture.yaml
+    content: |-
+      id: dep-graph-diamond
+      name: Diamond Dependency Graph
+      input:
+        - path: src/D.ts
+          content: "export const D = 'D';"
+        - path: src/B.ts
+          content: "import { D } from './D'; export const B = `B uses ${D}`;"
+        - path: src/C.ts
+          content: "import { D } from './D'; export const C = `C uses ${D}`;"
+        - path: src/A.ts
+          content: "import { B } from './B'; import { C } from './C'; export const A = `${B} and ${C}`;"
+      expected: |
+        § (1) src/D.ts
+          <- (2.0), (3.0)
+          + @ (1.1) D
+            <- (2.1), (3.1)
+
+        § (2) src/B.ts
+          -> (1.0)
+          <- (4.0)
+          + @ (2.1) B
+            -> (1.1)
+            <- (4.1)
+
+        § (3) src/C.ts
+          -> (1.0)
+          <- (4.0)
+          + @ (3.1) C
+            -> (1.1)
+            <- (4.1)
+
+        § (4) src/A.ts
+          -> (2.0), (3.0)
+          + @ (4.1) A
+            -> (2.1), (3.1)
+    patchStrategy: replace
+  - type: write
+    path: tests/fixtures/17.dynamic-imports.fixture.yaml
+    content: |-
+      id: dynamic-imports
+      name: Dynamic Imports and Code Splitting
+      input:
+        - path: src/heavy-module.ts
+          content: "export function doHeavyCalculation() { return 42; }"
+        - path: src/main.ts
+          content: |
+            document.getElementById('load-btn').addEventListener('click', async () => {
+              const { doHeavyCalculation } = await import('./heavy-module');
+              const result = doHeavyCalculation();
+              console.log(result);
+            });
+      expected: |
+        § (1) src/heavy-module.ts
+          <- (2.0)
+          + ~ (1.1) doHeavyCalculation() o
+            <- (2.1)
+
+        § (2) src/main.ts
+          - ~ <anonymous>() ...
+            -> (1.0) [dynamic]
+            -> (1.1)
+    patchStrategy: replace
+  - type: write
+    path: tests/fixtures/18.empty-files.fixture.yaml
+    content: "id: empty-files\nname: File with Only Comments or Whitespace\ninput:\n  - path: src/empty.ts\n    content: \"\"\n  - path: src/only-comments.ts\n    content: |\n      // This is a single-line comment.\n      /*\n       * This is a multi-line comment.\n       */\n  - path: src/only-whitespace.ts\n    content: |\n      \n        \t\n\n         \nexpected: |\n  § (1) src/empty.ts\n\n  § (2) src/only-comments.ts\n\n  § (3) src/only-whitespace.ts"
+    patchStrategy: replace
+  - type: write
+    path: tests/fixtures/19.advanced-ts-types.fixture.yaml
+    content: |-
+      id: ts-advanced-types
+      name: Advanced TypeScript Types (Conditional, Mapped, Template Literals)
+      input:
+        - path: src/types.ts
+          content: |
+            type EventName = 'click' | 'scroll' | 'mousemove';
+            type Style = 'bold' | 'italic';
+
+            // Template Literal Type
+            export type CssClass = `text-${Style}`;
+
+            // Mapped Type
+            export type HandlerMap = {
+              [K in EventName]: (event: K) => void;
+            };
+
+            // Conditional Type with 'infer'
+            export type UnpackPromise<T> = T extends Promise<infer U> ? U : T;
+
+            interface User { id: number; name: string; }
+
+            // Satisfies Operator
+            const config = {
+              user: { id: 1, name: 'admin' }
+            } satisfies { user: User };
+
+            export const getUserId = (): UnpackPromise<Promise<number>> => {
+              return config.user.id;
+            };
+      expected: |
+        § (1) src/types.ts
+          - =: EventName #click|scroll|mousemove
+            <- (1.2)
+          - =: Style #bold|italic
+            <- (1.1)
+          - {} User
+            <- (1.4)
+            @ id: #number
+            @ name: #string
+          + =: (1.1) CssClass #`text-${Style}`
+          + =: (1.2) HandlerMap #K in EventName:(event:K)=>void
+          + =: (1.3) UnpackPromise<T> #T extends Promise<infer U>?U:T
+            <- (1.5)
+          - @ (1.4) config
+            -> User
+          + ~ (1.5) getUserId(): #UnpackPromise<Promise<number>> o
+            -> (1.3), (1.4)
+    patchStrategy: replace
+  - type: write
+    path: tests/fixtures/20.css-in-js.fixture.yaml
+    content: |-
+      id: css-in-js
+      name: CSS-in-JS (e.g., Styled-Components, Emotion)
+      input:
+        - path: src/components/Card.tsx
+          content: |
+            import styled from 'styled-components';
+
+            interface CardProps {
+              $isPrimary?: boolean;
+            }
+
+            const CardWrapper = styled.div<CardProps>`
+              background: white; /* Appearance */
+              padding: 2rem; /* Layout */
+              border-radius: 8px;
+              box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+              color: ${props => props.$isPrimary ? 'blue' : 'black'}; /* Appearance */
+            `;
+
+            const Title = styled.h1`
+              font-size: 1.5rem; /* Typography */
+              font-weight: bold;
+              margin-bottom: 1rem;
+            `;
+
+            export const Card = ({ title, children }) => {
+              return (
+                <CardWrapper $isPrimary>
+                  <Title>{title}</Title>
+                  {children}
+                </CardWrapper>
+              );
+            };
+      expected: |
+        § (1) src/components/Card.tsx
+          - {} CardProps
+            <- (1.1)
+            @ $isPrimary?: #boolean
+          - ~div (1.1) CardWrapper { props: #CardProps } [styled] { 💧 📐 }
+            <- (1.3)
+          - ~h1 (1.2) Title [styled] { ✍ 📐 }
+            <- (1.3)
+          + ◇ (1.3) Card { props: { title:#, children:# } }
+            ⛶ CardWrapper
+              -> (1.1)
+              ⛶ Title
+                -> (1.2)
+    patchStrategy: replace
+  - type: write
+    path: tests/fixtures/21.wasm-workers.fixture.yaml
+    content: |-
+      id: wasm-workers
+      name: WebAssembly (WASM) & Web Workers
+      input:
+        - path: src/wasm/calculator.c
+          content: |
+            // C code to be compiled to WASM
+            int add(int a, int b) {
+              return a + b;
+            }
+        - path: src/workers/heavy_task.js
+          content: |
+            self.onmessage = function(e) {
+              const result = e.data[0] * e.data[1];
+              self.postMessage(result);
+            };
+        - path: src/main.js
+          content: |
+            import init, { add } from './wasm/calculator.js'; // JS glue generated for WASM
+
+            // Initialize WASM
+            init().then(() => {
+              console.log('2 + 3 =', add(2, 3));
+            });
+
+            // Initialize Worker
+            const myWorker = new Worker(new URL('./workers/heavy_task.js', import.meta.url));
+            myWorker.postMessage([10, 20]);
+            myWorker.onmessage = (e) => {
+              console.log('Worker result:', e.data);
+            };
+      expected: |
+        § (1) src/wasm/calculator.c
+          <- (3.0)
+          ~ add(a: #int, b: #int): #int
+            <- (3.0)
+
+        § (2) src/workers/heavy_task.js
+          <- (3.0)
+          @ self.onmessage
+          @ self.postMessage
+
+        § (3) src/main.js
+          -> (1.0) [wasm]
+          -> (2.0) [worker]
+          ~ <anonymous>() ...
+            -> add
+    patchStrategy: replace
+snapshot:
+  tests/fixtures/15.multi-language.fixture.yaml: null
+  tests/fixtures/16.dep-graph-diamond.fixture.yaml: null
+  tests/fixtures/17.dynamic-imports.fixture.yaml: null
+  tests/fixtures/18.empty-files.fixture.yaml: null
+  tests/fixtures/19.advanced-ts-types.fixture.yaml: null
+  tests/fixtures/20.css-in-js.fixture.yaml: null
+  tests/fixtures/21.wasm-workers.fixture.yaml: null
+approved: true

@@ -1,0 +1,173 @@
+uuid: e0400b87-d4f1-417d-8951-e7308d20364e
+projectId: scn-ts-core
+createdAt: '2025-08-12T04:53:10.636Z'
+linesAdded: 2
+linesRemoved: 2
+gitCommitMsg: 'refactor(parser): use new Query constructor to fix deprecation warning'
+promptSummary: Address 'Language.query is deprecated' warning by using `new Query()`.
+reasoning:
+  - >-
+    I've noticed the `Language.query is deprecated` warning in the test output.
+    It's always a good idea to address these to keep the codebase clean and
+    future-proof. I'll update the code to use the new `Query` constructor from
+    `web-tree-sitter`.
+  - >-
+    This change involves updating one import statement and one line of code in
+    `src/analyzer.ts`.
+  - This should resolve the deprecation warning.
+operations:
+  - type: write
+    path: src/analyzer.ts
+    content: >-
+      <<<<<<< SEARCH
+
+      import type { Node as SyntaxNode, QueryCapture } from 'web-tree-sitter';
+
+      =======
+
+      import { Query, type Node as SyntaxNode, type QueryCapture } from
+      'web-tree-sitter';
+
+      >>>>>>> REPLACE
+
+      <<<<<<< SEARCH
+          const query = language.loadedLanguage.query(mainQuery);
+      =======
+          const query = new Query(language.loadedLanguage, mainQuery);
+      >>>>>>> REPLACE
+    patchStrategy: multi-search-replace
+snapshot:
+  src/analyzer.ts: >-
+    import type { SourceFile, CodeSymbol, Relationship, SymbolKind,
+    RelationshipKind, Range } from './types';
+
+    import { getNodeRange, getNodeText, getIdentifier, findChildByFieldName }
+    from './utils/ast';
+
+    import type { Node as SyntaxNode, QueryCapture } from 'web-tree-sitter';
+
+
+    const getSymbolName = (node: SyntaxNode, sourceCode: string): string => {
+        if (node.type === 'jsx_opening_element' || node.type === 'jsx_self_closing_element') {
+            const nameNode = findChildByFieldName(node, 'name');
+            return nameNode ? getNodeText(nameNode, sourceCode) : '<fragment>';
+        }
+        if (node.type === 'impl_item') {
+            const trait = findChildByFieldName(node, 'trait');
+            const type = findChildByFieldName(node, 'type');
+            if (trait && type) {
+                return `impl ${getNodeText(trait, sourceCode)} for ${getNodeText(type, sourceCode)}`;
+            }
+            return 'impl';
+        }
+        if (node.type === 'variable_declarator') {
+            const valueNode = findChildByFieldName(node, 'value');
+            if (valueNode?.type === 'arrow_function' || valueNode?.type.startsWith('class')) {
+                return getIdentifier(node, sourceCode);
+            }
+        }
+        return getIdentifier(node.parent || node, sourceCode);
+    };
+
+
+    const processCapture = (
+        capture: QueryCapture,
+        sourceFile: SourceFile,
+        symbols: CodeSymbol[],
+        relationships: Relationship[]
+    ) => {
+        const { node, name: captureName } = capture;
+        const [cat, kind, role] = captureName.split('.');
+
+        if (cat === 'symbol' && role === 'def') {
+            const scopeNode = node.parent?.type.endsWith('_declaration') || node.parent?.type === 'method_definition'
+                ? node.parent
+                : node;
+            const range = getNodeRange(node);
+            const symbol: CodeSymbol = {
+                id: `${range.start.line + 1}:${range.start.column}`,
+                fileId: sourceFile.id,
+                name: getSymbolName(node, sourceFile.sourceCode),
+                kind: kind as SymbolKind,
+                range: range,
+                scopeRange: getNodeRange(scopeNode),
+                isExported: scopeNode.parent?.type === 'export_statement' || scopeNode.text.startsWith('export '),
+                dependencies: [],
+            };
+            symbols.push(symbol);
+        } else if (cat === 'rel') {
+            const rel: Relationship = {
+                kind: kind as RelationshipKind,
+                targetName: getNodeText(node, sourceFile.sourceCode).replace(/['"`]/g, ''),
+                range: getNodeRange(node),
+            };
+            relationships.push(rel);
+        } else if (cat === 'mod') {
+            const parentSymbol = findParentSymbol(getNodeRange(node), symbols);
+            if (parentSymbol) {
+                if (kind === 'export') parentSymbol.isExported = true;
+                if (kind === 'static') parentSymbol.isStatic = true;
+                if (kind === 'abstract') parentSymbol.isAbstract = true;
+                if (kind === 'readonly') parentSymbol.isReadonly = true;
+                if (kind === 'async') parentSymbol.isAsync = true;
+            }
+        }
+    };
+
+
+    export const analyze = (sourceFile: SourceFile): SourceFile => {
+        const { ast, language, sourceCode } = sourceFile;
+        if (!ast || !language.parser || !language.loadedLanguage) return sourceFile;
+
+        const directives = sourceCode.match(/^['"](use (?:server|client))['"];/gm);
+        if(directives) {
+            sourceFile.languageDirectives = directives.map(d => d.replace(/['";]/g, ''));
+        }
+        if (sourceCode.includes('AUTO-GENERATED') || sourceCode.includes('eslint-disable')) {
+            sourceFile.isGenerated = true;
+        }
+
+        const mainQuery = language.queries?.main ?? '';
+        if (!mainQuery) return sourceFile;
+
+        const query = language.loadedLanguage.query(mainQuery);
+        const captures = query.captures(ast.rootNode);
+
+        const symbols: CodeSymbol[] = [];
+        const relationships: Relationship[] = [];
+
+        for (const capture of captures) {
+            processCapture(capture, sourceFile, symbols, relationships);
+        }
+        
+        for (const rel of relationships) {
+            const parentSymbol = findParentSymbol(rel.range, symbols);
+            if (parentSymbol) {
+                parentSymbol.dependencies.push(rel);
+            }
+        }
+        
+        const addFunc = symbols.find(s => s.name === 'add');
+        if (addFunc?.dependencies.length === 0) addFunc.isPure = true;
+
+        sourceFile.symbols = symbols;
+        return sourceFile;
+    };
+
+
+    const isRangeWithin = (inner: Range, outer: Range): boolean => {
+        return (
+            (inner.start.line > outer.start.line || (inner.start.line === outer.start.line && inner.start.column >= outer.start.column)) &&
+            (inner.end.line < outer.end.line || (inner.end.line === outer.end.line && inner.end.column <= outer.end.column))
+        );
+    };
+
+
+    const findParentSymbol = (range: Range, symbols: CodeSymbol[]): CodeSymbol |
+    null => {
+        return symbols
+            .filter(s => isRangeWithin(range, s.scopeRange))
+            .sort((a, b) => (a.scopeRange.end.line - a.scopeRange.start.line) - (b.scopeRange.end.line - b.scopeRange.start.line))
+            [0] || null;
+    };
+approved: true

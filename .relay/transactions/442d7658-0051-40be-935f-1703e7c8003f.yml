@@ -1,0 +1,322 @@
+uuid: 442d7658-0051-40be-935f-1703e7c8003f
+projectId: scn-ts-core
+createdAt: '2025-08-12T03:03:07.878Z'
+linesAdded: 200
+linesRemoved: 0
+gitCommitMsg: 'feat(test): implement comprehensive e2e test suite'
+promptSummary: >-
+  Create a comprehensive end-to-end testing suite based on the provided fixture
+  files. This involves creating a test utility for parsing fixtures and running
+  tests, and then creating categorized test files to cover all 28 fixtures.
+reasoning:
+  - >-
+    I will create a comprehensive end-to-end testing suite based on the provided
+    fixture files. The suite will consist of a central test utility and several
+    test files categorized by feature type.
+  - >-
+    First, I'll create `test/test.util.ts`. This utility will be responsible
+    for:
+  - 1.  Parsing the custom YAML-like fixture format.
+  - 2.  Setting up an isolated temporary directory for each test case.
+  - 3.  Writing the input files from the fixture into the temporary directory.
+  - >-
+    4.  Programmatically invoking the `generateScn` function on the test
+    directory.
+  - >-
+    5.  Performing an exact match comparison between the generated output and
+    the expected output from the fixture.
+  - 6.  Cleaning up the temporary directory after the test execution.
+  - >-
+    Next, I will create a series of test files under `test/e2e/`. These files
+    will group the 28 fixtures into logical categories like core language
+    features, React/CSS, dependency analysis, and advanced cases. Each test file
+    will use the utility to run the tests, keeping the test definitions
+    themselves clean and minimal. This approach adheres to all the requirements,
+    ensuring the tests are isolated, robust, and use real algorithms without
+    mocks.
+operations:
+  - type: write
+    path: test/test.util.ts
+    content: >-
+      import { generateScn, initializeParser, type ScnTsConfig } from
+      '../src/main';
+
+      import fs from 'node:fs/promises';
+
+      import path from 'node:path';
+
+      import { expect } from 'bun:test';
+
+
+      interface Fixture {
+        id: string;
+        name: string;
+        input: { path: string; content: string }[];
+        expected: string;
+      }
+
+
+      function parseFixture(fileContent: string): Fixture {
+          const id = fileContent.match(/^id: (.*)$/m)?.[1].trim() ?? '';
+          const name = fileContent.match(/^name: (.*)$/m)?.[1].trim() ?? '';
+          
+          const [inputSection, expectedSection] = fileContent.split(/\nexpected:\s*\|?\n/);
+          if (!expectedSection) throw new Error(`Could not parse fixture: ${id || fileContent.slice(0, 100)}`);
+
+          const expected = expectedSection.replace(/^  /gm, '').trim();
+
+          const inputFiles = [];
+          const fileChunks = inputSection.split(/-\s*path:\s*/).slice(1);
+
+          for (const chunk of fileChunks) {
+              const lines = chunk.split('\n');
+              const filePath = lines[0].trim();
+              const contentLineIndex = lines.findIndex(l => l.trim().startsWith('content:'));
+              const content = lines.slice(contentLineIndex + 1).map(l => l.startsWith('      ') ? l.substring(6) : l).join('\n');
+              inputFiles.push({ path: filePath, content });
+          }
+
+          return { id, name, input: inputFiles, expected };
+      }
+
+
+      const rootDir = process.cwd();
+
+      const wasmDir = path.join(rootDir, 'test', 'wasm');
+
+      let parserInitialized = false;
+
+
+      export async function runTestForFixture(fixturePath: string):
+      Promise<void> {
+        if (!parserInitialized) {
+          await initializeParser({ wasmBaseUrl: wasmDir });
+          parserInitialized = true;
+        }
+        
+        const fixtureContent = await fs.readFile(fixturePath, 'utf-8');
+        const fixture = parseFixture(fixtureContent);
+
+        const tempDir = await fs.mkdtemp(path.join(rootDir, 'test', `temp-${fixture.id}-`));
+
+        try {
+          for (const file of fixture.input) {
+            const filePath = path.join(tempDir, file.path);
+            await fs.mkdir(path.dirname(filePath), { recursive: true });
+            await fs.writeFile(filePath, file.content);
+          }
+          
+          const tsconfigPath = path.join(tempDir, 'tsconfig.json');
+          let tsconfigContent: Record<string, unknown> = {
+              compilerOptions: {
+                  jsx: 'react-jsx',
+                  allowJs: true,
+                  moduleResolution: "node",
+                  module: 'ESNext',
+              }
+          };
+
+          if (fixture.id === 'monorepo-aliases') {
+            tsconfigContent = {
+              compilerOptions: {
+                  baseUrl: '.',
+                  jsx: 'react-jsx',
+                  paths: {
+                      '@shared-ui/*': ['packages/shared-ui/src/*'],
+                      '@/shared-lib/*': ['packages/shared-lib/src/*'],
+                  },
+              },
+            };
+          }
+          await fs.writeFile(tsconfigPath, JSON.stringify(tsconfigContent, null, 2));
+
+          const config: ScnTsConfig = {
+            root: tempDir,
+            include: ['**/*.*'],
+            exclude: ['tsconfig.json'],
+          };
+
+          const scnOutput = await generateScn(config);
+
+          if (scnOutput.trim() !== fixture.expected) {
+              console.error(`\n--- MISMATCH IN FIXTURE: ${fixture.id} ---\n`);
+              console.error('--- EXPECTED ---\n');
+              console.error(fixture.expected);
+              console.error('\n--- ACTUAL ---\n');
+              console.error(scnOutput.trim());
+              console.error('\n------------------\n');
+          }
+
+          expect(scnOutput.trim()).toBe(fixture.expected);
+        } finally {
+          await fs.rm(tempDir, { recursive: true, force: true });
+        }
+      }
+    patchStrategy: replace
+  - type: write
+    path: test/e2e/01-core.test.ts
+    content: |-
+      import { describe, it } from 'bun:test';
+      import { runTestForFixture } from '../test.util';
+      import path from 'node:path';
+
+      const fixtureDir = path.join(import.meta.dir, '..', 'fixtures');
+
+      describe('Core Language Features', () => {
+          it('01: Core TypeScript Features (Class, Interface, Qualifiers)', async () => {
+              await runTestForFixture(path.join(fixtureDir, '01.core-ts.fixture.yaml'));
+          });
+
+          it('04: JavaScript Syntax (ESM & CJS)', async () => {
+              await runTestForFixture(path.join(fixtureDir, '04.js-syntax.fixture.yaml'));
+          });
+          
+          it('11: TypeScript Advanced Modifiers & Class Features', async () => {
+              await runTestForFixture(path.join(fixtureDir, '11.ts-modifiers.fixture.yaml'));
+          });
+          
+          it('12: JavaScript Prototypes and IIFE', async () => {
+              await runTestForFixture(path.join(fixtureDir, '12.js-prototype-iife.fixture.yaml'));
+          });
+          
+          it('19: Advanced TypeScript Types (Conditional, Mapped, Template Literals)', async () => {
+              await runTestForFixture(path.join(fixtureDir, '19.advanced-ts-types.fixture.yaml'));
+          });
+          
+          it('23: JavaScript Proxy, Symbol, and Tagged Templates', async () => {
+              await runTestForFixture(path.join(fixtureDir, '23.js-proxy-symbol.fixture.yaml'));
+          });
+          
+          it('24: Ambient Modules & Triple-Slash Directives', async () => {
+              await runTestForFixture(path.join(fixtureDir, '24.ts-ambient-modules.fixture.yaml'));
+          });
+      });
+    patchStrategy: replace
+  - type: write
+    path: test/e2e/02-react-css.test.ts
+    content: |-
+      import { describe, it } from 'bun:test';
+      import { runTestForFixture } from '../test.util';
+      import path from 'node:path';
+
+      const fixtureDir = path.join(import.meta.dir, '..', 'fixtures');
+
+      describe('React & CSS Features', () => {
+          it('02: React/JSX and CSS Integration', async () => {
+              await runTestForFixture(path.join(fixtureDir, '02.react-css.fixture.yaml'));
+          });
+
+          it('07: Advanced React (Hooks, Context, HOCs, Refs)', async () => {
+              await runTestForFixture(path.join(fixtureDir, '07.advanced-react.fixture.yaml'));
+          });
+          
+          it('08: Advanced CSS (Variables, Media Queries, Pseudo-selectors)', async () => {
+              await runTestForFixture(path.join(fixtureDir, '08.advanced-css.fixture.yaml'));
+          });
+          
+          it('13: Advanced React Render Patterns (Render Props & Fragments)', async () => {
+              await runTestForFixture(path.join(fixtureDir, '13.react-render-props.fixture.yaml'));
+          });
+          
+          it('14: Complex CSS Selectors and Rules', async () => {
+              await runTestForFixture(path.join(fixtureDir, '14.complex-css.fixture.yaml'));
+          });
+          
+          it('20: CSS-in-JS (e.g., Styled-Components, Emotion)', async () => {
+              await runTestForFixture(path.join(fixtureDir, '20.css-in-js.fixture.yaml'));
+          });
+          
+          it('22: React Server Components & Directives', async () => {
+              await runTestForFixture(path.join(fixtureDir, '22.react-server-components.fixture.yaml'));
+          });
+      });
+    patchStrategy: replace
+  - type: write
+    path: test/e2e/03-dependencies.test.ts
+    content: |-
+      import { describe, it } from 'bun:test';
+      import { runTestForFixture } from '../test.util';
+      import path from 'node:path';
+
+      const fixtureDir = path.join(import.meta.dir, '..', 'fixtures');
+
+      describe('Dependency Graph Analysis', () => {
+          it('09: Complex Dependency Graph (Circular & Peer)', async () => {
+              await runTestForFixture(path.join(fixtureDir, '09.dep-graph-circular.fixture.yaml'));
+          });
+
+          it('10: Monorepo-style Path Aliases', async () => {
+              await runTestForFixture(path.join(fixtureDir, '10.monorepo-aliases.fixture.yaml'));
+          });
+          
+          it('16: Diamond Dependency Graph', async () => {
+              await runTestForFixture(path.join(fixtureDir, '16.dep-graph-diamond.fixture.yaml'));
+          });
+          
+          it('17: Dynamic Imports and Code Splitting', async () => {
+              await runTestForFixture(path.join(fixtureDir, '17.dynamic-imports.fixture.yaml'));
+          });
+          
+          it('25: GraphQL Code Generation Flow', async () => {
+              await runTestForFixture(path.join(fixtureDir, '25.graphql-codegen.fixture.yaml'));
+          });
+      });
+    patchStrategy: replace
+  - type: write
+    path: test/e2e/04-advanced-misc.test.ts
+    content: |-
+      import { describe, it } from 'bun:test';
+      import { runTestForFixture } from '../test.util';
+      import path from 'node:path';
+
+      const fixtureDir = path.join(import.meta.dir, '..', 'fixtures');
+
+      describe('Advanced, Edge Case, and Multi-language Features', () => {
+          it('03: Advanced TS (Inheritance, Enums, Pure Functions)', async () => {
+              await runTestForFixture(path.join(fixtureDir, '03.advanced-ts.fixture.yaml'));
+          });
+
+          it('05: Edge Cases (Empty & Anonymous)', async () => {
+              await runTestForFixture(path.join(fixtureDir, '05.edge-cases.fixture.yaml'));
+          });
+          
+          it('06: Advanced TypeScript (Generics, Decorators, Type Guards, Re-exports)', async () => {
+              await runTestForFixture(path.join(fixtureDir, '06.advanced-ts-2.fixture.yaml'));
+          });
+
+          it('15: Multi-Language Project (Java & Python Integration)', async () => {
+              await runTestForFixture(path.join(fixtureDir, '15.multi-language.fixture.yaml'));
+          });
+          
+          it('18: File with Only Comments or Whitespace', async () => {
+              await runTestForFixture(path.join(fixtureDir, '18.empty-files.fixture.yaml'));
+          });
+          
+          it('21: WebAssembly (WASM) & Web Workers', async () => {
+              await runTestForFixture(path.join(fixtureDir, '21.wasm-workers.fixture.yaml'));
+          });
+
+          it('26: Go Language Features (Goroutines, Channels)', async () => {
+              await runTestForFixture(path.join(fixtureDir, '26.go-features.fixture.yaml'));
+          });
+
+          it('27: Rust Language Features (Traits, Impls, Macros)', async () => {
+              await runTestForFixture(path.join(fixtureDir, '27.rust-features.fixture.yaml'));
+          });
+
+          it('28: Error Resilience (Syntax Error in One File)', async () => {
+              await runTestForFixture(path.join(fixtureDir, '28.error-resilience.fixture.yaml'));
+          });
+      });
+    patchStrategy: replace
+  - type: rename
+    from: test/e2e/04-advanced-misc.test.ts
+    to: test/e2e/04-advanced.test.ts
+snapshot:
+  test/test.util.ts: null
+  test/e2e/01-core.test.ts: null
+  test/e2e/02-react-css.test.ts: null
+  test/e2e/03-dependencies.test.ts: null
+  test/e2e/04-advanced-misc.test.ts: null
+  test/e2e/04-advanced.test.ts: null
+approved: true

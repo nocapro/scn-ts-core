@@ -1,0 +1,855 @@
+uuid: 139e38d7-0130-4e3a-965a-0e998d363574
+projectId: scn-ts-core
+createdAt: '2025-08-12T03:58:43.338Z'
+linesAdded: 64
+linesRemoved: 140
+gitCommitMsg: 'refactor: convert to in-memory programmatic API'
+promptSummary: >-
+  Refactor the library to be a programmatic, in-memory API without file system
+  dependencies.
+reasoning:
+  - >-
+    Based on your request to make the library a programmatic, in-memory API
+    without file system dependencies, I've made the following changes:
+  - >-
+    1.  **API Redesign**: The main `generateScn` function and its configuration
+    object `ScnTsConfig` have been updated. Instead of scanning directories, the
+    API now accepts an array of file objects, each containing a relative path
+    and its content. The `tsconfig.json` content can also be passed in directly.
+  - >-
+    2.  **Removed File System Code**: I've removed `src/utils/file-system.ts`
+    and all `fs` module usage from the core library (`src/` directory), making
+    it completely independent of the Node.js file system API.
+  - >-
+    3.  **Updated Path Resolution**: The `tsconfig.json` parsing and path alias
+    resolution logic in `src/utils/tsconfig.ts` no longer reads from disk. It
+    now operates on the `tsconfig` object provided in the configuration.
+  - >-
+    4.  **Test Suite Adaptation**: The test utility `test/test.util.ts` has been
+    refactored. It no longer creates temporary directories and files on disk for
+    each test case. Instead, it constructs the input for `generateScn`
+    in-memory, reflecting the new API and ensuring the tests validate the
+    library's new behavior.
+  - 'Here are the detailed changes:'
+  - I'll start by deleting the file-system utility, as it is no longer needed.
+  - >-
+    Next, I'll update the core types to reflect the new in-memory API. The
+    `ScnTsConfig` will now accept an array of `InputFile` objects and an
+    optional `tsconfig` object.
+  - >-
+    The `tsconfig` utility is updated to be synchronous and operate on a
+    provided object instead of reading from disk.
+  - >-
+    With the types and helpers updated, I'll now refactor the main `generateScn`
+    function to use the new in-memory approach.
+  - >-
+    Finally, I'll update the test utility to use the new in-memory API, ensuring
+    our tests remain valid.
+operations:
+  - type: delete
+    path: src/utils/file-system.ts
+  - type: write
+    path: src/types.ts
+    content: |-
+      <<<<<<< SEARCH
+      import { PathResolver } from './utils/tsconfig';
+      =======
+      import type { PathResolver, TsConfig } from './utils/tsconfig';
+      >>>>>>> REPLACE
+      <<<<<<< SEARCH
+      /**
+       * Configuration for the SCN generation process.
+       */
+      export interface ScnTsConfig {
+        root: string;
+        include: string[];
+        exclude?: string[];
+        _test_id?: string; // Special property for test runner to identify fixtures
+      }
+      =======
+      /**
+       * Represents a file to be processed.
+       */
+      export interface InputFile {
+        path: string; // relative path from root
+        content: string;
+      }
+
+      /**
+       * Configuration for the SCN generation process.
+       */
+      export interface ScnTsConfig {
+        files: InputFile[];
+        tsconfig?: TsConfig;
+        root?: string; // Optional: A virtual root path for resolution. Defaults to '/'.
+        _test_id?: string; // Special property for test runner to identify fixtures
+      }
+      >>>>>>> REPLACE
+    patchStrategy: multi-search-replace
+  - type: write
+    path: src/utils/tsconfig.ts
+    content: >-
+      --- src/utils/tsconfig.ts
+
+      +++ src/utils/tsconfig.ts
+
+      @@ -1,29 +1,14 @@
+
+      -import fs from 'node:fs/promises';
+       import path from 'node:path';
+       
+      -interface TsConfig {
+
+      +export interface TsConfig {
+           compilerOptions?: {
+               baseUrl?: string;
+               paths?: Record<string, string[]>;
+           };
+       }
+       
+      -export const readTsConfig = async (root: string): Promise<TsConfig |
+      null> => {
+
+      -    const tsconfigPath = path.join(root, 'tsconfig.json');
+
+      -    try {
+
+      -        const content = await fs.readFile(tsconfigPath, 'utf-8');
+
+      -        // This is not a robust JSON parser (e.g. doesn't handle
+      comments),
+
+      -        // but it's what node's require() does.
+
+      -        return JSON.parse(content) as TsConfig;
+
+      -    } catch (e) {
+
+      -        return null;
+
+      -    }
+
+      -};
+
+      -
+       const createPathResolver = (baseUrl: string, paths: Record<string, string[]>) => {
+           const aliasEntries = Object.entries(paths).map(([alias, resolutions]) => {
+               return {
+      @@ -49,11 +34,10 @@
+       
+       export type PathResolver = ReturnType<typeof createPathResolver>;
+       
+      -export const getPathResolver = async (root: string):
+      Promise<PathResolver> => {
+
+      -    const tsconfig = await readTsConfig(root);
+
+      +export const getPathResolver = (tsconfig?: TsConfig | null): PathResolver
+      => {
+           const baseUrl = tsconfig?.compilerOptions?.baseUrl || '.';
+           const paths = tsconfig?.compilerOptions?.paths ?? {};
+           // The baseUrl from tsconfig is relative to the tsconfig file itself (the root).
+           // The final paths we create should be relative to the root to match our file list.
+           return createPathResolver(baseUrl, paths);
+       };
+    patchStrategy: new-unified
+  - type: write
+    path: src/main.ts
+    content: >-
+      --- src/main.ts
+
+      +++ src/main.ts
+
+      @@ -1,11 +1,9 @@
+
+      -import { findFiles } from './utils/file-system';
+       import { getLanguageForFile } from './languages';
+       import { initializeParser as init, parse } from './parser';
+      -import type { ScnTsConfig, ParserInitOptions, SourceFile } from
+      './types';
+
+      +import type { ScnTsConfig, ParserInitOptions, SourceFile, InputFile }
+      from './types';
+       import { analyze } from './analyzer';
+       import { formatScn } from './formatter';
+      -import fs from 'node:fs/promises';
+       import path from 'node:path';
+       import { getPathResolver } from './utils/tsconfig';
+       import { resolveGraph } from './graph-resolver';
+      @@ -14,31 +12,29 @@
+       /**
+        * Public API to initialize the parser. Must be called before generateScn.
+        */
+      -export const initializeParser = (options: ParserInitOptions):
+      Promise<void> => {
+
+      -    return init(options);
+
+      -};
+
+      +export const initializeParser = (options: ParserInitOptions):
+      Promise<void> => init(options);
+
+      +
+
+      +export type { ScnTsConfig, ParserInitOptions, SourceFile, InputFile };
+       
+       /**
+        * Generates an SCN string from a project directory.
+        */
+       export const generateScn = async (config: ScnTsConfig): Promise<string> => {
+      -    const allFiles = await findFiles(config.root, config.include,
+      config.exclude);
+
+      -    const pathResolver = await getPathResolver(config.root);
+
+      +    const root = config.root ?? '/';
+
+      +    const pathResolver = getPathResolver(config.tsconfig);
+       
+           let fileIdCounter = 1; // Start with 1 to match fixture IDs
+       
+           // Step 1: Create SourceFile objects for all files
+      -    const sourceFilePromises = allFiles.map(async (relativeFilePath) => {
+
+      -        const lang = getLanguageForFile(relativeFilePath);
+
+      -        const absolutePath = path.join(config.root, relativeFilePath);
+
+      -        const sourceCode = await fs.readFile(absolutePath, 'utf-8');
+
+      +    const sourceFiles = config.files.map((file) => {
+
+      +        const lang = getLanguageForFile(file.path);
+
+      +        const absolutePath = path.join(root, file.path);
+               const sourceFile: SourceFile = {
+                   id: fileIdCounter++,
+      -            relativePath,
+
+      +            relativePath: file.path,
+                   absolutePath,
+      -            sourceCode,
+
+      +            sourceCode: file.content,
+                   language: lang!,
+                   symbols: [],
+                   parseError: false,
+               };
+               return sourceFile;
+           });
+      -    const sourceFiles = await Promise.all(sourceFilePromises);
+       
+           // Step 2: Parse all files
+           const parsedFiles = sourceFiles.map(file => {
+      @@ -60,7 +56,7 @@
+           });
+           
+           // Step 4: Resolve the dependency graph across all files
+      -    const resolvedGraph = resolveGraph(analyzedFiles, pathResolver,
+      config.root);
+
+      +    const resolvedGraph = resolveGraph(analyzedFiles, pathResolver,
+      root);
+           
+           // Step 5: Format the final SCN output
+           return formatScn(resolvedGraph);
+    patchStrategy: new-unified
+  - type: write
+    path: test/test.util.ts
+    content: >-
+      <<<<<<< SEARCH
+
+      import { generateScn, initializeParser, type ScnTsConfig } from
+      '../src/main';
+
+      =======
+
+      import { generateScn, initializeParser, type ScnTsConfig, type InputFile }
+      from '../src/main';
+
+      >>>>>>> REPLACE
+
+      <<<<<<< SEARCH
+
+      export async function runTestForFixture(fixturePath: string):
+      Promise<void> {
+        if (!parserInitialized) {
+          await initializeParser({ wasmBaseUrl: wasmDir });
+          parserInitialized = true;
+        }
+        
+        const fixtureContent = await fs.readFile(fixturePath, 'utf-8');
+        const fixture = parseFixture(fixtureContent);
+
+        const tempDir = await fs.mkdtemp(path.join(rootDir, 'test', `temp-${fixture.id}-`));
+
+        try {
+          for (const file of fixture.input) {
+            const filePath = path.join(tempDir, file.path);
+            await fs.mkdir(path.dirname(filePath), { recursive: true });
+            await fs.writeFile(filePath, file.content);
+          }
+          
+          const tsconfigPath = path.join(tempDir, 'tsconfig.json');
+          let tsconfigContent: Record<string, unknown> = {
+              compilerOptions: {
+                  jsx: 'react-jsx',
+                  allowJs: true,
+                  moduleResolution: "node",
+                  module: 'ESNext',
+              }
+          };
+
+          if (fixture.id === 'monorepo-aliases') {
+            tsconfigContent = {
+              compilerOptions: {
+                  baseUrl: '.',
+                  jsx: 'react-jsx',
+                  paths: {
+                      '@shared-ui/*': ['packages/shared-ui/src/*'],
+                      '@/shared-lib/*': ['packages/shared-lib/src/*'],
+                  },
+              },
+            };
+          }
+          await fs.writeFile(tsconfigPath, JSON.stringify(tsconfigContent, null, 2));
+
+          const config: ScnTsConfig = {
+            root: tempDir,
+            include: ['**/*.*'],
+            exclude: ['tsconfig.json'],
+          };
+
+          const scnOutput = await generateScn(config);
+
+          if (scnOutput.trim() !== fixture.expected) {
+              console.error(`\n--- MISMATCH IN FIXTURE: ${fixture.id} ---\n`);
+              console.error('--- EXPECTED ---\n');
+              console.error(fixture.expected);
+              console.error('\n--- ACTUAL ---\n');
+              console.error(scnOutput.trim());
+              console.error('\n------------------\n');
+          }
+
+          expect(scnOutput.trim()).toBe(fixture.expected);
+        } finally {
+          await fs.rm(tempDir, { recursive: true, force: true });
+        }
+      }
+
+      =======
+
+      export async function runTestForFixture(fixturePath: string):
+      Promise<void> {
+        if (!parserInitialized) {
+          await initializeParser({ wasmBaseUrl: wasmDir });
+          parserInitialized = true;
+        }
+        
+        const fixtureContent = await fs.readFile(fixturePath, 'utf-8');
+        const fixture = parseFixture(fixtureContent);
+
+        const inputFiles: InputFile[] = fixture.input.map(f => ({ path: f.path, content: f.content }));
+        
+        let tsconfig: Record<string, unknown> | undefined = {
+            compilerOptions: {
+                jsx: 'react-jsx',
+                allowJs: true,
+                moduleResolution: "node",
+                module: 'ESNext',
+            }
+        };
+
+        if (fixture.id === 'monorepo-aliases') {
+          tsconfig = {
+            compilerOptions: {
+                baseUrl: '.',
+                jsx: 'react-jsx',
+                paths: {
+                    '@shared-ui/*': ['packages/shared-ui/src/*'],
+                    '@/shared-lib/*': ['packages/shared-lib/src/*'],
+                },
+            },
+          };
+        }
+
+        const config: ScnTsConfig = {
+          files: inputFiles,
+          root: '/', // Use a virtual root
+          tsconfig: tsconfig as any,
+          _test_id: fixture.id,
+        };
+
+        const scnOutput = await generateScn(config);
+
+        if (scnOutput.trim() !== fixture.expected) {
+            console.error(`\n--- MISMATCH IN FIXTURE: ${fixture.id} ---\n`);
+            console.error('--- EXPECTED ---\n');
+            console.error(fixture.expected);
+            console.error('\n--- ACTUAL ---\n');
+            console.error(scnOutput.trim());
+            console.error('\n------------------\n');
+        }
+
+        expect(scnOutput.trim()).toBe(fixture.expected);
+      }
+
+      >>>>>>> REPLACE
+    patchStrategy: multi-search-replace
+snapshot:
+  src/utils/file-system.ts: |-
+    import fs from 'node:fs/promises';
+    import path from 'node:path';
+
+    const globToRegex = (pattern: string): RegExp => {
+        const escaped = pattern.replace(/[.+?^${}()|[\]\\]/g, '\\$&');
+        const regexString = escaped
+            .replace(/\*\*/g, '.*')
+            .replace(/\*/g, '[^/\\\\]*');
+        return new RegExp(`^${regexString}$`);
+    };
+
+    const createGlobMatcher = (patterns: string[]) => {
+        if (patterns.length === 0) {
+            return () => false;
+        }
+        const regexes = patterns.map(globToRegex);
+        return (filePath: string) => regexes.some(r => r.test(filePath.replace(/\\/g, '/')));
+    };
+
+    export const findFiles = async (
+        root: string,
+        include: string[],
+        exclude: string[] = []
+    ): Promise<string[]> => {
+        const includeMatcher = createGlobMatcher(include);
+        const excludeMatcher = createGlobMatcher(exclude);
+        const allFiles: string[] = [];
+
+        const walk = async (currentDir: string): Promise<void> => {
+            try {
+                const entries = await fs.readdir(currentDir, { withFileTypes: true });
+                for (const entry of entries) {
+                    const fullPath = path.join(currentDir, entry.name);
+                    const relativePath = path.relative(root, fullPath);
+                    
+                    if (excludeMatcher(relativePath)) {
+                        continue;
+                    }
+
+                    if (entry.isDirectory()) {
+                        await walk(fullPath);
+                    } else if (entry.isFile()) {
+                        if (includeMatcher(relativePath)) {
+                            allFiles.push(relativePath);
+                        }
+                    }
+                }
+            } catch (error) {
+                // Silently ignore errors (e.g., permission denied)
+            }
+        };
+
+        await walk(root);
+        return allFiles.sort();
+    };
+  src/types.ts: >-
+    import type Parser from 'web-tree-sitter';
+
+    import { PathResolver } from './utils/tsconfig';
+
+
+    /**
+     * Configuration for the SCN generation process.
+     */
+    export interface ScnTsConfig {
+      root: string;
+      include: string[];
+      exclude?: string[];
+      _test_id?: string; // Special property for test runner to identify fixtures
+    }
+
+
+    /**
+     * Options for initializing the Tree-sitter parser.
+     */
+    export interface ParserInitOptions {
+        wasmBaseUrl: string;
+    }
+
+
+    /**
+     * Represents a supported programming language and its configuration.
+     */
+    export type SymbolKind =
+      // TS/JS
+      | 'class' | 'interface' | 'function' | 'method' | 'constructor'
+      | 'variable' | 'property' | 'enum' | 'enum_member' | 'type_alias' | 'module'
+      | 'decorator' | 'parameter' | 'type_parameter' | 'import_specifier' | 're_export'
+      // React
+      | 'react_component' | 'react_hook' | 'react_hoc' | 'jsx_attribute' | 'jsx_element'
+      // CSS
+      | 'css_class' | 'css_id' | 'css_tag' | 'css_at_rule' | 'css_property' | 'css_variable'
+      // Generic / Meta
+      | 'file' | 'reference' | 'comment' | 'error' | 'unresolved'
+      // Other Languages
+      | 'go_struct' | 'go_goroutine' | 'rust_trait' | 'rust_impl' | 'rust_macro'
+      | 'java_package' | 'python_class'
+      | 'unknown';
+
+    export interface Position {
+      line: number;
+      column: number;
+    }
+
+
+    export interface Range {
+      start: Position;
+      end: Position;
+    }
+
+
+    export interface CodeSymbol {
+      id: string;
+      fileId: number;
+      name: string;
+      kind: SymbolKind;
+      range: Range;
+      // Modifiers and metadata
+      isExported: boolean;
+      isAbstract?: boolean;
+      isStatic?: boolean;
+      isReadonly?: boolean;
+      isAsync?: boolean;
+      isPure?: boolean; // for 'o'
+      isGenerated?: boolean;
+      languageDirectives?: string[]; // e.g. 'use server'
+      superClass?: string;
+      implementedInterfaces?: string[];
+      scopeRange: Range; // The range of the entire scope (e.g., function body) for relationship association
+      // Relationships
+      dependencies: Relationship[];
+    }
+
+
+    export type RelationshipKind =
+      | 'imports'
+      | 'exports'
+      | 'calls'
+      | 'extends'
+      | 'implements'
+      | 'references'
+      | 'aliased';
+
+    export interface Relationship {
+      targetName: string; // The raw name of the target (e.g., './utils', 'MyClass', 'add', 'Button')
+      kind: RelationshipKind;
+      range: Range;
+      // Resolved info
+      resolvedFileId?: number;
+      resolvedSymbolId?: string;
+    }
+
+
+    export interface SourceFile {
+      id: number;
+      relativePath: string;
+      languageDirectives?: string[];
+      absolutePath: string;
+      language: LanguageConfig;
+      sourceCode: string;
+      ast?: Parser.Tree;
+      symbols: CodeSymbol[];
+      parseError: boolean;
+    }
+
+    export interface SourceFile { id: number; relativePath: string;
+    absolutePath: string; language: LanguageConfig; sourceCode: string; ast?:
+    Parser.Tree; symbols: CodeSymbol[]; parseError: boolean; isGenerated?:
+    boolean; languageDirectives?: string[]; }
+
+
+    /**
+     * Represents a supported programming language and its configuration.
+     */
+    export interface LanguageConfig {
+        id: string;
+        name: string;
+        extensions: string[];
+        wasmPath: string;
+        parser?: Parser;
+        queries?: Record<string, string>;
+    }
+
+
+    export interface AnalysisContext {
+        sourceFiles: SourceFile[];
+        pathResolver: PathResolver;
+    }
+  src/utils/tsconfig.ts: >-
+    import fs from 'node:fs/promises';
+
+    import path from 'node:path';
+
+
+    interface TsConfig {
+        compilerOptions?: {
+            baseUrl?: string;
+            paths?: Record<string, string[]>;
+        };
+    }
+
+
+    export const readTsConfig = async (root: string): Promise<TsConfig | null>
+    => {
+        const tsconfigPath = path.join(root, 'tsconfig.json');
+        try {
+            const content = await fs.readFile(tsconfigPath, 'utf-8');
+            // This is not a robust JSON parser (e.g. doesn't handle comments),
+            // but it's what node's require() does.
+            return JSON.parse(content) as TsConfig;
+        } catch (e) {
+            return null;
+        }
+    };
+
+
+    const createPathResolver = (baseUrl: string, paths: Record<string,
+    string[]>) => {
+        const aliasEntries = Object.entries(paths).map(([alias, resolutions]) => {
+            return {
+                pattern: new RegExp(`^${alias.replace('*', '(.*)')}$`),
+                resolutions,
+            };
+        });
+
+        return (importPath: string): string | null => {
+            for (const { pattern, resolutions } of aliasEntries) {
+                const match = importPath.match(pattern);
+                if (match) {
+                    const captured = match[1] || '';
+                    // Return the first resolved path.
+                    const resolvedPath = resolutions[0].replace('*', captured);
+                    return path.join(baseUrl, resolvedPath).replace(/\\/g, '/');
+                }
+            }
+            return null; // Not an alias
+        };
+    };
+
+
+    export type PathResolver = ReturnType<typeof createPathResolver>;
+
+
+    export const getPathResolver = async (root: string): Promise<PathResolver>
+    => {
+        const tsconfig = await readTsConfig(root);
+        const baseUrl = tsconfig?.compilerOptions?.baseUrl || '.';
+        const paths = tsconfig?.compilerOptions?.paths ?? {};
+        // The baseUrl from tsconfig is relative to the tsconfig file itself (the root).
+        // The final paths we create should be relative to the root to match our file list.
+        return createPathResolver(baseUrl, paths);
+    };
+  src/main.ts: >-
+    import { findFiles } from './utils/file-system';
+
+    import { getLanguageForFile } from './languages';
+
+    import { initializeParser as init, parse } from './parser';
+
+    import type { ScnTsConfig, ParserInitOptions, SourceFile } from './types';
+
+    import { analyze } from './analyzer';
+
+    import { formatScn } from './formatter';
+
+    import fs from 'node:fs/promises';
+
+    import path from 'node:path';
+
+    import { getPathResolver } from './utils/tsconfig';
+
+    import { resolveGraph } from './graph-resolver';
+
+
+    /**
+     * Public API to initialize the parser. Must be called before generateScn.
+     */
+    export const initializeParser = (options: ParserInitOptions): Promise<void>
+    => {
+        return init(options);
+    };
+
+
+    /**
+     * Generates an SCN string from a project directory.
+     */
+    export const generateScn = async (config: ScnTsConfig): Promise<string> => {
+        const allFiles = await findFiles(config.root, config.include, config.exclude);
+        const pathResolver = await getPathResolver(config.root);
+
+        let fileIdCounter = 1; // Start with 1 to match fixture IDs
+
+        // Step 1: Create SourceFile objects for all files
+        const sourceFilePromises = allFiles.map(async (relativeFilePath) => {
+            const lang = getLanguageForFile(relativeFilePath);
+            const absolutePath = path.join(config.root, relativeFilePath);
+            const sourceCode = await fs.readFile(absolutePath, 'utf-8');
+            const sourceFile: SourceFile = {
+                id: fileIdCounter++,
+                relativePath,
+                absolutePath,
+                sourceCode,
+                language: lang!,
+                symbols: [],
+                parseError: false,
+            };
+            return sourceFile;
+        });
+        const sourceFiles = await Promise.all(sourceFilePromises);
+
+        // Step 2: Parse all files
+        const parsedFiles = sourceFiles.map(file => {
+            if (!file.language || !file.language.wasmPath || file.sourceCode.trim() === '') {
+                return file;
+            }
+            const tree = parse(file.sourceCode, file.language);
+            if (!tree) {
+                file.parseError = true;
+            } else {
+                file.ast = tree;
+            }
+            return file;
+        });
+
+        // Step 3: Analyze all parsed files
+        const analyzedFiles = parsedFiles.map(file => {
+            if (file.ast) {
+                return analyze(file);
+            }
+            return file;
+        });
+        
+        // Step 4: Resolve the dependency graph across all files
+        const resolvedGraph = resolveGraph(analyzedFiles, pathResolver, config.root);
+        
+        // Step 5: Format the final SCN output
+        return formatScn(resolvedGraph);
+    };
+  test/test.util.ts: >-
+    import { generateScn, initializeParser, type ScnTsConfig } from
+    '../src/main';
+
+    import fs from 'node:fs/promises';
+
+    import path from 'node:path';
+
+    import { expect } from 'bun:test';
+
+
+    interface Fixture {
+      id: string;
+      name: string;
+      input: { path: string; content: string }[];
+      expected: string;
+    }
+
+
+    function parseFixture(fileContent: string): Fixture {
+        const id = fileContent.match(/^id: (.*)$/m)?.[1].trim() ?? '';
+        const name = fileContent.match(/^name: (.*)$/m)?.[1].trim() ?? '';
+        
+        const [inputSection, expectedSection] = fileContent.split(/\nexpected:\s*\|?\n/);
+        if (!expectedSection) throw new Error(`Could not parse fixture: ${id || fileContent.slice(0, 100)}`);
+
+        const expected = expectedSection.replace(/^  /gm, '').trim();
+
+        const inputFiles = [];
+        const fileChunks = inputSection.split(/-\s*path:\s*/).slice(1);
+
+        for (const chunk of fileChunks) {
+            const lines = chunk.split('\n');
+            const filePath = lines[0].trim();
+            const contentLineIndex = lines.findIndex(l => l.trim().startsWith('content:'));
+            const content = lines.slice(contentLineIndex + 1).map(l => l.startsWith('      ') ? l.substring(6) : l).join('\n');
+            inputFiles.push({ path: filePath, content });
+        }
+
+        return { id, name, input: inputFiles, expected };
+    }
+
+
+    const rootDir = process.cwd();
+
+    const wasmDir = path.join(rootDir, 'test', 'wasm');
+
+    let parserInitialized = false;
+
+
+    export async function runTestForFixture(fixturePath: string): Promise<void>
+    {
+      if (!parserInitialized) {
+        await initializeParser({ wasmBaseUrl: wasmDir });
+        parserInitialized = true;
+      }
+      
+      const fixtureContent = await fs.readFile(fixturePath, 'utf-8');
+      const fixture = parseFixture(fixtureContent);
+
+      const tempDir = await fs.mkdtemp(path.join(rootDir, 'test', `temp-${fixture.id}-`));
+
+      try {
+        for (const file of fixture.input) {
+          const filePath = path.join(tempDir, file.path);
+          await fs.mkdir(path.dirname(filePath), { recursive: true });
+          await fs.writeFile(filePath, file.content);
+        }
+        
+        const tsconfigPath = path.join(tempDir, 'tsconfig.json');
+        let tsconfigContent: Record<string, unknown> = {
+            compilerOptions: {
+                jsx: 'react-jsx',
+                allowJs: true,
+                moduleResolution: "node",
+                module: 'ESNext',
+            }
+        };
+
+        if (fixture.id === 'monorepo-aliases') {
+          tsconfigContent = {
+            compilerOptions: {
+                baseUrl: '.',
+                jsx: 'react-jsx',
+                paths: {
+                    '@shared-ui/*': ['packages/shared-ui/src/*'],
+                    '@/shared-lib/*': ['packages/shared-lib/src/*'],
+                },
+            },
+          };
+        }
+        await fs.writeFile(tsconfigPath, JSON.stringify(tsconfigContent, null, 2));
+
+        const config: ScnTsConfig = {
+          root: tempDir,
+          include: ['**/*.*'],
+          exclude: ['tsconfig.json'],
+        };
+
+        const scnOutput = await generateScn(config);
+
+        if (scnOutput.trim() !== fixture.expected) {
+            console.error(`\n--- MISMATCH IN FIXTURE: ${fixture.id} ---\n`);
+            console.error('--- EXPECTED ---\n');
+            console.error(fixture.expected);
+            console.error('\n--- ACTUAL ---\n');
+            console.error(scnOutput.trim());
+            console.error('\n------------------\n');
+        }
+
+        expect(scnOutput.trim()).toBe(fixture.expected);
+      } finally {
+        await fs.rm(tempDir, { recursive: true, force: true });
+      }
+    }
+approved: true

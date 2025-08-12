@@ -1,0 +1,86 @@
+uuid: d166e511-b856-4293-875f-3d6f02845c47
+projectId: scn-ts-core
+createdAt: '2025-08-12T04:41:51.936Z'
+linesAdded: 1
+linesRemoved: 1
+gitCommitMsg: 'fix(ast): handle null nodes in `findChild` utility'
+promptSummary: >-
+  Fix a TypeScript error in `src/utils/ast.ts` where `node.children` from
+  `web-tree-sitter` can contain null values, causing a type conflict.
+reasoning:
+  - >-
+    I've identified a TypeScript error in `src/utils/ast.ts` and will apply a
+    fix. The type signature for `web-tree-sitter`'s `node.children` property
+    indicates it can contain `null` values, but the `findChild` function was not
+    accounting for this, leading to a type mismatch.
+  - >-
+    I will update the `find` callback to safely handle potential `null` children
+    using a type guard. This makes the code more robust and correctly aligns
+    with the types.
+  - '### `src/utils/ast.ts`'
+  - >-
+    I will replace the implementation of `findChild` to correctly handle `null`
+    values in `node.children`.
+  - This is the only change required to resolve the TypeScript error.
+operations:
+  - type: write
+    path: src/utils/ast.ts
+    content: >-
+      <<<<<<< SEARCH
+
+      export const findChild = (node: SyntaxNode, type: string | string[]):
+      SyntaxNode | null => {
+          const types = Array.isArray(type) ? type : [type];
+          return node.children.find((c: SyntaxNode) => types.includes(c.type)) || null;
+      }
+
+      =======
+
+      export const findChild = (node: SyntaxNode, type: string | string[]):
+      SyntaxNode | null => {
+          const types = Array.isArray(type) ? type : [type];
+          return node.children.find((c): c is SyntaxNode => !!c && types.includes(c.type)) || null;
+      }
+
+      >>>>>>> REPLACE
+    patchStrategy: multi-search-replace
+snapshot:
+  src/utils/ast.ts: >-
+    import type { Range } from '../types';
+
+    import type { Node as SyntaxNode } from 'web-tree-sitter';
+
+
+    export const getNodeText = (node: SyntaxNode, sourceCode: string): string =>
+    {
+        return sourceCode.substring(node.startIndex, node.endIndex);
+    };
+
+
+    export const getNodeRange = (node: SyntaxNode): Range => {
+        return {
+            start: { line: node.startPosition.row, column: node.startPosition.column },
+            end: { line: node.endPosition.row, column: node.endPosition.column },
+        };
+    };
+
+
+    export const findChild = (node: SyntaxNode, type: string | string[]):
+    SyntaxNode | null => {
+        const types = Array.isArray(type) ? type : [type];
+        return node.children.find((c: SyntaxNode) => types.includes(c.type)) || null;
+    }
+
+
+    export const findChildByFieldName = (node: SyntaxNode, fieldName: string):
+    SyntaxNode | null => {
+        return node.childForFieldName(fieldName);
+    };
+
+
+    export const getIdentifier = (node: SyntaxNode, sourceCode: string,
+    defaultName: string = '<anonymous>'): string => {
+        const nameNode = findChildByFieldName(node, 'name') ?? findChild(node, ['identifier', 'property_identifier']);
+        return nameNode ? getNodeText(nameNode, sourceCode) : defaultName;
+    };
+approved: true

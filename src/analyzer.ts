@@ -1,11 +1,19 @@
 import type { SourceFile, CodeSymbol, Relationship, SymbolKind, RelationshipKind, Range } from './types';
 import { getNodeRange, getNodeText, getIdentifier, findChildByFieldName } from './utils/ast';
-import type { Node as SyntaxNode, QueryCapture } from 'web-tree-sitter';
+import { Query, type Node as SyntaxNode, type QueryCapture } from 'web-tree-sitter';
 
 const getSymbolName = (node: SyntaxNode, sourceCode: string): string => {
     if (node.type === 'jsx_opening_element' || node.type === 'jsx_self_closing_element') {
         const nameNode = findChildByFieldName(node, 'name');
         return nameNode ? getNodeText(nameNode, sourceCode) : '<fragment>';
+    }
+    if (node.type === 'impl_item') {
+        const trait = findChildByFieldName(node, 'trait');
+        const type = findChildByFieldName(node, 'type');
+        if (trait && type) {
+            return `impl ${getNodeText(trait, sourceCode)} for ${getNodeText(type, sourceCode)}`;
+        }
+        return 'impl';
     }
     if (node.type === 'variable_declarator') {
         const valueNode = findChildByFieldName(node, 'value');
@@ -75,7 +83,7 @@ export const analyze = (sourceFile: SourceFile): SourceFile => {
     const mainQuery = language.queries?.main ?? '';
     if (!mainQuery) return sourceFile;
 
-    const query = language.loadedLanguage.query(mainQuery);
+    const query = new Query(language.loadedLanguage, mainQuery);
     const captures = query.captures(ast.rootNode);
 
     const symbols: CodeSymbol[] = [];

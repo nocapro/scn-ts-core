@@ -1,0 +1,1993 @@
+uuid: 4f6e52c7-059c-48c5-926f-4740e531818d
+projectId: scn-ts-core
+createdAt: '2025-08-12T02:54:05.311Z'
+linesAdded: 305
+linesRemoved: 1243
+gitCommitMsg: 'feat(test): add final batch of test fixtures (22-28) and remove test plan'
+promptSummary: >-
+  This is the final phase of converting the test plan. This batch creates
+  fixtures for test cases 22 through 28, covering advanced React, JS, TS,
+  multi-language (Go, Rust), and error resilience. It also deletes the
+  now-obsolete markdown test plan.
+reasoning:
+  - >-
+    Excellent. This is the final phase. I will convert the remaining test cases
+    (22-28) into fixture files and then delete the original `test.plan.md` file,
+    as its content will now be fully represented in the new format.
+  - '### Phase 4: Test Cases 22-28 and Cleanup'
+  - '**Step 22: Create fixture for Test Case 22**'
+  - >-
+    I'm creating `tests/fixtures/22.react-server-components.fixture.yaml` from
+    "Test Case 22: React Server Components & Directives". This test verifies the
+    parsing of `"use client"` and `"use server"` directives.
+  - '**Step 23: Create fixture for Test Case 23**'
+  - >-
+    Next, I'm creating `tests/fixtures/23.js-proxy-symbol.fixture.yaml` from
+    "Test Case 23: JavaScript `Proxy`, `Symbol`, and Tagged Templates". This
+    tests more esoteric JS features.
+  - '**Step 24: Create fixture for Test Case 24**'
+  - >-
+    Here is `tests/fixtures/24.ts-ambient-modules.fixture.yaml` from "Test Case
+    24: Ambient Modules & Triple-Slash Directives", which handles TypeScript's
+    mechanisms for non-TS code.
+  - '**Step 25: Create fixture for Test Case 25**'
+  - >-
+    I am creating `tests/fixtures/25.graphql-codegen.fixture.yaml` from "Test
+    Case 25: GraphQL Code Generation Flow". This is a key test for tracing
+    dependencies through code generation.
+  - '**Step 26: Create fixture for Test Case 26**'
+  - >-
+    I'm now creating `tests/fixtures/26.go-features.fixture.yaml` from "Test
+    Case 26: Go Language Features" to showcase language-agnostic capabilities.
+  - '**Step 27: Create fixture for Test Case 27**'
+  - >-
+    This creates `tests/fixtures/27.rust-features.fixture.yaml` from "Test Case
+    27: Rust Language Features", further demonstrating multi-language support.
+  - '**Step 28: Create fixture for Test Case 28**'
+  - >-
+    This is `tests/fixtures/28.error-resilience.fixture.yaml` from "Test Case
+    28: Error Resilience". It is a critical test to ensure the parser doesn't
+    crash on syntax errors.
+  - '**Step 29: Delete the original test plan**'
+  - >-
+    Now that all test cases have been migrated to the new fixture format, the
+    source markdown file `docs/test.plan.md` is no longer needed and will be
+    deleted.
+operations:
+  - type: write
+    path: tests/fixtures/22.react-server-components.fixture.yaml
+    content: |-
+      id: react-server-components
+      name: React Server Components & Directives
+      input:
+        - path: src/actions/db.ts
+          content: |
+            'use server';
+
+            export async function getUsername(id: number): Promise<string> {
+              // In a real app, this would query a database.
+              return `User ${id}`;
+            }
+        - path: src/components/UsernameDisplay.tsx
+          content: |
+            import { getUsername } from '../actions/db';
+
+            // This is a React Server Component (RSC)
+            export async function UsernameDisplay({ userId }) {
+              const username = await getUsername(userId);
+              return <p>Welcome, {username}</p>;
+            }
+        - path: src/components/InteractiveButton.tsx
+          content: |
+            'use client';
+
+            import { useState } from 'react';
+
+            // This is a Client Component
+            export function InteractiveButton() {
+              const [count, setCount] = useState(0);
+              return <button onClick={() => setCount(c => c + 1)}>Clicked {count}</button>;
+            }
+      expected: |
+        § (1) src/actions/db.ts [server]
+          <- (2.0)
+          + ~ (1.1) getUsername(id: #number): #Promise<string> ...
+            <- (2.1)
+
+        § (2) src/components/UsernameDisplay.tsx [server]
+          -> (1.0)
+          + ◇ (2.1) UsernameDisplay { props: { userId:# } } ...
+            -> (1.1)
+            ⛶ p
+
+        § (3) src/components/InteractiveButton.tsx [client]
+          + ◇ InteractiveButton
+            ⛶ button
+    patchStrategy: replace
+  - type: write
+    path: tests/fixtures/23.js-proxy-symbol.fixture.yaml
+    content: |-
+      id: js-proxy-symbol
+      name: JavaScript Proxy, Symbol, and Tagged Templates
+      input:
+        - path: src/utils.js
+          content: |
+            export const hiddenProp = Symbol('hidden');
+
+            export function styler(strings, ...values) {
+              let result = strings[0];
+              values.forEach((val, i) => {
+                result += `<span>${val}</span>` + strings[i + 1];
+              });
+              return result;
+            }
+        - path: src/model.js
+          content: |
+            import { hiddenProp } from './utils';
+
+            const user = {
+              firstName: 'John',
+              lastName: 'Doe',
+              [hiddenProp]: 'secret_agent'
+            };
+
+            export const userProxy = new Proxy(user, {
+              get(target, prop) {
+                if (prop === 'fullName') return `${target.firstName} ${target.lastName}`;
+                return target[prop];
+              }
+            });
+        - path: src/main.js
+          content: |
+            import { userProxy } from './model';
+            import { styler } from './utils';
+
+            const name = userProxy.fullName;
+            document.body.innerHTML = styler`Hello, ${name}!`;
+      expected: |
+        § (1) src/utils.js
+          <- (2.0), (3.0)
+          + @ (1.1) hiddenProp [symbol]
+            <- (2.0)
+          + ~ (1.2) styler(strings: #, ...values: #)
+            <- (3.0)
+
+        § (2) src/model.js
+          -> (1.0)
+          <- (3.0)
+          - @ user
+            -> (1.1)
+          + @ (2.1) userProxy [proxy]
+            <- (3.0)
+            - ~ get(target: #, prop: #)
+
+        § (3) src/main.js
+          -> (2.0), (1.0)
+          -> (2.1)
+          -> (1.2) [tagged]
+    patchStrategy: replace
+  - type: write
+    path: tests/fixtures/24.ts-ambient-modules.fixture.yaml
+    content: |-
+      id: ts-ambient-modules
+      name: Ambient Modules & Triple-Slash Directives
+      input:
+        - path: src/types/global.d.ts
+          content: |
+            // This adds a 'uuid' property to the global Window interface.
+            interface Window {
+              uuid: string;
+            }
+        - path: src/main.ts
+          content: |
+            /// <reference path="./types/global.d.ts" />
+
+            // This module doesn't exist on disk, it's defined ambiently.
+            declare module 'virtual-logger' {
+              export function log(message: string): void;
+            }
+
+            import { log } from 'virtual-logger';
+
+            log('Hello from an ambient module!');
+            console.log(window.uuid);
+      expected: |
+        § (1) src/types/global.d.ts
+          <- (2.0)
+          {} (1.1) Window
+            <- (2.0)
+            @ uuid: #string
+
+        § (2) src/main.ts
+          -> (1.0) [reference]
+          ◇ 'virtual-logger' [ambient]
+            + ~ (2.2) log(message: #string): #void
+              <- (2.0)
+          -> (2.2)
+          -> (1.1)
+    patchStrategy: replace
+  - type: write
+    path: tests/fixtures/25.graphql-codegen.fixture.yaml
+    content: |-
+      id: graphql-codegen
+      name: GraphQL Code Generation Flow
+      input:
+        - path: src/graphql/queries.graphql
+          content: |
+            query GetUser($id: ID!) {
+              user(id: $id) {
+                id
+                name
+                email
+              }
+            }
+        - path: src/graphql/generated.ts
+          content: |
+            /* eslint-disable */
+            // THIS FILE IS AUTO-GENERATED by a tool. DO NOT EDIT.
+            // Source: src/graphql/queries.graphql
+
+            import { gql } from '@apollo/client';
+
+            export const GetUserDocument = gql`...`; // Contains the query string
+
+            export type User = { id: string, name: string, email: string };
+            export function useGetUserQuery() { /* hook implementation */ }
+        - path: src/components/UserProfile.tsx
+          content: |
+            import { useGetUserQuery, User } from '../graphql/generated';
+
+            export function UserProfile({ id }) {
+              const { data } = useGetUserQuery({ variables: { id } });
+              if (!data) return <div>Loading...</div>;
+
+              const user: User = data.user;
+              return <h1>{user.name}</h1>;
+            }
+      expected: |
+        § (1) src/graphql/queries.graphql
+          <- (2.0), (3.0)
+          ~ (1.1) GetUser($id: #ID!): #user
+            <- (2.1)
+
+        § (2) src/graphql/generated.ts [generated]
+          -> (1.0)
+          <- (3.0)
+          + @ (2.1) GetUserDocument
+            -> (1.1)
+          + =: (2.2) User
+            <- (3.1)
+          + ~ (2.3) useGetUserQuery()
+            <- (3.1)
+
+        § (3) src/components/UserProfile.tsx
+          -> (2.0), (1.0)
+          + ◇ (3.1) UserProfile { props: { id:# } }
+            -> (2.3), (2.2)
+            ⛶ h1
+    patchStrategy: replace
+  - type: write
+    path: tests/fixtures/26.go-features.fixture.yaml
+    content: |-
+      id: go-features
+      name: Go Language Features (Goroutines, Channels)
+      input:
+        - path: util/parser.go
+          content: |
+            package util
+
+            func Parse(data string) string {
+                return "parsed:" + data
+            }
+        - path: main.go
+          content: |
+            package main
+
+            import (
+                "fmt"
+                "app/util"
+            )
+
+            func processData(ch chan string) {
+                data := <-ch // Receive from channel
+                parsed := util.Parse(data)
+                fmt.Println(parsed)
+            }
+
+            func main() {
+                ch := make(chan string)
+                go processData(ch) // Start goroutine
+                ch <- "hello" // Send to channel
+            }
+      expected: |
+        § (1) util/parser.go
+          <- (2.0)
+          ◇ (1.1) util
+            + ~ (1.2) Parse(data: #string): #string o
+              <- (2.2)
+
+        § (2) main.go
+          -> (1.0)
+          + ◇ main
+            - ~ (2.2) processData(ch: #chan string)
+              -> (1.2)
+              <- (2.3)
+            + ~ (2.3) main()
+              -> (2.2) [goroutine]
+    patchStrategy: replace
+  - type: write
+    path: tests/fixtures/27.rust-features.fixture.yaml
+    content: |-
+      id: rust-features
+      name: Rust Language Features (Traits, Impls, Macros)
+      input:
+        - path: src/lib.rs
+          content: |
+            #[derive(Debug)]
+            pub struct Point { x: i32, y: i32 }
+
+            pub trait Drawable {
+                fn draw(&self);
+            }
+
+            impl Drawable for Point {
+                fn draw(&self) {
+                    println!("Drawing point: {:?}", self);
+                }
+            }
+
+            // A function that uses the trait
+            pub fn render(item: &impl Drawable) {
+                item.draw();
+            }
+      expected: |
+        § (1) src/lib.rs
+          + ◇ (1.1) Point
+            -> Debug [macro]
+            <- (1.3)
+            @ x: #i32
+            @ y: #i32
+          + {} (1.2) Drawable
+            <- (1.3), (1.4)
+            ~ draw(&self)
+          + (1.3) impl Drawable for Point
+            -> (1.2), (1.1)
+            + ~ draw(&self)
+              <- (1.4)
+          + ~ (1.4) render(item: &#impl Drawable)
+            -> (1.2), (1.3)
+    patchStrategy: replace
+  - type: write
+    path: tests/fixtures/28.error-resilience.fixture.yaml
+    content: |-
+      id: error-resilience
+      name: Error Resilience (Syntax Error in One File)
+      input:
+        - path: src/utils.ts
+          content: "export const add = (a: number, b: number) => a + b;"
+        - path: src/broken.ts
+          content: |
+            export function multiply(a: number, b: number) {
+              return a * b
+              // Missing closing brace
+        - path: src/main.ts
+          content: |
+            import { add } from './utils';
+            // Cannot import from broken file
+            console.log(add(2, 3));
+      expected: |
+        § (1) src/utils.ts
+          <- (3.0)
+          + ~ (1.1) add(a: #number, b: #number): #number o
+            <- (3.0)
+
+        § (2) src/broken.ts [error]
+
+        § (3) src/main.ts
+          -> (1.0)
+          -> (1.1)
+    patchStrategy: replace
+  - type: delete
+    path: docs/test.plan.md
+snapshot:
+  tests/fixtures/22.react-server-components.fixture.yaml: null
+  tests/fixtures/23.js-proxy-symbol.fixture.yaml: null
+  tests/fixtures/24.ts-ambient-modules.fixture.yaml: null
+  tests/fixtures/25.graphql-codegen.fixture.yaml: null
+  tests/fixtures/26.go-features.fixture.yaml: null
+  tests/fixtures/27.rust-features.fixture.yaml: null
+  tests/fixtures/28.error-resilience.fixture.yaml: null
+  docs/test.plan.md: >
+    ### **Test Case 1: Core TypeScript Features (Class, Interface, Qualifiers)**
+
+
+    **Objective**: Verify correct parsing of classes, methods, properties,
+    interfaces, type aliases, and qualifiers (`+`, `-`, `...`, `!`).
+
+
+    # Input
+
+    ```json
+
+    [
+      {
+        "path": "src/models/user.ts",
+        "content": "export interface User {\n  id: number;\n  name: string;\n}\n\nexport type UserId = number | string;"
+      },
+      {
+        "path": "src/services/apiClient.ts",
+        "content": "import { User, UserId } from '../models/user';\n\nexport class ApiClient {\n  private apiKey: string;\n\n  constructor(key: string) {\n    this.apiKey = key;\n  }\n\n  public async fetchUser(id: UserId): Promise<User> {\n    if (!id) {\n      throw new Error('Invalid ID');\n    }\n    // Fake API call\n    return { id: 1, name: 'Test User' };\n  }\n\n  private _log(message: string): void {\n    console.log(`[API]: ${message}`);\n  }\n}"
+      },
+      {
+        "path": "src/main.ts",
+        "content": "import { ApiClient } from './services/apiClient';\n\nconst client = new ApiClient('secret-key');\nclient.fetchUser(123).then(user => console.log(user.name));"
+      }
+    ]
+
+    ```
+
+
+    # Expected
+
+    ```scn
+
+    § (1) src/models/user.ts
+      <- (2.0)
+      + {} (1.1) User
+        <- (2.2)
+        + @ id: #number
+        + @ name: #string
+      + =: (1.2) UserId #number|string
+        <- (2.2)
+
+    § (2) src/services/apiClient.ts
+      -> (1.0)
+      <- (3.0)
+      + ◇ (2.1) ApiClient
+        <- (3.0)
+        - @ apiKey: #string
+        + ~ constructor(key: #string)
+        + ~ (2.2) fetchUser(id: #UserId): #Promise<User> ...!
+          -> (1.1), (1.2)
+          <- (3.0)
+        - ~ _log(message: #string): #void
+
+    § (3) src/main.ts
+      -> (2.0)
+      -> (2.1)
+      -> (2.2)
+    ```
+
+
+    ---
+
+    ### **Test Case 2: React/JSX and CSS Integration**
+
+
+    **Objective**: Verify correct parsing of React functional components, props,
+    JSX element hierarchy, and linking JSX `className` attributes to CSS rules
+    with intent detection (`📐`, `✍`, `💧`).
+
+
+    # Input
+
+    ```json
+
+    [
+      {
+        "path": "src/components/Button.tsx",
+        "content": "import './Button.css';\n\ninterface ButtonProps {\n  onClick: () => void;\n  children: React.ReactNode;\n}\n\nexport const Button = ({ onClick, children }: ButtonProps) => {\n  return (\n    <button className=\"btn btn-primary\" onClick={onClick}>\n      {children}\n    </button>\n  );\n};"
+      },
+      {
+        "path": "src/components/Button.css",
+        "content": ".btn {\n  padding: 10px 20px; /* Layout */\n  font-size: 16px; /* Typography */\n}\n.btn-primary {\n  background-color: blue; /* Appearance */\n  color: white;\n  border-radius: 5px;\n}"
+      },
+      {
+        "path": "src/App.tsx",
+        "content": "import { Button } from './components/Button';\n\nfunction App() {\n  return (\n    <div>\n      <h1>Welcome</h1>\n      <Button onClick={() => alert('Clicked!')}>Click Me</Button>\n    </div>\n  );\n}"
+      }
+    ]
+
+    ```
+
+
+    # Expected
+
+    ```scn
+
+    § (2) src/components/Button.css
+      <- (1.0)
+      ¶ (2.1) .btn { 📐 ✍ }
+        <- (1.4)
+      ¶ (2.2) .btn-primary { 💧 }
+        <- (1.4)
+
+    § (1) src/components/Button.tsx
+      -> (2.0)
+      <- (3.0)
+      - {} (1.1) ButtonProps
+        <- (1.2)
+        @ onClick: #()=>void
+        @ children: #React.ReactNode
+      + ◇ (1.2) Button { props: #ButtonProps }
+        -> (1.1)
+        <- (3.3)
+        ⛶ (1.3) button [ class:.btn .btn-primary ]
+          -> (2.1), (2.2)
+
+    § (3) src/App.tsx
+      -> (1.0)
+      - ~ (3.1) App()
+        ⛶ (3.2) div
+          ⛶ h1
+          ⛶ (3.3) Button
+            -> (1.2)
+    ```
+
+
+    ---
+
+    ### **Test Case 3: Advanced TS (Inheritance, Enums, Pure Functions)**
+
+
+    **Objective**: Verify correct handling of class inheritance, `enum`
+    definitions, and the `o` (pure) function heuristic.
+
+
+    # Input
+
+    ```json
+
+    [
+      {
+        "path": "src/lib/constants.ts",
+        "content": "export enum LogLevel {\n  Info,\n  Warn,\n  Error\n}"
+      },
+      {
+        "path": "src/lib/logger.ts",
+        "content": "export class BaseLogger {\n  log(message: string) {\n    // This is impure because of console.log\n    console.log(message);\n  }\n}"
+      },
+      {
+        "path": "src/services/fileLogger.ts",
+        "content": "import { BaseLogger } from '../lib/logger';\nimport { LogLevel } from '../lib/constants';\n\nexport class FileLogger extends BaseLogger {\n  logWithLevel(level: LogLevel, message: string) {\n    const prefix = LogLevel[level];\n    super.log(`[${prefix}]: ${message}`);\n  }\n}"
+      },
+      {
+        "path": "src/utils/math.ts",
+        "content": "/** A pure function with no side effects */\nexport function add(a: number, b: number): number {\n  return a + b;\n}"
+      }
+    ]
+
+    ```
+
+
+    # Expected
+
+    ```scn
+
+    § (1) src/lib/constants.ts
+      <- (3.0)
+      + ☰ (1.1) LogLevel
+        <- (3.2)
+        @ Info
+        @ Warn
+        @ Error
+
+    § (2) src/lib/logger.ts
+      <- (3.0)
+      + ◇ (2.1) BaseLogger
+        <- (3.1)
+        + ~ (2.2) log(message: #string)
+          <- (3.1)
+
+    § (4) src/utils/math.ts
+      + ~ add(a: #number, b: #number): #number o
+
+    § (3) src/services/fileLogger.ts
+      -> (2.0), (1.0)
+      + ◇ (3.1) FileLogger < (2.1)
+        + ~ (3.2) logWithLevel(level: #LogLevel, message: #string)
+          -> (1.1), (2.2)
+    ```
+
+    ---
+
+    ### **Test Case 4: JavaScript Syntax (ESM & CJS)**
+
+
+    **Objective**: Verify the parser can handle both ES Modules
+    (`import`/`export`) and CommonJS (`require`/`module.exports`) syntax within
+    a project.
+
+
+    # Input
+
+    ```json
+
+    [
+      {
+        "path": "src/es_module.js",
+        "content": "export const esValue = 'ESM';\nexport default function esFunc() { return 'ESM Func'; }"
+      },
+      {
+        "path": "src/cjs_module.js",
+        "content": "function cjsFunc() {\n  return 'CJS Func';\n}\n\nmodule.exports = {\n  value: 'CJS',\n  run: cjsFunc\n};"
+      },
+      {
+        "path": "src/consumer.js",
+        "content": "import esFunc, { esValue } from './es_module';\nconst cjs = require('./cjs_module');\n\nconsole.log(esValue);\nconsole.log(esFunc());\nconsole.log(cjs.value);\nconsole.log(cjs.run());"
+      }
+    ]
+
+    ```
+
+
+    # Expected
+
+    ```scn
+
+    § (1) src/es_module.js
+      <- (3.0)
+      + @ (1.1) esValue
+        <- (3.0)
+      + ~ (1.2) esFunc()
+        <- (3.0)
+
+    § (2) src/cjs_module.js
+      <- (3.0)
+      - ~ (2.1) cjsFunc()
+        <- (2.4)
+      + @ (2.2) module.exports
+      + @ (2.3) value
+      + @ (2.4) run
+        -> (2.1)
+
+    § (3) src/consumer.js
+      -> (1.0), (2.0)
+      -> (1.1)
+      -> (1.2)
+      -> (2.2)
+    ```
+
+
+    ---
+
+    ### **Test Case 5: Edge Cases (Empty & Anonymous)**
+
+
+    **Objective**: Verify the system's robustness by handling empty files
+    gracefully and correctly identifying exported anonymous functions and
+    classes.
+
+
+    # Input
+
+    ```json
+
+    [
+      {
+        "path": "src/empty.ts",
+        "content": ""
+      },
+      {
+        "path": "src/anonymous.ts",
+        "content": "export default () => {\n  return 'anonymous function';\n};\n\nexport const AnonymousClass = class {\n  greet() {\n    return 'hello from anonymous class';\n  }\n};"
+      },
+      {
+        "path": "src/main.ts",
+        "content": "import anonFunc from './anonymous';\nimport { AnonymousClass } from './anonymous';\n\nanonFunc();\nnew AnonymousClass();"
+      }
+    ]
+
+    ```
+
+
+    # Expected
+
+    ```scn
+
+    § (1) src/empty.ts
+
+
+    § (2) src/anonymous.ts
+      <- (3.0)
+      + ~ (2.1) <anonymous>()
+        <- (3.0)
+      + ◇ (2.2) AnonymousClass
+        <- (3.0)
+        + ~ greet()
+
+    § (3) src/main.ts
+      -> (2.0)
+      -> (2.1)
+      -> (2.2)
+    ```
+
+
+
+
+    ------
+
+
+
+    ### **Test Case 6: Advanced TypeScript (Generics, Decorators, Type Guards,
+    Re-exports)**
+
+
+    **Objective**: Verify correct parsing of advanced TypeScript features like
+    generic functions, decorators (as function calls), type guards with `is`,
+    and module re-exports (`export * from ...`).
+
+
+    # Input
+
+    ```json
+
+    [
+      {
+        "path": "src/types.ts",
+        "content": "export interface Vehicle { drive(): void; }\nexport class Car implements Vehicle { drive() {} }"
+      },
+      {
+        "path": "src/decorators.ts",
+        "content": "export function Injectable() {\n  return function(target: any) { /* no-op */ };\n}"
+      },
+      {
+        "path": "src/utils.ts",
+        "content": "import { Vehicle, Car } from './types';\n\nexport function createInstance<T>(constructor: new () => T): T {\n  return new constructor();\n}\n\nexport function isCar(v: Vehicle): v is Car {\n  return v instanceof Car;\n}"
+      },
+      {
+        "path": "src/services.ts",
+        "content": "import { Injectable } from './decorators';\n\n@Injectable()\nexport class NavigationService {\n  public route(path: string) {}\n}"
+      },
+      {
+        "path": "src/index.ts",
+        "content": "export * from './types';\nexport { NavigationService } from './services';"
+      }
+    ]
+
+    ```
+
+
+    # Expected
+
+    ```scn
+
+    § (2) src/decorators.ts
+      <- (4.0)
+      + ~ (2.1) Injectable()
+        <- (4.1)
+
+    § (1) src/types.ts
+      <- (3.0), (5.0)
+      + {} (1.1) Vehicle
+        <- (3.2)
+        ~ drive()
+      + ◇ (1.2) Car < (1.1)
+        <- (3.2)
+        + ~ drive()
+
+    § (3) src/utils.ts
+      -> (1.0)
+      + ~ createInstance<T>(constructor: #new()=>T): #T
+      + ~ (3.2) isCar(v: #Vehicle): #v is Car
+        -> (1.1), (1.2)
+
+    § (4) src/services.ts
+      -> (2.0)
+      <- (5.0)
+      + ◇ (4.1) NavigationService
+        -> (2.1)
+        <- (5.0)
+        + ~ route(path: #string)
+
+    § (5) src/index.ts
+      -> (1.0), (4.0)
+    ```
+
+
+    ---
+
+    ### **Test Case 7: Advanced React (Hooks, Context, HOCs, Refs)**
+
+
+    **Objective**: Verify correct parsing of complex React patterns, including
+    custom hooks, Context API, Higher-Order Components (HOCs), and `useRef`.
+
+
+    # Input
+
+    ```json
+
+    [
+      {
+        "path": "src/hooks/useCounter.ts",
+        "content": "import { useState } from 'react';\nexport const useCounter = () => {\n  const [count, setCount] = useState(0);\n  const increment = () => setCount(c => c + 1);\n  return { count, increment };\n};"
+      },
+      {
+        "path": "src/context/ThemeContext.ts",
+        "content": "import { createContext } from 'react';\nexport const ThemeContext = createContext('light');"
+      },
+      {
+        "path": "src/hocs/withLogger.tsx",
+        "content": "export const withLogger = (WrappedComponent) => {\n  const WithLogger = (props) => {\n    console.log(`Rendering ${WrappedComponent.name}`);\n    return <WrappedComponent {...props} />;\n  };\n  return WithLogger;\n};"
+      },
+      {
+        "path": "src/components/Counter.tsx",
+        "content": "import { useCounter } from '../hooks/useCounter';\nimport { withLogger } from '../hocs/withLogger';\nimport { useContext, useRef } from 'react';\nimport { ThemeContext } from '../context/ThemeContext';\n\nconst Counter = () => {\n  const { count, increment } = useCounter();\n  const theme = useContext(ThemeContext);\n  const buttonRef = useRef(null);\n  return <button ref={buttonRef} onClick={increment}>Count: {count} ({theme})</button>;\n};\n\nexport default withLogger(Counter);"
+      }
+    ]
+
+    ```
+
+
+    # Expected
+
+    ```scn
+
+    § (1) src/hooks/useCounter.ts
+      <- (4.0)
+      + ~ (1.1) useCounter()
+        <- (4.2)
+
+    § (2) src/context/ThemeContext.ts
+      <- (4.0)
+      + @ (2.1) ThemeContext
+        <- (4.2)
+
+    § (3) src/hocs/withLogger.tsx
+      <- (4.0)
+      + ~ (3.1) withLogger(WrappedComponent: #): #
+        <- (4.0)
+        - ◇ WithLogger { props: # }
+          ⛶ WrappedComponent
+
+    § (4) src/components/Counter.tsx
+      -> (1.0), (3.0), (2.0)
+      - ◇ (4.2) Counter
+        -> (1.1), (2.1)
+        <- (4.0)
+        ⛶ button
+      + @ (4.3) default
+        -> (3.1), (4.2)
+    ```
+
+
+    ---
+
+    ### **Test Case 8: Advanced CSS (Variables, Media Queries,
+    Pseudo-selectors)**
+
+
+    **Objective**: Verify correct parsing of modern CSS features including
+    custom properties (variables), `@media` queries, and
+    pseudo-selectors/elements.
+
+
+    # Input
+
+    ```json
+
+    [
+      {
+        "path": "src/styles.css",
+        "content": ":root {\n  --primary-color: #007bff;\n  --base-font-size: 16px;\n}\n\n.card {\n  background-color: white;\n  border: 1px solid #ddd;\n  transition: transform 0.2s;\n}\n\n.card:hover {\n  transform: translateY(-5px);\n  border-color: var(--primary-color);\n}\n\n.card::before {\n  content: 'Card';\n  position: absolute;\n}\n\n@media (min-width: 768px) {\n  .card {\n    padding: 20px;\n  }\n}"
+      }
+    ]
+
+    ```
+
+
+    # Expected
+
+    ```scn
+
+    § (1) src/styles.css
+      ¶ (1.1) :root { 💧 }
+        @ (1.2) --primary-color
+          <- (1.4)
+        @ --base-font-size
+      ¶ (1.3) .card { 💧 }
+        <- (1.6)
+      ¶ (1.4) .card:hover { 📐 💧 }
+        -> (1.2)
+      ¶ (1.5) .card::before { 📐 }
+      ¶ (1.6) @media(min-width: 768px) .card { 📐 }
+        -> (1.3)
+    ```
+
+
+    ---
+
+    ### **Test Case 9: Complex Dependency Graph (Circular & Peer)**
+
+
+    **Objective**: Verify the system can correctly map a dependency graph with
+    circular references and peer dependencies without errors.
+
+
+    # Input
+
+    ```json
+
+    [
+      {
+        "path": "src/moduleA.ts",
+        "content": "import { funcB } from './moduleB';\nimport { util } from './utils';\n\nexport function funcA() {\n  if (util.shouldRun()) funcB();\n}"
+      },
+      {
+        "path": "src/moduleB.ts",
+        "content": "import { funcA } from './moduleA';\nimport { util } from './utils';\n\nexport function funcB() {\n  if (util.shouldRun()) funcA();\n}"
+      },
+      {
+        "path": "src/utils.ts",
+        "content": "export const util = { shouldRun: () => true };"
+      },
+      {
+        "path": "src/main.ts",
+        "content": "import { funcA } from './moduleA';\nfuncA();"
+      }
+    ]
+
+    ```
+
+
+    # Expected
+
+    ```scn
+
+    § (3) src/utils.ts
+      <- (1.0), (2.0)
+      + @ (3.1) util
+        <- (1.1), (2.1)
+        @ shouldRun
+
+    § (1) src/moduleA.ts
+      -> (2.0), (3.0)
+      <- (2.1), (4.0)
+      + ~ (1.1) funcA()
+        -> (2.1), (3.1)
+        <- (2.1), (4.0)
+
+    § (2) src/moduleB.ts
+      -> (1.0), (3.0)
+      <- (1.1)
+      + ~ (2.1) funcB()
+        -> (1.1), (3.1)
+        <- (1.1)
+
+    § (4) src/main.ts
+      -> (1.0)
+      -> (1.1)
+    ```
+
+
+    ---
+
+    ### **Test Case 10: Monorepo-style Path Aliases**
+
+
+    **Objective**: Verify SCN generation works correctly with non-relative,
+    aliased import paths common in monorepos (e.g., `@/`, `~components/`).
+
+
+    # Input
+
+    ```json
+
+    [
+      {
+        "path": "packages/shared-ui/src/Button.tsx",
+        "content": "export const Button = () => <button>Click</button>;"
+      },
+      {
+        "path": "packages/shared-lib/src/utils.ts",
+        "content": "export const log = (message: string) => console.log(message);"
+      },
+      {
+        "path": "packages/app/src/main.tsx",
+        "content": "import { Button } from '@shared-ui/Button';\nimport { log } from '@/shared-lib/utils';\n\nlog('App started');\nconst App = () => <Button />;"
+      }
+    ]
+
+    ```
+
+
+    # Expected
+
+    ```scn
+
+    § (1) packages/shared-ui/src/Button.tsx
+      <- (3.0)
+      + ◇ (1.1) Button
+        <- (3.3)
+        ⛶ button
+
+    § (2) packages/shared-lib/src/utils.ts
+      <- (3.0)
+      + ~ (2.1) log(message: #string)
+        <- (3.0)
+
+    § (3) packages/app/src/main.tsx
+      -> (1.0), (2.0)
+      -> (2.1)
+      - ◇ (3.3) App
+        ⛶ Button
+          -> (1.1)
+    ```
+
+
+
+    ------
+
+
+    ---
+
+    ### **Test Case 11: TypeScript Advanced Modifiers & Class Features**
+
+
+    **Objective**: Verify correct parsing of `public`, `private`, `protected`,
+    `readonly`, and `static` modifiers, as well as `abstract` classes and
+    methods.
+
+
+    # Input
+
+    ```json
+
+    [
+      {
+        "path": "src/core/base.ts",
+        "content": "export abstract class BaseEntity {\n  public readonly id: string;\n  static species = 'Homo Sapiens';\n\n  protected constructor(id: string) {\n    this.id = id;\n  }\n\n  abstract getDescription(): string;\n\n  static getSpeciesName(): string {\n    return BaseEntity.species;\n  }\n}"
+      },
+      {
+        "path": "src/models/user.ts",
+        "content": "import { BaseEntity } from '../core/base';\n\nexport class User extends BaseEntity {\n  private secret: string;\n\n  constructor(id: string, secret: string) {\n    super(id);\n    this.secret = secret;\n  }\n\n  public getDescription(): string {\n    return `User with ID: ${this.id}`;\n  }\n\n  private getSecret(): string {\n    return this.secret;\n  }\n}"
+      },
+      {
+        "path": "src/main.ts",
+        "content": "import { User } from './models/user';\nimport { BaseEntity } from './core/base';\n\nconst user = new User('user-123', 'password');\nconsole.log(user.getDescription());\nconsole.log(user.id);\nconsole.log(BaseEntity.getSpeciesName());"
+      }
+    ]
+
+    ```
+
+
+    # Expected
+
+    ```scn
+
+    § (1) src/core/base.ts
+      <- (2.0), (3.0)
+      + ◇ (1.1) BaseEntity [abstract]
+        <- (2.1), (3.0)
+        + @ id: #string [readonly]
+          <- (2.2), (3.0)
+        + @ species: #string [static]
+        - ~ constructor(id: #string)
+          <- (2.2)
+        ~ getDescription(): #string [abstract]
+          <- (2.2)
+        + ~ (1.2) getSpeciesName(): #string [static] o
+          <- (3.0)
+
+    § (2) src/models/user.ts
+      -> (1.0)
+      <- (3.0)
+      + ◇ (2.1) User < (1.1)
+        <- (3.0)
+        - @ secret: #string
+        + ~ (2.2) constructor(id: #string, secret: #string)
+          -> (1.1)
+        + ~ getDescription(): #string o
+          -> (1.1)
+          <- (3.0)
+        - ~ getSecret(): #string o
+
+    § (3) src/main.ts
+      -> (2.0), (1.0)
+      -> (2.1)
+      -> (2.2)
+      -> (1.1)
+      -> (1.2)
+    ```
+
+
+    ---
+
+    ### **Test Case 12: JavaScript Prototypes and IIFE**
+
+
+    **Objective**: Verify correct parsing of classic JavaScript patterns,
+    including prototype-based "classes," Immediately Invoked Function
+    Expressions (IIFE) for module encapsulation, and generator functions.
+
+
+    # Input
+
+    ```json
+
+    [
+      {
+        "path": "src/legacy-widget.js",
+        "content": "(function() {\n  function Widget(name) {\n    this.name = name;\n  }\n\n  Widget.prototype.render = function() {\n    return `Widget: ${this.name}`;\n  }\n\n  function* idGenerator() {\n    let i = 0;\n    while(true) yield i++;\n  }\n\n  window.Widget = Widget;\n  window.idGenerator = idGenerator;\n})();"
+      },
+      {
+        "path": "src/app.js",
+        "content": "const myWidget = new window.Widget('Dashboard');\ndocument.body.innerHTML = myWidget.render();\nconst gen = window.idGenerator();\nconsole.log(gen.next().value);"
+      }
+    ]
+
+    ```
+
+
+    # Expected
+
+    ```scn
+
+    § (1) src/legacy-widget.js
+      <- (2.0)
+      ~ (1.1) <anonymous>()
+        - ~ (1.2) Widget(name: #)
+          <- (1.1)
+          @ name
+          + ~ render()
+            <- (2.0)
+        - ~ (1.3) idGenerator*()
+          <- (1.1)
+        + @ window.Widget
+          -> (1.2)
+        + @ window.idGenerator
+          -> (1.3)
+
+    § (2) src/app.js
+      -> (1.0)
+      -> (1.2)
+      -> (1.3)
+    ```
+
+
+    ---
+
+    ### **Test Case 13: Advanced React Render Patterns (Render Props &
+    Fragments)**
+
+
+    **Objective**: Verify correct parsing of the Render Prop pattern, where a
+    component receives a function as a prop to render content, and JSX Fragments
+    (`<>...</>`).
+
+
+    # Input
+
+    ```json
+
+    [
+      {
+        "path": "src/components/MouseTracker.tsx",
+        "content": "import React, { useState } from 'react';\n\ninterface MouseTrackerProps {\n  render: (state: { x: number; y: number }) => React.ReactNode;\n}\n\nexport const MouseTracker = (props: MouseTrackerProps) => {\n  const [position, setPosition] = useState({ x: 0, y: 0 });\n\n  const handleMouseMove = (event: React.MouseEvent) => {\n    setPosition({ x: event.clientX, y: event.clientY });\n  };\n\n  return (\n    <div style={{ height: '100vh' }} onMouseMove={handleMouseMove}>\n      {props.render(position)}\n    </div>\n  );\n};"
+      },
+      {
+        "path": "src/App.tsx",
+        "content": "import React from 'react';\nimport { MouseTracker } from './components/MouseTracker';\n\nexport const App = () => {\n  return (\n    <MouseTracker\n      render={({ x, y }) => (\n        <>\n          <h1>Move the mouse!</h1>\n          <p>The current mouse position is ({x}, {y})</p>\n        </>\n      )}\n    />\n  );\n};"
+      }
+    ]
+
+    ```
+
+
+    # Expected
+
+    ```scn
+
+    § (1) src/components/MouseTracker.tsx
+      <- (2.0)
+      - {} (1.1) MouseTrackerProps
+        <- (1.2)
+        @ render: #({x:number, y:number})=>React.ReactNode
+      + ◇ (1.2) MouseTracker { props: #MouseTrackerProps }
+        -> (1.1)
+        <- (2.1)
+        - ~ handleMouseMove(event: #React.MouseEvent)
+        ⛶ div
+
+    § (2) src/App.tsx
+      -> (1.0)
+      + ◇ (2.1) App
+        ⛶ MouseTracker
+          -> (1.2)
+          - ~ <anonymous>({x:#, y:#})
+            ⛶ <>
+              ⛶ h1
+              ⛶ p
+    ```
+
+
+    ---
+
+    ### **Test Case 14: Complex CSS Selectors and Rules**
+
+
+    **Objective**: Verify parsing of complex CSS, including attribute selectors,
+    sibling/child combinators, `@keyframes` animations, and `@font-face` rules.
+
+
+    # Input
+
+    ```json
+
+    [
+      {
+        "path": "src/styles.css",
+        "content": "@font-face {\n  font-family: 'Open Sans';\n  src: url('/fonts/OpenSans-Regular.woff2');\n}\n\n@keyframes slide-in {\n  from { transform: translateX(-100%); }\n  to { transform: translateX(0); }\n}\n\nbody {\n  font-family: 'Open Sans', sans-serif;\n}\n\ninput[type=\"text\"] {\n  border: 1px solid #ccc;\n}\n\n/* An element with class .icon directly after a .label span */\nspan.label + .icon {\n  margin-left: 4px;\n}\n\n/* All p tags inside an article with data-id='123' */\narticle[data-id='123'] > p {\n  line-height: 1.6;\n}\n\n.animated-box {\n  animation: slide-in 1s ease-out;\n}"
+      }
+    ]
+
+    ```
+
+
+    # Expected
+
+    ```scn
+
+    § (1) src/styles.css
+      ¶ (1.1) @font-face { ✍ }
+      ¶ (1.2) @keyframes slide-in { 📐 }
+        <- (1.7)
+      ¶ (1.3) body { ✍ }
+        -> (1.1)
+      ¶ (1.4) input[type="text"] { 💧 }
+      ¶ (1.5) span.label + .icon { 📐 }
+      ¶ (1.6) article[data-id='123'] > p { ✍ }
+      ¶ (1.7) .animated-box { 📐 }
+        -> (1.2)
+    ```
+
+
+    ---
+
+    ### **Test Case 15: Multi-Language Project (Java & Python Integration)**
+
+
+    **Objective**: Verify the tool's ability to create a unified SCN map from a
+    project containing TypeScript, Java, and Python source files, correctly
+    linking them via their usage in the main application.
+
+
+    # Input
+
+    ```json
+
+    [
+      {
+        "path": "src/main.ts",
+        "content": "// Assume 'java' and 'python' are functions that execute code in another runtime\nimport { java_call } from './interop/java';\nimport { python_call } from './interop/python';\n\nconst userJson = java_call('com.example.User', 'getById', '1');\nconst greeting = python_call('analyzer.TextProcessor', 'process', 'hello');"
+      },
+      {
+        "path": "src/com/example/User.java",
+        "content": "package com.example;\n\npublic class User {\n    private String id;\n    private String name;\n\n    public User(String id, String name) {\n        this.id = id;\n        this.name = name;\n    }\n\n    public static User getById(String id) {\n        return new User(id, \"Mock User\");\n    }\n}"
+      },
+      {
+        "path": "src/analyzer.py",
+        "content": "class TextProcessor:\n    def __init__(self, language='en'):\n        self.lang = language\n\n    def process(self, text: str) -> str:\n        return f\"Processed: {text.upper()}\"\n"
+      }
+    ]
+
+    ```
+
+
+    # Expected
+
+    ```scn
+
+    § (2) src/com/example/User.java
+      <- (1.0)
+      ◇ (2.1) com.example
+        + ◇ (2.2) User
+          <- (1.0)
+          - @ id: #String
+          - @ name: #String
+          + ~ User(id: #String, name: #String)
+          + ~ (2.3) getById(id: #String): #User [static]
+            <- (1.0)
+
+    § (3) src/analyzer.py
+      <- (1.0)
+      + ◇ (3.1) TextProcessor
+        <- (1.0)
+        + ~ __init__(self, language: #str='en')
+        + ~ (3.2) process(self, text: #str): #str
+          <- (1.0)
+
+    § (1) src/main.ts
+      -> (2.0), (3.0)
+      -> (2.2)
+      -> (2.3)
+      -> (3.1)
+      -> (3.2)
+    ```
+
+
+    ---
+
+    ### **Test Case 16: Diamond Dependency Graph**
+
+
+    **Objective**: Verify correct handling of a "diamond" dependency graph (A ->
+    B, A -> C, B -> D, C -> D), ensuring dependencies are not duplicated and the
+    graph is resolved correctly.
+
+
+    # Input
+
+    ```json
+
+    [
+      {
+        "path": "src/D.ts",
+        "content": "export const D = 'D';"
+      },
+      {
+        "path": "src/B.ts",
+        "content": "import { D } from './D'; export const B = `B uses ${D}`;"
+      },
+      {
+        "path": "src/C.ts",
+        "content": "import { D } from './D'; export const C = `C uses ${D}`;"
+      },
+      {
+        "path": "src/A.ts",
+        "content": "import { B } from './B'; import { C } from './C'; export const A = `${B} and ${C}`;"
+      }
+    ]
+
+    ```
+
+
+    # Expected
+
+    ```scn
+
+    § (1) src/D.ts
+      <- (2.0), (3.0)
+      + @ (1.1) D
+        <- (2.1), (3.1)
+
+    § (2) src/B.ts
+      -> (1.0)
+      <- (4.0)
+      + @ (2.1) B
+        -> (1.1)
+        <- (4.1)
+
+    § (3) src/C.ts
+      -> (1.0)
+      <- (4.0)
+      + @ (3.1) C
+        -> (1.1)
+        <- (4.1)
+
+    § (4) src/A.ts
+      -> (2.0), (3.0)
+      + @ (4.1) A
+        -> (2.1), (3.1)
+    ```
+
+
+    ---
+
+    ### **Test Case 17: Dynamic Imports and Code Splitting**
+
+
+    **Objective**: Verify that dynamic `import()` expressions are correctly
+    identified as dependencies, representing potential code-splitting points.
+
+
+    # Input
+
+    ```json
+
+    [
+      {
+        "path": "src/heavy-module.ts",
+        "content": "export function doHeavyCalculation() { return 42; }"
+      },
+      {
+        "path": "src/main.ts",
+        "content": "document.getElementById('load-btn').addEventListener('click', async () => {\n  const { doHeavyCalculation } = await import('./heavy-module');\n  const result = doHeavyCalculation();\n  console.log(result);\n});"
+      }
+    ]
+
+    ```
+
+
+    # Expected
+
+    ```scn
+
+    § (1) src/heavy-module.ts
+      <- (2.0)
+      + ~ (1.1) doHeavyCalculation() o
+        <- (2.1)
+
+    § (2) src/main.ts
+      - ~ <anonymous>() ...
+        -> (1.0) [dynamic]
+        -> (1.1)
+    ```
+
+
+    ---
+
+    ### **Test Case 18: File with Only Comments or Whitespace**
+
+
+    **Objective**: Verify the system's robustness by ensuring it can process
+    files that contain no parsable code (empty, only comments, only whitespace)
+    without crashing, producing a minimal SCN output.
+
+
+    # Input
+
+    ```json
+
+    [
+      {
+        "path": "src/empty.ts",
+        "content": ""
+      },
+      {
+        "path": "src/only-comments.ts",
+        "content": "// This is a single-line comment.\n/*\n * This is a multi-line comment.\n */"
+      },
+      {
+        "path": "src/only-whitespace.ts",
+        "content": "\n  \t\n\n   "
+      }
+    ]
+
+    ```
+
+
+    # Expected
+
+    ```scn
+
+    § (1) src/empty.ts
+
+
+    § (2) src/only-comments.ts
+
+
+    § (3) src/only-whitespace.ts
+
+    ```
+
+    ---
+
+    ### **Test Case 19: Advanced TypeScript Types (Conditional, Mapped, Template
+    Literals)**
+
+
+    **Objective**: Verify correct parsing of highly advanced TypeScript
+    features, including conditional types (`T extends U ? X : Y`), mapped types
+    (`in keyof`), template literal types, and the `satisfies` operator. This
+    tests the type parser's ability to handle complex, abstract type
+    definitions.
+
+
+    # Input
+
+    ```json
+
+    [
+      {
+        "path": "src/types.ts",
+        "content": "type EventName = 'click' | 'scroll' | 'mousemove';\ntype Style = 'bold' | 'italic';\n\n// Template Literal Type\nexport type CssClass = `text-${Style}`;\n\n// Mapped Type\nexport type HandlerMap = {\n  [K in EventName]: (event: K) => void;\n};\n\n// Conditional Type with 'infer'\nexport type UnpackPromise<T> = T extends Promise<infer U> ? U : T;\n\ninterface User { id: number; name: string; }\n\n// Satisfies Operator\nconst config = {\n  user: { id: 1, name: 'admin' }\n} satisfies { user: User };\n\nexport const getUserId = (): UnpackPromise<Promise<number>> => {\n  return config.user.id;\n};"
+      }
+    ]
+
+    ```
+
+
+    # Expected
+
+    ```scn
+
+    § (1) src/types.ts
+
+    - =: EventName #click|scroll|mousemove
+      <- (1.2)
+    - =: Style #bold|italic
+      <- (1.1)
+    - {} User
+      <- (1.4)
+      @ id: #number
+      @ name: #string
+
+    + =: (1.1) CssClass #`text-${Style}`
+
+    + =: (1.2) HandlerMap #K in EventName:(event:K)=>void
+
+    + =: (1.3) UnpackPromise<T> #T extends Promise<infer U>?U:T
+      <- (1.5)
+
+    - @ (1.4) config
+      -> User
+
+    + ~ (1.5) getUserId(): #UnpackPromise<Promise<number>> o
+      -> (1.3), (1.4)
+    ```
+
+
+    ---
+
+    ### **Test Case 20: CSS-in-JS (e.g., Styled-Components, Emotion)**
+
+
+    **Objective**: Verify a robust parsing strategy for CSS-in-JS libraries.
+    This requires identifying the `styled` factory function, the base HTML tag
+    (`styled.div`), parsing CSS from the template literal to derive intents
+    (`📐`, `💧`, `✍`), and linking the resulting component to where it's used.
+
+
+    # Input
+
+    ```json
+
+    [
+      {
+        "path": "src/components/Card.tsx",
+        "content": "import styled from 'styled-components';\n\ninterface CardProps {\n  $isPrimary?: boolean;\n}\n\nconst CardWrapper = styled.div<CardProps>`\n  background: white; /* Appearance */\n  padding: 2rem; /* Layout */\n  border-radius: 8px;\n  box-shadow: 0 4px 8px rgba(0,0,0,0.1);\n  color: ${props => props.$isPrimary ? 'blue' : 'black'}; /* Appearance */\n`;\n\nconst Title = styled.h1`\n  font-size: 1.5rem; /* Typography */\n  font-weight: bold;\n  margin-bottom: 1rem;\n`;\n\nexport const Card = ({ title, children }) => {\n  return (\n    <CardWrapper $isPrimary>\n      <Title>{title}</Title>\n      {children}\n    </CardWrapper>\n  );\n};"
+      }
+    ]
+
+    ```
+
+
+    # Expected
+
+    ```scn
+
+    § (1) src/components/Card.tsx
+
+    - {} CardProps
+      <- (1.1)
+      @ $isPrimary?: #boolean
+
+    // SCN convention for styled-components: ~[tag] represents the styled
+    constructor
+
+    - ~div (1.1) CardWrapper { props: #CardProps } [styled] { 💧 📐 }
+      <- (1.3)
+    - ~h1 (1.2) Title [styled] { ✍ 📐 }
+      <- (1.3)
+
+    + ◇ (1.3) Card { props: { title:#, children:# } }
+      ⛶ CardWrapper
+        -> (1.1)
+        ⛶ Title
+          -> (1.2)
+    ```
+
+
+    ---
+
+    ### **Test Case 21: WebAssembly (WASM) & Web Workers**
+
+
+    **Objective**: Verify correct identification of dependencies on WebAssembly
+    modules and Web Worker scripts. This demonstrates the tool's awareness of
+    different execution contexts and binary dependencies within a web project.
+
+
+    # Input
+
+    ```json
+
+    [
+      {
+        "path": "src/wasm/calculator.c",
+        "content": "// C code to be compiled to WASM\nint add(int a, int b) {\n  return a + b;\n}"
+      },
+      {
+        "path": "src/workers/heavy_task.js",
+        "content": "self.onmessage = function(e) {\n  const result = e.data[0] * e.data[1];\n  self.postMessage(result);\n};"
+      },
+      {
+        "path": "src/main.js",
+        "content": "import init, { add } from './wasm/calculator.js'; // JS glue generated for WASM\n\n// Initialize WASM\ninit().then(() => {\n  console.log('2 + 3 =', add(2, 3));\n});\n\n// Initialize Worker\nconst myWorker = new Worker(new URL('./workers/heavy_task.js', import.meta.url));\nmyWorker.postMessage([10, 20]);\nmyWorker.onmessage = (e) => {\n  console.log('Worker result:', e.data);\n};"
+      }
+    ]
+
+    ```
+
+
+    # Expected
+
+    ```scn
+
+    § (1) src/wasm/calculator.c
+      <- (3.0)
+      ~ add(a: #int, b: #int): #int
+        <- (3.0)
+
+    § (2) src/workers/heavy_task.js
+      <- (3.0)
+      @ self.onmessage
+      @ self.postMessage
+
+    § (3) src/main.js
+      -> (1.0) [wasm]
+      -> (2.0) [worker]
+      ~ <anonymous>() ...
+        -> add
+    ```
+
+
+    ---
+
+    ### **Test Case 22: React Server Components & Directives**
+
+
+    **Objective**: Verify the parser correctly identifies and annotates files
+    and components based on React's `"use client"` and `"use server"`
+    directives. This is crucial for understanding modern Next.js/React
+    application architecture.
+
+
+    # Input
+
+    ```json
+
+    [
+      {
+        "path": "src/actions/db.ts",
+        "content": "'use server';\n\nexport async function getUsername(id: number): Promise<string> {\n  // In a real app, this would query a database.\n  return `User ${id}`;\n}"
+      },
+      {
+        "path": "src/components/UsernameDisplay.tsx",
+        "content": "import { getUsername } from '../actions/db';\n\n// This is a React Server Component (RSC)\nexport async function UsernameDisplay({ userId }) {\n  const username = await getUsername(userId);\n  return <p>Welcome, {username}</p>;\n}"
+      },
+      {
+        "path": "src/components/InteractiveButton.tsx",
+        "content": "'use client';\n\nimport { useState } from 'react';\n\n// This is a Client Component\nexport function InteractiveButton() {\n  const [count, setCount] = useState(0);\n  return <button onClick={() => setCount(c => c + 1)}>Clicked {count}</button>;\n}"
+      }
+    ]
+
+    ```
+
+
+    # Expected
+
+    ```scn
+
+    § (1) src/actions/db.ts [server]
+      <- (2.0)
+      + ~ (1.1) getUsername(id: #number): #Promise<string> ...
+        <- (2.1)
+
+    § (2) src/components/UsernameDisplay.tsx [server]
+      -> (1.0)
+      + ◇ (2.1) UsernameDisplay { props: { userId:# } } ...
+        -> (1.1)
+        ⛶ p
+
+    § (3) src/components/InteractiveButton.tsx [client]
+      + ◇ InteractiveButton
+        ⛶ button
+    ```
+
+
+    ---
+
+    ### **Test Case 23: JavaScript `Proxy`, `Symbol`, and Tagged Templates**
+
+
+    **Objective**: Verify parsing of more esoteric but powerful JavaScript
+    features. This includes `Proxy` objects for meta-programming, `Symbol` for
+    unique properties, and tagged template literals for DSLs.
+
+
+    # Input
+
+    ```json
+
+    [
+      {
+        "path": "src/utils.js",
+        "content": "export const hiddenProp = Symbol('hidden');\n\nexport function styler(strings, ...values) {\n  let result = strings[0];\n  values.forEach((val, i) => {\n    result += `<span>${val}</span>` + strings[i + 1];\n  });\n  return result;\n}"
+      },
+      {
+        "path": "src/model.js",
+        "content": "import { hiddenProp } from './utils';\n\nconst user = {\n  firstName: 'John',\n  lastName: 'Doe',\n  [hiddenProp]: 'secret_agent'\n};\n\nexport const userProxy = new Proxy(user, {\n  get(target, prop) {\n    if (prop === 'fullName') return `${target.firstName} ${target.lastName}`;\n    return target[prop];\n  }\n});"
+      },
+      {
+        "path": "src/main.js",
+        "content": "import { userProxy } from './model';\nimport { styler } from './utils';\n\nconst name = userProxy.fullName;\ndocument.body.innerHTML = styler`Hello, ${name}!`;"
+      }
+    ]
+
+    ```
+
+
+    # Expected
+
+    ```scn
+
+    § (1) src/utils.js
+      <- (2.0), (3.0)
+      + @ (1.1) hiddenProp [symbol]
+        <- (2.0)
+      + ~ (1.2) styler(strings: #, ...values: #)
+        <- (3.0)
+
+    § (2) src/model.js
+      -> (1.0)
+      <- (3.0)
+      - @ user
+        -> (1.1)
+      + @ (2.1) userProxy [proxy]
+        <- (3.0)
+        - ~ get(target: #, prop: #)
+
+    § (3) src/main.js
+      -> (2.0), (1.0)
+      -> (2.1)
+      -> (1.2) [tagged]
+    ```
+
+
+    ---
+
+    ### **Test Case 24: Ambient Modules & Triple-Slash Directives**
+
+
+    **Objective**: Verify handling of TypeScript's mechanisms for interacting
+    with non-TS code or extending existing types, such as `declare module` for
+    ambient type definitions and `/// <reference ...>` for file dependencies.
+
+
+    # Input
+
+    ```json
+
+    [
+      {
+        "path": "src/types/global.d.ts",
+        "content": "// This adds a 'uuid' property to the global Window interface.\ninterface Window {\n  uuid: string;\n}"
+      },
+      {
+        "path": "src/main.ts",
+        "content": "/// <reference path=\"./types/global.d.ts\" />\n\n// This module doesn't exist on disk, it's defined ambiently.\ndeclare module 'virtual-logger' {\n  export function log(message: string): void;\n}\n\nimport { log } from 'virtual-logger';\n\nlog('Hello from an ambient module!');\nconsole.log(window.uuid);"
+      }
+    ]
+
+    ```
+
+
+    # Expected
+
+    ```scn
+
+    § (1) src/types/global.d.ts
+      <- (2.0)
+      {} (1.1) Window
+        <- (2.0)
+        @ uuid: #string
+
+    § (2) src/main.ts
+      -> (1.0) [reference]
+      ◇ 'virtual-logger' [ambient]
+        + ~ (2.2) log(message: #string): #void
+          <- (2.0)
+      -> (2.2)
+      -> (1.1)
+    ```
+
+
+    ---
+
+    ### **Test Case 25: GraphQL Code Generation Flow**
+
+
+    **Objective**: A sophisticated test to verify if the SCN can trace a
+    dependency through a code-generation step. The goal is to link the
+    application code not just to the generated TS file, but to the original
+    `.graphql` source of truth.
+
+
+    # Input
+
+    ```json
+
+    [
+      {
+        "path": "src/graphql/queries.graphql",
+        "content": "query GetUser($id: ID!) {\n  user(id: $id) {\n    id\n    name\n    email\n  }\n}"
+      },
+      {
+        "path": "src/graphql/generated.ts",
+        "content": "/* eslint-disable */\n// THIS FILE IS AUTO-GENERATED by a tool. DO NOT EDIT.\n// Source: src/graphql/queries.graphql\n\nimport { gql } from '@apollo/client';\n\nexport const GetUserDocument = gql`...`; // Contains the query string\n\nexport type User = { id: string, name: string, email: string };\nexport function useGetUserQuery() { /* hook implementation */ }"
+      },
+      {
+        "path": "src/components/UserProfile.tsx",
+        "content": "import { useGetUserQuery, User } from '../graphql/generated';\n\nexport function UserProfile({ id }) {\n  const { data } = useGetUserQuery({ variables: { id } });\n  if (!data) return <div>Loading...</div>;\n\n  const user: User = data.user;\n  return <h1>{user.name}</h1>;\n}"
+      }
+    ]
+
+    ```
+
+
+    # Expected
+
+    ```scn
+
+    § (1) src/graphql/queries.graphql
+      <- (2.0), (3.0) // Ideal SCN links back to original source
+      ~ (1.1) GetUser($id: #ID!): #user
+        <- (2.1)
+
+    § (2) src/graphql/generated.ts [generated]
+      -> (1.0) // Direct dependency on the graphql file
+      <- (3.0)
+      + @ (2.1) GetUserDocument
+        -> (1.1)
+      + =: (2.2) User
+        <- (3.1)
+      + ~ (2.3) useGetUserQuery()
+        <- (3.1)
+
+    § (3) src/components/UserProfile.tsx
+      -> (2.0), (1.0) // Shows dependency on both generated file and implicitly the .graphql source
+      + ◇ (3.1) UserProfile { props: { id:# } }
+        -> (2.3), (2.2)
+        ⛶ h1
+    ```
+
+
+    ---
+
+    ### **Test Case 26: Go Language Features (Goroutines, Channels)**
+
+
+    **Objective**: Verify SCN generation for Go, demonstrating the format's
+    language-agnostic principles. This includes packages, functions, goroutines,
+    and channels, which are core to Go's concurrency model.
+
+
+    # Input
+
+    ```json
+
+    [
+      {
+        "path": "util/parser.go",
+        "content": "package util\n\nfunc Parse(data string) string {\n    return \"parsed:\" + data\n}"
+      },
+      {
+        "path": "main.go",
+        "content": "package main\n\nimport (\n    \"fmt\"\n    \"app/util\"\n)\n\nfunc processData(ch chan string) {\n    data := <-ch // Receive from channel\n    parsed := util.Parse(data)\n    fmt.Println(parsed)\n}\n\nfunc main() {\n    ch := make(chan string)\n    go processData(ch) // Start goroutine\n    ch <- \"hello\" // Send to channel\n}"
+      }
+    ]
+
+    ```
+
+
+    # Expected
+
+    ```scn
+
+    § (1) util/parser.go
+      <- (2.0)
+      ◇ (1.1) util
+        + ~ (1.2) Parse(data: #string): #string o
+          <- (2.2)
+
+    § (2) main.go
+      -> (1.0)
+      + ◇ main
+        - ~ (2.2) processData(ch: #chan string)
+          -> (1.2)
+          <- (2.3)
+        + ~ (2.3) main()
+          -> (2.2) [goroutine]
+    ```
+
+
+    ---
+
+    ### **Test Case 27: Rust Language Features (Traits, Impls, Macros)**
+
+
+    **Objective**: Verify SCN generation for Rust, focusing on its key
+    abstractions: traits (interfaces), implementations (`impl`), and procedural
+    macros (compile-time code generation).
+
+
+    # Input
+
+    ```json
+
+    [
+      {
+        "path": "src/lib.rs",
+        "content": "#[derive(Debug)]\npub struct Point { x: i32, y: i32 }\n\npub trait Drawable {\n    fn draw(&self);\n}\n\nimpl Drawable for Point {\n    fn draw(&self) {\n        println!(\"Drawing point: {:?}\", self);\n    }\n}\n\n// A function that uses the trait\npub fn render(item: &impl Drawable) {\n    item.draw();\n}"
+      }
+    ]
+
+    ```
+
+
+    # Expected
+
+    ```scn
+
+    § (1) src/lib.rs
+
+    + ◇ (1.1) Point
+      -> Debug [macro]
+      <- (1.3)
+      @ x: #i32
+      @ y: #i32
+    + {} (1.2) Drawable
+      <- (1.3), (1.4)
+      ~ draw(&self)
+    + (1.3) impl Drawable for Point
+      -> (1.2), (1.1)
+      + ~ draw(&self)
+        <- (1.4)
+    + ~ (1.4) render(item: &#impl Drawable)
+      -> (1.2), (1.3)
+    ```
+
+
+    ---
+
+    ### **Test Case 28: Error Resilience (Syntax Error in One File)**
+
+
+    **Objective**: A critical robustness test to ensure that a syntax error in a
+    single file does not crash the entire analysis process. The SCN should be
+    generated for all valid files, with a clear error marker for the invalid
+    one.
+
+
+    # Input
+
+    ```json
+
+    [
+      {
+        "path": "src/utils.ts",
+        "content": "export const add = (a: number, b: number) => a + b;"
+      },
+      {
+        "path": "src/broken.ts",
+        "content": "export function multiply(a: number, b: number) {\n  return a * b\n  // Missing closing brace\n"
+      },
+      {
+        "path": "src/main.ts",
+        "content": "import { add } from './utils';\n// Cannot import from broken file\nconsole.log(add(2, 3));"
+      }
+    ]
+
+    ```
+
+
+    # Expected
+
+    ```scn
+
+    § (1) src/utils.ts
+      <- (3.0)
+      + ~ (1.1) add(a: #number, b: #number): #number o
+        <- (3.0)
+
+    § (2) src/broken.ts [error] // Special qualifier indicating a parse failure
+
+
+    § (3) src/main.ts
+      -> (1.0)
+      -> (1.1)
+    ```
+approved: true

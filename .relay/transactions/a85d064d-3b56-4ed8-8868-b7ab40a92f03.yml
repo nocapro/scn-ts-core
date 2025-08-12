@@ -1,0 +1,504 @@
+uuid: a85d064d-3b56-4ed8-8868-b7ab40a92f03
+projectId: scn-ts-core
+createdAt: '2025-08-12T02:47:58.946Z'
+linesAdded: 412
+linesRemoved: 0
+gitCommitMsg: 'feat(test): add first batch of test fixtures (1-7)'
+promptSummary: >-
+  The user wants to convert a large test plan markdown file into a series of
+  YAML fixture files. This is the first of four phases, converting the first 7
+  out of 28 test cases.
+reasoning:
+  - >-
+    Okay, I will start by converting the first seven test cases from
+    `docs/test.plan.md` into individual `*.fixture.yaml` files. I'll place these
+    new files in a `tests/fixtures/` directory. This is the first of four
+    phases.
+  - '### Phase 1: Test Cases 1-7'
+  - '**Step 1: Create fixture for Test Case 1**'
+  - >-
+    I'm creating `tests/fixtures/01.core-ts.fixture.yaml` from "Test Case 1:
+    Core TypeScript Features". This file will contain the input source files and
+    the expected SCN output for parsing basic TypeScript classes, interfaces,
+    and qualifiers.
+  - '**Step 2: Create fixture for Test Case 2**'
+  - >-
+    Next, I'm creating `tests/fixtures/02.react-css.fixture.yaml` from "Test
+    Case 2: React/JSX and CSS Integration". This tests the parsing of React
+    components and their relationship with CSS `className` attributes.
+  - '**Step 3: Create fixture for Test Case 3**'
+  - >-
+    This creates `tests/fixtures/03.advanced-ts.fixture.yaml` from "Test Case 3:
+    Advanced TS". It covers class inheritance, enums, and the pure function
+    heuristic.
+  - '**Step 4: Create fixture for Test Case 4**'
+  - >-
+    Now creating `tests/fixtures/04.js-syntax.fixture.yaml` from "Test Case 4:
+    JavaScript Syntax". This verifies that both ES Modules and CommonJS syntax
+    are parsed correctly.
+  - '**Step 5: Create fixture for Test Case 5**'
+  - >-
+    Here is `tests/fixtures/05.edge-cases.fixture.yaml` from "Test Case 5: Edge
+    Cases". This ensures robustness by handling empty files and correctly
+    identifying anonymous exports.
+  - '**Step 6: Create fixture for Test Case 6**'
+  - >-
+    This creates `tests/fixtures/06.advanced-ts-2.fixture.yaml` from "Test Case
+    6: Advanced TypeScript". This fixture covers generics, decorators, type
+    guards, and re-exports.
+  - '**Step 7: Create fixture for Test Case 7**'
+  - >-
+    Finally for this phase, I'm creating
+    `tests/fixtures/07.advanced-react.fixture.yaml` from "Test Case 7: Advanced
+    React". This covers complex React patterns like hooks, Context, HOCs, and
+    refs.
+operations:
+  - type: write
+    path: tests/fixtures/01.core-ts.fixture.yaml
+    content: |-
+      id: ts-core
+      name: Core TypeScript Features (Class, Interface, Qualifiers)
+      input:
+        - path: src/models/user.ts
+          content: |
+            export interface User {
+              id: number;
+              name: string;
+            }
+
+            export type UserId = number | string;
+        - path: src/services/apiClient.ts
+          content: |
+            import { User, UserId } from '../models/user';
+
+            export class ApiClient {
+              private apiKey: string;
+
+              constructor(key: string) {
+                this.apiKey = key;
+              }
+
+              public async fetchUser(id: UserId): Promise<User> {
+                if (!id) {
+                  throw new Error('Invalid ID');
+                }
+                // Fake API call
+                return { id: 1, name: 'Test User' };
+              }
+
+              private _log(message: string): void {
+                console.log(`[API]: ${message}`);
+              }
+            }
+        - path: src/main.ts
+          content: |
+            import { ApiClient } from './services/apiClient';
+
+            const client = new ApiClient('secret-key');
+            client.fetchUser(123).then(user => console.log(user.name));
+      expected: |
+        § (1) src/models/user.ts
+          <- (2.0)
+          + {} (1.1) User
+            <- (2.2)
+            + @ id: #number
+            + @ name: #string
+          + =: (1.2) UserId #number|string
+            <- (2.2)
+
+        § (2) src/services/apiClient.ts
+          -> (1.0)
+          <- (3.0)
+          + ◇ (2.1) ApiClient
+            <- (3.0)
+            - @ apiKey: #string
+            + ~ constructor(key: #string)
+            + ~ (2.2) fetchUser(id: #UserId): #Promise<User> ...!
+              -> (1.1), (1.2)
+              <- (3.0)
+            - ~ _log(message: #string): #void
+
+        § (3) src/main.ts
+          -> (2.0)
+          -> (2.1)
+          -> (2.2)
+    patchStrategy: replace
+  - type: write
+    path: tests/fixtures/02.react-css.fixture.yaml
+    content: |-
+      id: react-css
+      name: React/JSX and CSS Integration
+      input:
+        - path: src/components/Button.tsx
+          content: |
+            import './Button.css';
+
+            interface ButtonProps {
+              onClick: () => void;
+              children: React.ReactNode;
+            }
+
+            export const Button = ({ onClick, children }: ButtonProps) => {
+              return (
+                <button className="btn btn-primary" onClick={onClick}>
+                  {children}
+                </button>
+              );
+            };
+        - path: src/components/Button.css
+          content: |
+            .btn {
+              padding: 10px 20px; /* Layout */
+              font-size: 16px; /* Typography */
+            }
+            .btn-primary {
+              background-color: blue; /* Appearance */
+              color: white;
+              border-radius: 5px;
+            }
+        - path: src/App.tsx
+          content: |
+            import { Button } from './components/Button';
+
+            function App() {
+              return (
+                <div>
+                  <h1>Welcome</h1>
+                  <Button onClick={() => alert('Clicked!')}>Click Me</Button>
+                </div>
+              );
+            }
+      expected: |
+        § (2) src/components/Button.css
+          <- (1.0)
+          ¶ (2.1) .btn { 📐 ✍ }
+            <- (1.4)
+          ¶ (2.2) .btn-primary { 💧 }
+            <- (1.4)
+
+        § (1) src/components/Button.tsx
+          -> (2.0)
+          <- (3.0)
+          - {} (1.1) ButtonProps
+            <- (1.2)
+            @ onClick: #()=>void
+            @ children: #React.ReactNode
+          + ◇ (1.2) Button { props: #ButtonProps }
+            -> (1.1)
+            <- (3.3)
+            ⛶ (1.3) button [ class:.btn .btn-primary ]
+              -> (2.1), (2.2)
+
+        § (3) src/App.tsx
+          -> (1.0)
+          - ~ (3.1) App()
+            ⛶ (3.2) div
+              ⛶ h1
+              ⛶ (3.3) Button
+                -> (1.2)
+    patchStrategy: replace
+  - type: write
+    path: tests/fixtures/03.advanced-ts.fixture.yaml
+    content: |-
+      id: ts-advanced
+      name: Advanced TS (Inheritance, Enums, Pure Functions)
+      input:
+        - path: src/lib/constants.ts
+          content: |
+            export enum LogLevel {
+              Info,
+              Warn,
+              Error
+            }
+        - path: src/lib/logger.ts
+          content: |
+            export class BaseLogger {
+              log(message: string) {
+                // This is impure because of console.log
+                console.log(message);
+              }
+            }
+        - path: src/services/fileLogger.ts
+          content: |
+            import { BaseLogger } from '../lib/logger';
+            import { LogLevel } from '../lib/constants';
+
+            export class FileLogger extends BaseLogger {
+              logWithLevel(level: LogLevel, message: string) {
+                const prefix = LogLevel[level];
+                super.log(`[${prefix}]: ${message}`);
+              }
+            }
+        - path: src/utils/math.ts
+          content: |
+            /** A pure function with no side effects */
+            export function add(a: number, b: number): number {
+              return a + b;
+            }
+      expected: |
+        § (1) src/lib/constants.ts
+          <- (3.0)
+          + ☰ (1.1) LogLevel
+            <- (3.2)
+            @ Info
+            @ Warn
+            @ Error
+
+        § (2) src/lib/logger.ts
+          <- (3.0)
+          + ◇ (2.1) BaseLogger
+            <- (3.1)
+            + ~ (2.2) log(message: #string)
+              <- (3.1)
+
+        § (4) src/utils/math.ts
+          + ~ add(a: #number, b: #number): #number o
+
+        § (3) src/services/fileLogger.ts
+          -> (2.0), (1.0)
+          + ◇ (3.1) FileLogger < (2.1)
+            + ~ (3.2) logWithLevel(level: #LogLevel, message: #string)
+              -> (1.1), (2.2)
+    patchStrategy: replace
+  - type: write
+    path: tests/fixtures/04.js-syntax.fixture.yaml
+    content: |-
+      id: js-syntax
+      name: JavaScript Syntax (ESM & CJS)
+      input:
+        - path: src/es_module.js
+          content: |
+            export const esValue = 'ESM';
+            export default function esFunc() { return 'ESM Func'; }
+        - path: src/cjs_module.js
+          content: |
+            function cjsFunc() {
+              return 'CJS Func';
+            }
+
+            module.exports = {
+              value: 'CJS',
+              run: cjsFunc
+            };
+        - path: src/consumer.js
+          content: |
+            import esFunc, { esValue } from './es_module';
+            const cjs = require('./cjs_module');
+
+            console.log(esValue);
+            console.log(esFunc());
+            console.log(cjs.value);
+            console.log(cjs.run());
+      expected: |
+        § (1) src/es_module.js
+          <- (3.0)
+          + @ (1.1) esValue
+            <- (3.0)
+          + ~ (1.2) esFunc()
+            <- (3.0)
+
+        § (2) src/cjs_module.js
+          <- (3.0)
+          - ~ (2.1) cjsFunc()
+            <- (2.4)
+          + @ (2.2) module.exports
+          + @ (2.3) value
+          + @ (2.4) run
+            -> (2.1)
+
+        § (3) src/consumer.js
+          -> (1.0), (2.0)
+          -> (1.1)
+          -> (1.2)
+          -> (2.2)
+    patchStrategy: replace
+  - type: write
+    path: tests/fixtures/05.edge-cases.fixture.yaml
+    content: |-
+      id: edge-cases
+      name: Edge Cases (Empty & Anonymous)
+      input:
+        - path: src/empty.ts
+          content: ""
+        - path: src/anonymous.ts
+          content: |
+            export default () => {
+              return 'anonymous function';
+            };
+
+            export const AnonymousClass = class {
+              greet() {
+                return 'hello from anonymous class';
+              }
+            };
+        - path: src/main.ts
+          content: |
+            import anonFunc from './anonymous';
+            import { AnonymousClass } from './anonymous';
+
+            anonFunc();
+            new AnonymousClass();
+      expected: |
+        § (1) src/empty.ts
+
+        § (2) src/anonymous.ts
+          <- (3.0)
+          + ~ (2.1) <anonymous>()
+            <- (3.0)
+          + ◇ (2.2) AnonymousClass
+            <- (3.0)
+            + ~ greet()
+
+        § (3) src/main.ts
+          -> (2.0)
+          -> (2.1)
+          -> (2.2)
+    patchStrategy: replace
+  - type: write
+    path: tests/fixtures/06.advanced-ts-2.fixture.yaml
+    content: |-
+      id: ts-advanced-2
+      name: Advanced TypeScript (Generics, Decorators, Type Guards, Re-exports)
+      input:
+        - path: src/types.ts
+          content: |
+            export interface Vehicle { drive(): void; }
+            export class Car implements Vehicle { drive() {} }
+        - path: src/decorators.ts
+          content: |
+            export function Injectable() {
+              return function(target: any) { /* no-op */ };
+            }
+        - path: src/utils.ts
+          content: |
+            import { Vehicle, Car } from './types';
+
+            export function createInstance<T>(constructor: new () => T): T {
+              return new constructor();
+            }
+
+            export function isCar(v: Vehicle): v is Car {
+              return v instanceof Car;
+            }
+        - path: src/services.ts
+          content: |
+            import { Injectable } from './decorators';
+
+            @Injectable()
+            export class NavigationService {
+              public route(path: string) {}
+            }
+        - path: src/index.ts
+          content: |
+            export * from './types';
+            export { NavigationService } from './services';
+      expected: |
+        § (2) src/decorators.ts
+          <- (4.0)
+          + ~ (2.1) Injectable()
+            <- (4.1)
+
+        § (1) src/types.ts
+          <- (3.0), (5.0)
+          + {} (1.1) Vehicle
+            <- (3.2)
+            ~ drive()
+          + ◇ (1.2) Car < (1.1)
+            <- (3.2)
+            + ~ drive()
+
+        § (3) src/utils.ts
+          -> (1.0)
+          + ~ createInstance<T>(constructor: #new()=>T): #T
+          + ~ (3.2) isCar(v: #Vehicle): #v is Car
+            -> (1.1), (1.2)
+
+        § (4) src/services.ts
+          -> (2.0)
+          <- (5.0)
+          + ◇ (4.1) NavigationService
+            -> (2.1)
+            <- (5.0)
+            + ~ route(path: #string)
+
+        § (5) src/index.ts
+          -> (1.0), (4.0)
+    patchStrategy: replace
+  - type: write
+    path: tests/fixtures/07.advanced-react.fixture.yaml
+    content: |-
+      id: react-advanced
+      name: Advanced React (Hooks, Context, HOCs, Refs)
+      input:
+        - path: src/hooks/useCounter.ts
+          content: |
+            import { useState } from 'react';
+            export const useCounter = () => {
+              const [count, setCount] = useState(0);
+              const increment = () => setCount(c => c + 1);
+              return { count, increment };
+            };
+        - path: src/context/ThemeContext.ts
+          content: |
+            import { createContext } from 'react';
+            export const ThemeContext = createContext('light');
+        - path: src/hocs/withLogger.tsx
+          content: |
+            export const withLogger = (WrappedComponent) => {
+              const WithLogger = (props) => {
+                console.log(`Rendering ${WrappedComponent.name}`);
+                return <WrappedComponent {...props} />;
+              };
+              return WithLogger;
+            };
+        - path: src/components/Counter.tsx
+          content: |
+            import { useCounter } from '../hooks/useCounter';
+            import { withLogger } from '../hocs/withLogger';
+            import { useContext, useRef } from 'react';
+            import { ThemeContext } from '../context/ThemeContext';
+
+            const Counter = () => {
+              const { count, increment } = useCounter();
+              const theme = useContext(ThemeContext);
+              const buttonRef = useRef(null);
+              return <button ref={buttonRef} onClick={increment}>Count: {count} ({theme})</button>;
+            };
+
+            export default withLogger(Counter);
+      expected: |
+        § (1) src/hooks/useCounter.ts
+          <- (4.0)
+          + ~ (1.1) useCounter()
+            <- (4.2)
+
+        § (2) src/context/ThemeContext.ts
+          <- (4.0)
+          + @ (2.1) ThemeContext
+            <- (4.2)
+
+        § (3) src/hocs/withLogger.tsx
+          <- (4.0)
+          + ~ (3.1) withLogger(WrappedComponent: #): #
+            <- (4.0)
+            - ◇ WithLogger { props: # }
+              ⛶ WrappedComponent
+
+        § (4) src/components/Counter.tsx
+          -> (1.0), (3.0), (2.0)
+          - ◇ (4.2) Counter
+            -> (1.1), (2.1)
+            <- (4.0)
+            ⛶ button
+          + @ (4.3) default
+            -> (3.1), (4.2)
+    patchStrategy: replace
+snapshot:
+  tests/fixtures/02.react-css.fixture.yaml: null
+  tests/fixtures/01.core-ts.fixture.yaml: null
+  tests/fixtures/03.advanced-ts.fixture.yaml: null
+  tests/fixtures/04.js-syntax.fixture.yaml: null
+  tests/fixtures/05.edge-cases.fixture.yaml: null
+  tests/fixtures/06.advanced-ts-2.fixture.yaml: null
+  tests/fixtures/07.advanced-react.fixture.yaml: null
+approved: true

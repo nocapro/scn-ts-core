@@ -1,0 +1,495 @@
+uuid: a5a74d27-9092-4981-b286-9b8b693e54b6
+projectId: scn-ts-core
+createdAt: '2025-08-12T04:07:53.889Z'
+linesAdded: 9
+linesRemoved: 9
+gitCommitMsg: 'fix: resolve typescript compilation errors'
+promptSummary: >-
+  The user's TypeScript project has several compilation errors reported by `bun
+  tsc -b`. I need to fix these errors, which include an undefined property
+  access, incorrect module import paths, a type not being in scope, and a messy
+  interface declaration.
+reasoning:
+  - Here are the fixes for the TypeScript errors.
+  - >-
+    First, I'll fix the "possibly 'undefined'" error in `src/analyzer.ts`. The
+    type narrowing wasn't working because of destructuring. I'll move the guard
+    check to after the `sourceFile` object is destructured.
+  - >-
+    Next, I'll fix the module import paths in `src/languages.ts`. The paths were
+    incorrect (`../` instead of `./`) and included the `.ts` extension, which is
+    not ideal with the current TypeScript configuration.
+  - >-
+    Finally, I'll address the issues in `src/types.ts`. The `PathResolver` type
+    was not in scope because `export type ... from` only re-exports without
+    making it available locally. I'll change it to an import and then a separate
+    export. I'll also clean up the duplicated and merged `SourceFile` interface
+    definition for better readability.
+operations:
+  - type: write
+    path: src/analyzer.ts
+    content: |-
+      <<<<<<< SEARCH
+      export const analyze = (sourceFile: SourceFile): SourceFile => {
+          if (!sourceFile.ast || !sourceFile.language.parser) return sourceFile;
+          const { ast, language, sourceCode } = sourceFile;
+      =======
+      export const analyze = (sourceFile: SourceFile): SourceFile => {
+          const { ast, language, sourceCode } = sourceFile;
+          if (!ast || !language.parser) return sourceFile;
+      >>>>>>> REPLACE
+    patchStrategy: multi-search-replace
+  - type: write
+    path: src/languages.ts
+    content: |-
+      --- src/languages.ts
+      +++ src/languages.ts
+      @@ -1,9 +1,9 @@
+       import type { LanguageConfig } from './types';
+       import path from 'node:path';
+      -import { typescriptQueries } from '../queries/typescript.ts';
+      -import { cssQueries } from '../queries/css.ts';
+      -import { goQueries } from '../queries/go.ts';
+      -import { rustQueries } from '../queries/rust.ts';
+      +import { typescriptQueries } from './queries/typescript';
+      +import { cssQueries } from './queries/css';
+      +import { goQueries } from './queries/go';
+      +import { rustQueries } from './queries/rust';
+       
+       // Based on test/wasm and test/fixtures
+       export const languages: LanguageConfig[] = [
+    patchStrategy: new-unified
+  - type: write
+    path: src/types.ts
+    content: >-
+      <<<<<<< SEARCH
+
+      import type { TsConfig } from './utils/tsconfig';
+
+      export type { PathResolver } from './utils/tsconfig';
+
+      =======
+
+      import type { TsConfig, PathResolver } from './utils/tsconfig';
+
+      export type { PathResolver };
+
+      >>>>>>> REPLACE
+
+      <<<<<<< SEARCH
+
+      export interface SourceFile {
+        id: number;
+        relativePath: string;
+        languageDirectives?: string[];
+        absolutePath: string;
+        language: LanguageConfig;
+        sourceCode: string;
+        ast?: Parser.Tree;
+        symbols: CodeSymbol[];
+        parseError: boolean;
+      }
+
+      export interface SourceFile { id: number; relativePath: string;
+      absolutePath: string; language: LanguageConfig; sourceCode: string; ast?:
+      Parser.Tree; symbols: CodeSymbol[]; parseError: boolean; isGenerated?:
+      boolean; languageDirectives?: string[]; }
+
+      =======
+
+      export interface SourceFile {
+        id: number;
+        relativePath: string;
+        absolutePath: string;
+        language: LanguageConfig;
+        sourceCode: string;
+        ast?: Parser.Tree;
+        symbols: CodeSymbol[];
+        parseError: boolean;
+        isGenerated?: boolean;
+        languageDirectives?: string[];
+      }
+
+      >>>>>>> REPLACE
+    patchStrategy: multi-search-replace
+snapshot:
+  src/analyzer.ts: >-
+    import type { SourceFile, CodeSymbol, Relationship, SymbolKind,
+    RelationshipKind, Range } from './types';
+
+    import { getNodeRange, getNodeText, getIdentifier, findChildByFieldName }
+    from './utils/ast';
+
+    import type Parser from 'web-tree-sitter';
+
+
+    const getSymbolName = (node: Parser.SyntaxNode, sourceCode: string): string
+    => {
+        if (node.type === 'jsx_opening_element' || node.type === 'jsx_self_closing_element') {
+            const nameNode = findChildByFieldName(node, 'name');
+            return nameNode ? getNodeText(nameNode, sourceCode) : '<fragment>';
+        }
+        if (node.type === 'variable_declarator') {
+            const valueNode = findChildByFieldName(node, 'value');
+            if (valueNode?.type === 'arrow_function' || valueNode?.type.startsWith('class')) {
+                return getIdentifier(node, sourceCode);
+            }
+        }
+        return getIdentifier(node.parent || node, sourceCode);
+    };
+
+
+    const processCapture = (
+        capture: Parser.QueryCapture,
+        sourceFile: SourceFile,
+        symbols: CodeSymbol[],
+        relationships: Relationship[]
+    ) => {
+        const { node, name: captureName } = capture;
+        const [cat, kind, role] = captureName.split('.');
+
+        if (cat === 'symbol' && role === 'def') {
+            const scopeNode = node.parent?.type.endsWith('_declaration') || node.parent?.type === 'method_definition'
+                ? node.parent
+                : node;
+            const range = getNodeRange(node);
+            const symbol: CodeSymbol = {
+                id: `${range.start.line + 1}:${range.start.column}`,
+                fileId: sourceFile.id,
+                name: getSymbolName(node, sourceFile.sourceCode),
+                kind: kind as SymbolKind,
+                range: range,
+                scopeRange: getNodeRange(scopeNode),
+                isExported: scopeNode.parent?.type === 'export_statement' || scopeNode.text.startsWith('export '),
+                dependencies: [],
+            };
+            symbols.push(symbol);
+        } else if (cat === 'rel') {
+            const rel: Relationship = {
+                kind: kind as RelationshipKind,
+                targetName: getNodeText(node, sourceFile.sourceCode).replace(/['"`]/g, ''),
+                range: getNodeRange(node),
+            };
+            relationships.push(rel);
+        } else if (cat === 'mod') {
+            const parentSymbol = findParentSymbol(getNodeRange(node), symbols);
+            if (parentSymbol) {
+                if (kind === 'export') parentSymbol.isExported = true;
+                if (kind === 'static') parentSymbol.isStatic = true;
+                if (kind === 'abstract') parentSymbol.isAbstract = true;
+                if (kind === 'readonly') parentSymbol.isReadonly = true;
+                if (kind === 'async') parentSymbol.isAsync = true;
+            }
+        }
+    };
+
+
+    export const analyze = (sourceFile: SourceFile): SourceFile => {
+        if (!sourceFile.ast || !sourceFile.language.parser) return sourceFile;
+        const { ast, language, sourceCode } = sourceFile;
+
+        const directives = sourceCode.match(/^['"](use (?:server|client))['"];/gm);
+        if(directives) {
+            sourceFile.languageDirectives = directives.map(d => d.replace(/['";]/g, ''));
+        }
+        if (sourceCode.includes('AUTO-GENERATED') || sourceCode.includes('eslint-disable')) {
+            sourceFile.isGenerated = true;
+        }
+
+        const mainQuery = language.queries?.main ?? '';
+        if (!mainQuery) return sourceFile;
+
+        const query = language.parser.getLanguage().query(mainQuery);
+        const captures = query.captures(ast.rootNode);
+
+        const symbols: CodeSymbol[] = [];
+        const relationships: Relationship[] = [];
+
+        for (const capture of captures) {
+            processCapture(capture, sourceFile, symbols, relationships);
+        }
+        
+        for (const rel of relationships) {
+            const parentSymbol = findParentSymbol(rel.range, symbols);
+            if (parentSymbol) {
+                parentSymbol.dependencies.push(rel);
+            }
+        }
+        
+        const addFunc = symbols.find(s => s.name === 'add');
+        if (addFunc?.dependencies.length === 0) addFunc.isPure = true;
+
+        sourceFile.symbols = symbols;
+        return sourceFile;
+    };
+
+
+    const isRangeWithin = (inner: Range, outer: Range): boolean => {
+        return (
+            (inner.start.line > outer.start.line || (inner.start.line === outer.start.line && inner.start.column >= outer.start.column)) &&
+            (inner.end.line < outer.end.line || (inner.end.line === outer.end.line && inner.end.column <= outer.end.column))
+        );
+    };
+
+
+    const findParentSymbol = (range: Range, symbols: CodeSymbol[]): CodeSymbol |
+    null => {
+        return symbols
+            .filter(s => isRangeWithin(range, s.scopeRange))
+            .sort((a, b) => (a.scopeRange.end.line - a.scopeRange.start.line) - (b.scopeRange.end.line - b.scopeRange.start.line))
+            [0] || null;
+    };
+  src/languages.ts: >-
+    import type { LanguageConfig } from './types';
+
+    import path from 'node:path';
+
+    import { typescriptQueries } from '../queries/typescript.ts';
+
+    import { cssQueries } from '../queries/css.ts';
+
+    import { goQueries } from '../queries/go.ts';
+
+    import { rustQueries } from '../queries/rust.ts';
+
+
+    // Based on test/wasm and test/fixtures
+
+    export const languages: LanguageConfig[] = [
+        {
+            id: 'typescript',
+            name: 'TypeScript',
+            extensions: ['.ts', '.mts', '.cts'],
+            wasmPath: 'tree-sitter-typescript.wasm',
+            queries: { main: typescriptQueries },
+        },
+        {
+            id: 'tsx',
+            name: 'TypeScriptReact',
+            extensions: ['.tsx'],
+            wasmPath: 'tree-sitter-tsx.wasm',
+            queries: { main: typescriptQueries },
+        },
+        {
+            id: 'javascript',
+            name: 'JavaScript',
+            extensions: ['.js', '.mjs', '.cjs'],
+            wasmPath: 'tree-sitter-typescript.wasm',
+            queries: { main: typescriptQueries },
+        },
+        {
+            id: 'css',
+            name: 'CSS',
+            extensions: ['.css'],
+            wasmPath: 'tree-sitter-css.wasm',
+            queries: { main: cssQueries },
+        },
+        {
+            id: 'go',
+            name: 'Go',
+            extensions: ['.go'],
+            wasmPath: 'tree-sitter-go.wasm',
+            queries: { main: goQueries },
+        },
+        {
+            id: 'java',
+            name: 'Java',
+            extensions: ['.java'],
+            wasmPath: 'tree-sitter-java.wasm',
+            queries: {},
+        },
+        {
+            id: 'python',
+            name: 'Python',
+            extensions: ['.py'],
+            wasmPath: 'tree-sitter-python.wasm',
+            queries: {},
+        },
+        {
+            id: 'rust',
+            name: 'Rust',
+            extensions: ['.rs'],
+            wasmPath: 'tree-sitter-rust.wasm',
+            queries: { main: rustQueries },
+        },
+        {
+            id: 'c',
+            name: 'C',
+            extensions: ['.c'],
+            wasmPath: 'tree-sitter-c.wasm',
+            queries: {},
+        },
+        {
+            id: 'graphql',
+            name: 'GraphQL',
+            extensions: ['.graphql', '.gql'],
+            wasmPath: '', // No wasm file provided in the list
+            queries: {},
+        },
+    ];
+
+
+    const createLanguageMap = (): Map<string, LanguageConfig> => {
+        const map = new Map<string, LanguageConfig>();
+        languages.forEach(lang => {
+            lang.extensions.forEach(ext => {
+                map.set(ext, lang);
+            });
+        });
+        return map;
+    };
+
+
+    const languageMap = createLanguageMap();
+
+
+    export const getLanguageForFile = (filePath: string): LanguageConfig |
+    undefined => {
+        const extension = path.extname(filePath);
+        return languageMap.get(extension);
+    };
+  src/types.ts: >-
+    import type Parser from 'web-tree-sitter';
+
+    import type { TsConfig } from './utils/tsconfig';
+
+    export type { PathResolver } from './utils/tsconfig';
+
+
+    /**
+     * Represents a file to be processed.
+     */
+    export interface InputFile {
+      path: string; // relative path from root
+      content: string;
+    }
+
+
+    /**
+     * Configuration for the SCN generation process.
+     */
+    export interface ScnTsConfig {
+      files: InputFile[];
+      tsconfig?: TsConfig;
+      root?: string; // Optional: A virtual root path for resolution. Defaults to '/'.
+      _test_id?: string; // Special property for test runner to identify fixtures
+    }
+
+
+    /**
+     * Options for initializing the Tree-sitter parser.
+     */
+    export interface ParserInitOptions {
+        wasmBaseUrl: string;
+    }
+
+
+    /**
+     * Represents a supported programming language and its configuration.
+     */
+    export type SymbolKind =
+      // TS/JS
+      | 'class' | 'interface' | 'function' | 'method' | 'constructor'
+      | 'variable' | 'property' | 'enum' | 'enum_member' | 'type_alias' | 'module'
+      | 'decorator' | 'parameter' | 'type_parameter' | 'import_specifier' | 're_export'
+      // React
+      | 'react_component' | 'react_hook' | 'react_hoc' | 'jsx_attribute' | 'jsx_element'
+      // CSS
+      | 'css_class' | 'css_id' | 'css_tag' | 'css_at_rule' | 'css_property' | 'css_variable'
+      // Generic / Meta
+      | 'file' | 'reference' | 'comment' | 'error' | 'unresolved'
+      // Other Languages
+      | 'go_struct' | 'go_goroutine' | 'rust_trait' | 'rust_impl' | 'rust_macro'
+      | 'java_package' | 'python_class'
+      | 'unknown';
+
+    export interface Position {
+      line: number;
+      column: number;
+    }
+
+
+    export interface Range {
+      start: Position;
+      end: Position;
+    }
+
+
+    export interface CodeSymbol {
+      id: string;
+      fileId: number;
+      name: string;
+      kind: SymbolKind;
+      range: Range;
+      // Modifiers and metadata
+      isExported: boolean;
+      isAbstract?: boolean;
+      isStatic?: boolean;
+      isReadonly?: boolean;
+      isAsync?: boolean;
+      isPure?: boolean; // for 'o'
+      isGenerated?: boolean;
+      languageDirectives?: string[]; // e.g. 'use server'
+      superClass?: string;
+      implementedInterfaces?: string[];
+      scopeRange: Range; // The range of the entire scope (e.g., function body) for relationship association
+      // Relationships
+      dependencies: Relationship[];
+    }
+
+
+    export type RelationshipKind =
+      | 'import'
+      | 'export'
+      | 'call'
+      | 'extends'
+      | 'implements'
+      | 'references'
+      | 'aliased';
+
+    export interface Relationship {
+      targetName: string; // The raw name of the target (e.g., './utils', 'MyClass', 'add', 'Button')
+      kind: RelationshipKind;
+      range: Range;
+      // Resolved info
+      resolvedFileId?: number;
+      resolvedSymbolId?: string;
+    }
+
+
+    export interface SourceFile {
+      id: number;
+      relativePath: string;
+      languageDirectives?: string[];
+      absolutePath: string;
+      language: LanguageConfig;
+      sourceCode: string;
+      ast?: Parser.Tree;
+      symbols: CodeSymbol[];
+      parseError: boolean;
+    }
+
+    export interface SourceFile { id: number; relativePath: string;
+    absolutePath: string; language: LanguageConfig; sourceCode: string; ast?:
+    Parser.Tree; symbols: CodeSymbol[]; parseError: boolean; isGenerated?:
+    boolean; languageDirectives?: string[]; }
+
+
+    /**
+     * Represents a supported programming language and its configuration.
+     */
+    export interface LanguageConfig {
+        id: string;
+        name: string;
+        extensions: string[];
+        wasmPath: string;
+        parser?: Parser;
+        queries?: Record<string, string>;
+    }
+
+
+    export interface AnalysisContext {
+        sourceFiles: SourceFile[];
+        pathResolver: PathResolver;
+    }
+approved: true

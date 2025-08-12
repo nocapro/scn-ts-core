@@ -1,0 +1,959 @@
+uuid: 442657e0-47b8-4d37-9d7e-2e400ef65e76
+projectId: scn-ts-core
+createdAt: '2025-08-12T04:03:55.662Z'
+linesAdded: 26
+linesRemoved: 21
+gitCommitMsg: 'fix: resolve all build errors'
+promptSummary: Fix a series of TypeScript compilation errors across the project.
+reasoning:
+  - >-
+    Here are the fixes for the TypeScript errors in your project. I'll address
+    each issue, starting with dependency updates, then fixing type errors, and
+    finally correcting module resolution problems.
+  - '### 1. Add Missing Dependency'
+  - >-
+    The core issue `Cannot find module 'web-tree-sitter'` is due to a missing
+    dependency in `package.json`. I'll add it to `devDependencies`.
+  - '### 2. Correct Type Definitions and Usage'
+  - Next, I'll fix several type-related issues across the codebase.
+  - >-
+    In `src/types.ts`, `PathResolver` needs to be exported so
+    `graph-resolver.ts` can import it. Also, `RelationshipKind` uses plural
+    nouns (`imports`, `exports`, `calls`), but the analyzer code generates
+    singular kinds (`import`, `export`, `call`) from the tree-sitter queries.
+    This mismatch causes the comparison error in `graph-resolver.ts`. I'll
+    correct the type definitions.
+  - >-
+    In `src/formatter.ts`, a `map` callback declares `fileId` but never uses it.
+    I'll prefix it with an underscore to denote that it's intentionally unused.
+  - >-
+    In `src/utils/ast.ts`, `Position` is imported but not used, and a lambda
+    parameter `c` is missing a type.
+  - '### 3. Fix Module Resolution and Imports'
+  - >-
+    The `tsconfig.json` uses modern, strict module resolution settings which
+    require file extensions in imports. I'll add the `.ts` extension where it's
+    missing.
+  - In `src/languages.ts`, the query imports are missing extensions.
+  - >-
+    Similarly, the e2e test files have incorrect relative paths and are missing
+    file extensions for their import of `test.util.ts`.
+  - '### 4. Improve Code Robustness'
+  - >-
+    Several files have potential runtime errors due to possibly `undefined`
+    values, especially with the `noUncheckedIndexedAccess` compiler option
+    enabled.
+  - >-
+    In `src/utils/tsconfig.ts`, accessing `resolutions[0]` could fail if the
+    array is empty.
+  - >-
+    In `test/test.util.ts`, I'll add checks to prevent errors from `undefined`
+    values during fixture parsing.
+  - >-
+    These changes should resolve all the reported TypeScript errors and improve
+    the overall stability of the codebase.
+operations:
+  - type: write
+    path: package.json
+    content: |-
+      <<<<<<< SEARCH
+        "devDependencies": {
+          "@types/bun": "latest"
+        },
+      =======
+        "devDependencies": {
+          "@types/bun": "latest",
+          "web-tree-sitter": "^0.22.6"
+        },
+      >>>>>>> REPLACE
+    patchStrategy: multi-search-replace
+  - type: write
+    path: src/types.ts
+    content: |-
+      <<<<<<< SEARCH
+      import type Parser from 'web-tree-sitter';
+      import type { PathResolver, TsConfig } from './utils/tsconfig';
+      =======
+      import type Parser from 'web-tree-sitter';
+      import type { TsConfig } from './utils/tsconfig';
+      export type { PathResolver } from './utils/tsconfig';
+      >>>>>>> REPLACE
+      <<<<<<< SEARCH
+      export type RelationshipKind =
+        | 'imports'
+        | 'exports'
+        | 'calls'
+        | 'extends'
+        | 'implements'
+        | 'references'
+        | 'aliased';
+      =======
+      export type RelationshipKind =
+        | 'import'
+        | 'export'
+        | 'call'
+        | 'extends'
+        | 'implements'
+        | 'references'
+        | 'aliased';
+      >>>>>>> REPLACE
+    patchStrategy: multi-search-replace
+  - type: write
+    path: src/formatter.ts
+    content: |-
+      <<<<<<< SEARCH
+          if (incoming.size > 0) {
+              const parts = Array.from(incoming.entries()).map(([fileId, symbolIds]) => Array.from(symbolIds).join(', '));
+              result.push(`    <- ${parts.join(', ')}`);
+          }
+      =======
+          if (incoming.size > 0) {
+              const parts = Array.from(incoming.entries()).map(([_fileId, symbolIds]) => Array.from(symbolIds).join(', '));
+              result.push(`    <- ${parts.join(', ')}`);
+          }
+      >>>>>>> REPLACE
+    patchStrategy: multi-search-replace
+  - type: write
+    path: src/utils/ast.ts
+    content: >-
+      <<<<<<< SEARCH
+
+      import type { Position, Range } from '../types';
+
+      import type Parser from 'web-tree-sitter';
+
+      =======
+
+      import type { Range } from '../types';
+
+      import type Parser from 'web-tree-sitter';
+
+      >>>>>>> REPLACE
+
+      <<<<<<< SEARCH
+
+      export const findChild = (node: Parser.SyntaxNode, type: string |
+      string[]): Parser.SyntaxNode | null => {
+          const types = Array.isArray(type) ? type : [type];
+          return node.children.find(c => types.includes(c.type)) || null;
+      }
+
+      =======
+
+      export const findChild = (node: Parser.SyntaxNode, type: string |
+      string[]): Parser.SyntaxNode | null => {
+          const types = Array.isArray(type) ? type : [type];
+          return node.children.find((c: Parser.SyntaxNode) => types.includes(c.type)) || null;
+      }
+
+      >>>>>>> REPLACE
+    patchStrategy: multi-search-replace
+  - type: write
+    path: src/languages.ts
+    content: |-
+      <<<<<<< SEARCH
+      import { typescriptQueries } from '../queries/typescript';
+      import { cssQueries } from '../queries/css';
+      import { goQueries } from '../queries/go';
+      import { rustQueries } from '../queries/rust';
+      =======
+      import { typescriptQueries } from '../queries/typescript.ts';
+      import { cssQueries } from '../queries/css.ts';
+      import { goQueries } from '../queries/go.ts';
+      import { rustQueries } from '../queries/rust.ts';
+      >>>>>>> REPLACE
+    patchStrategy: multi-search-replace
+  - type: write
+    path: test/ts/e2e/01-core.test.ts
+    content: |-
+      <<<<<<< SEARCH
+      import { runTestForFixture } from '../test.util';
+      =======
+      import { runTestForFixture } from '../../test.util.ts';
+      >>>>>>> REPLACE
+    patchStrategy: multi-search-replace
+  - type: write
+    path: test/ts/e2e/02-react-css.test.ts
+    content: |-
+      <<<<<<< SEARCH
+      import { runTestForFixture } from '../test.util';
+      =======
+      import { runTestForFixture } from '../../test.util.ts';
+      >>>>>>> REPLACE
+    patchStrategy: multi-search-replace
+  - type: write
+    path: test/ts/e2e/03-dependencies.test.ts
+    content: |-
+      <<<<<<< SEARCH
+      import { runTestForFixture } from '../test.util';
+      =======
+      import { runTestForFixture } from '../../test.util.ts';
+      >>>>>>> REPLACE
+    patchStrategy: multi-search-replace
+  - type: write
+    path: test/ts/e2e/04-advanced.test.ts
+    content: |-
+      <<<<<<< SEARCH
+      import { runTestForFixture } from '../test.util';
+      =======
+      import { runTestForFixture } from '../../test.util.ts';
+      >>>>>>> REPLACE
+    patchStrategy: multi-search-replace
+  - type: write
+    path: src/utils/tsconfig.ts
+    content: |-
+      <<<<<<< SEARCH
+                  const match = importPath.match(pattern);
+                  if (match) {
+                      const captured = match[1] || '';
+                      // Return the first resolved path.
+                      const resolvedPath = resolutions[0].replace('*', captured);
+                      return path.join(baseUrl, resolvedPath).replace(/\\/g, '/');
+                  }
+      =======
+                  const match = importPath.match(pattern);
+                  if (match && resolutions[0]) {
+                      const captured = match[1] || '';
+                      // Return the first resolved path.
+                      const resolvedPath = resolutions[0].replace('*', captured);
+                      return path.join(baseUrl, resolvedPath).replace(/\\/g, '/');
+                  }
+      >>>>>>> REPLACE
+    patchStrategy: multi-search-replace
+  - type: write
+    path: test/test.util.ts
+    content: |-
+      <<<<<<< SEARCH
+          const id = fileContent.match(/^id: (.*)$/m)?.[1].trim() ?? '';
+          const name = fileContent.match(/^name: (.*)$/m)?.[1].trim() ?? '';
+          
+          const [inputSection, expectedSection] = fileContent.split(/\nexpected:\s*\|?\n/);
+          if (!expectedSection) throw new Error(`Could not parse fixture: ${id || fileContent.slice(0, 100)}`);
+      =======
+          const id = (fileContent.match(/^id: (.*)$/m)?.[1] || '').trim();
+          const name = (fileContent.match(/^name: (.*)$/m)?.[1] || '').trim();
+          
+          const [inputSection, expectedSection] = fileContent.split(/\nexpected:\s*\|?\n/);
+          if (!inputSection || !expectedSection) throw new Error(`Could not parse fixture: ${id || fileContent.slice(0, 100)}`);
+      >>>>>>> REPLACE
+      <<<<<<< SEARCH
+          for (const chunk of fileChunks) {
+              const lines = chunk.split('\n');
+              const filePath = lines[0].trim();
+              const contentLineIndex = lines.findIndex(l => l.trim().startsWith('content:'));
+              const content = lines.slice(contentLineIndex + 1).map(l => l.startsWith('      ') ? l.substring(6) : l).join('\n');
+              inputFiles.push({ path: filePath, content });
+          }
+      =======
+          for (const chunk of fileChunks) {
+              const lines = chunk.split('\n');
+              const filePath = lines[0]?.trim();
+              if (!filePath) {
+                  continue;
+              }
+              const contentLineIndex = lines.findIndex(l => l.trim().startsWith('content:'));
+              const content = lines.slice(contentLineIndex + 1).map(l => l.startsWith('      ') ? l.substring(6) : l).join('\n');
+              inputFiles.push({ path: filePath, content });
+          }
+      >>>>>>> REPLACE
+    patchStrategy: multi-search-replace
+snapshot:
+  package.json: |
+    {
+      "name": "scn-ts-core",
+      "module": "index.ts",
+      "type": "module",
+      "private": true,
+      "devDependencies": {
+        "@types/bun": "latest"
+      },
+      "peerDependencies": {
+        "typescript": "^5"
+      }
+    }
+  src/formatter.ts: >-
+    import type { CodeSymbol, SourceFile } from './types';
+
+    import { topologicalSort } from './utils/graph';
+
+
+    const ICONS: Record<string, string> = {
+        class: '◇', interface: '{}', function: '~', method: '~',
+        variable: '@', property: '@', enum: '☰', enum_member: '@',
+        type_alias: '=:', react_component: '◇', jsx_element: '⛶',
+        css_class: '¶', css_id: '¶', css_tag: '¶', css_at_rule: '¶',
+        error: '[error]', default: '?',
+    };
+
+
+    const formatSymbolId = (symbol: CodeSymbol) =>
+    `(${symbol.fileId}.${symbol.id.split(':')[0]})`;
+
+
+    const formatSymbol = (symbol: CodeSymbol, allFiles: SourceFile[]): string[]
+    => {
+        const icon = ICONS[symbol.kind] || ICONS.default;
+        const prefix = symbol.isExported ? '+' : '-';
+        let name = symbol.name === '<anonymous>' ? '' : ` ${symbol.name}`;
+        if (symbol.kind === 'variable' && name.trim() === 'default') name = '';
+
+        const mods = [
+            symbol.isAbstract && 'abstract',
+            symbol.isStatic && 'static',
+        ].filter(Boolean).join(' ');
+        const modStr = mods ? ` [${mods}]` : '';
+
+        const suffix = [
+            symbol.isAsync && '...',
+            symbol.isPure && 'o',
+        ].filter(Boolean).join(' ');
+
+        const line = `  ${prefix} ${icon} ${formatSymbolId(symbol)}${name}${modStr}${suffix}`;
+        const result = [line];
+
+        const outgoing = new Map<number, Set<string>>();
+        symbol.dependencies.forEach(dep => {
+            if (dep.resolvedFileId !== undefined && dep.resolvedFileId !== symbol.fileId) {
+                if (!outgoing.has(dep.resolvedFileId)) outgoing.set(dep.resolvedFileId, new Set());
+                if (dep.resolvedSymbolId) {
+                    const targetSymbol = allFiles.find(f => f.id === dep.resolvedFileId)?.symbols.find(s => s.id === dep.resolvedSymbolId);
+                    if (targetSymbol) outgoing.get(dep.resolvedFileId)!.add(formatSymbolId(targetSymbol));
+                }
+            }
+        });
+
+        if (outgoing.size > 0) {
+            const parts = Array.from(outgoing.entries()).map(([fileId, symbolIds]) => {
+                return symbolIds.size > 0 ? `${Array.from(symbolIds).join(', ')}` : `(${fileId}.0)`;
+            });
+            result.push(`    -> ${parts.join(', ')}`);
+        }
+        
+        const incoming = new Map<number, Set<string>>();
+        allFiles.forEach(file => {
+            file.symbols.forEach(s => {
+                s.dependencies.forEach(d => {
+                    if (d.resolvedFileId === symbol.fileId && d.resolvedSymbolId === symbol.id) {
+                        if(!incoming.has(file.id)) incoming.set(file.id, new Set());
+                        incoming.get(file.id)!.add(formatSymbolId(s));
+                    }
+                });
+            });
+        });
+
+        if (incoming.size > 0) {
+            const parts = Array.from(incoming.entries()).map(([fileId, symbolIds]) => Array.from(symbolIds).join(', '));
+            result.push(`    <- ${parts.join(', ')}`);
+        }
+
+        return result;
+    };
+
+
+
+    const formatFile = (file: SourceFile, allFiles: SourceFile[]): string => {
+        if (file.parseError) return `§ (${file.id}) ${file.relativePath} [error]`;
+        if (!file.sourceCode.trim()) return `§ (${file.id}) ${file.relativePath}`;
+
+        const directives = [
+            file.isGenerated && 'generated',
+            ...(file.languageDirectives || [])
+        ].filter(Boolean);
+        const directiveStr = directives.length > 0 ? ` [${directives.join(' ')}]` : '';
+        const header = `§ (${file.id}) ${file.relativePath}${directiveStr}`;
+
+        const symbolLines = file.symbols.flatMap(s => formatSymbol(s, allFiles));
+
+        return [header, ...symbolLines].join('\n');
+    };
+
+
+    export const formatScn = (analyzedFiles: SourceFile[]): string => {
+        const sortedFiles = topologicalSort(analyzedFiles);
+        return sortedFiles.map(file => formatFile(file, analyzedFiles)).join('\n\n');
+    };
+  src/languages.ts: >-
+    import type { LanguageConfig } from './types';
+
+    import path from 'node:path';
+
+    import { typescriptQueries } from '../queries/typescript';
+
+    import { cssQueries } from '../queries/css';
+
+    import { goQueries } from '../queries/go';
+
+    import { rustQueries } from '../queries/rust';
+
+
+    // Based on test/wasm and test/fixtures
+
+    export const languages: LanguageConfig[] = [
+        {
+            id: 'typescript',
+            name: 'TypeScript',
+            extensions: ['.ts', '.mts', '.cts'],
+            wasmPath: 'tree-sitter-typescript.wasm',
+            queries: { main: typescriptQueries },
+        },
+        {
+            id: 'tsx',
+            name: 'TypeScriptReact',
+            extensions: ['.tsx'],
+            wasmPath: 'tree-sitter-tsx.wasm',
+            queries: { main: typescriptQueries },
+        },
+        {
+            id: 'javascript',
+            name: 'JavaScript',
+            extensions: ['.js', '.mjs', '.cjs'],
+            wasmPath: 'tree-sitter-typescript.wasm',
+            queries: { main: typescriptQueries },
+        },
+        {
+            id: 'css',
+            name: 'CSS',
+            extensions: ['.css'],
+            wasmPath: 'tree-sitter-css.wasm',
+            queries: { main: cssQueries },
+        },
+        {
+            id: 'go',
+            name: 'Go',
+            extensions: ['.go'],
+            wasmPath: 'tree-sitter-go.wasm',
+            queries: { main: goQueries },
+        },
+        {
+            id: 'java',
+            name: 'Java',
+            extensions: ['.java'],
+            wasmPath: 'tree-sitter-java.wasm',
+            queries: {},
+        },
+        {
+            id: 'python',
+            name: 'Python',
+            extensions: ['.py'],
+            wasmPath: 'tree-sitter-python.wasm',
+            queries: {},
+        },
+        {
+            id: 'rust',
+            name: 'Rust',
+            extensions: ['.rs'],
+            wasmPath: 'tree-sitter-rust.wasm',
+            queries: { main: rustQueries },
+        },
+        {
+            id: 'c',
+            name: 'C',
+            extensions: ['.c'],
+            wasmPath: 'tree-sitter-c.wasm',
+            queries: {},
+        },
+        {
+            id: 'graphql',
+            name: 'GraphQL',
+            extensions: ['.graphql', '.gql'],
+            wasmPath: '', // No wasm file provided in the list
+            queries: {},
+        },
+    ];
+
+
+    const createLanguageMap = (): Map<string, LanguageConfig> => {
+        const map = new Map<string, LanguageConfig>();
+        languages.forEach(lang => {
+            lang.extensions.forEach(ext => {
+                map.set(ext, lang);
+            });
+        });
+        return map;
+    };
+
+
+    const languageMap = createLanguageMap();
+
+
+    export const getLanguageForFile = (filePath: string): LanguageConfig |
+    undefined => {
+        const extension = path.extname(filePath);
+        return languageMap.get(extension);
+    };
+  test/ts/e2e/01-core.test.ts: |-
+    import { describe, it } from 'bun:test';
+    import { runTestForFixture } from '../test.util';
+    import path from 'node:path';
+
+    const fixtureDir = path.join(import.meta.dir, '..', 'fixtures');
+
+    describe('Core Language Features', () => {
+        it('01: Core TypeScript Features (Class, Interface, Qualifiers)', async () => {
+            await runTestForFixture(path.join(fixtureDir, '01.core-ts.fixture.yaml'));
+        });
+
+        it('04: JavaScript Syntax (ESM & CJS)', async () => {
+            await runTestForFixture(path.join(fixtureDir, '04.js-syntax.fixture.yaml'));
+        });
+        
+        it('11: TypeScript Advanced Modifiers & Class Features', async () => {
+            await runTestForFixture(path.join(fixtureDir, '11.ts-modifiers.fixture.yaml'));
+        });
+        
+        it('12: JavaScript Prototypes and IIFE', async () => {
+            await runTestForFixture(path.join(fixtureDir, '12.js-prototype-iife.fixture.yaml'));
+        });
+        
+        it('19: Advanced TypeScript Types (Conditional, Mapped, Template Literals)', async () => {
+            await runTestForFixture(path.join(fixtureDir, '19.advanced-ts-types.fixture.yaml'));
+        });
+        
+        it('23: JavaScript Proxy, Symbol, and Tagged Templates', async () => {
+            await runTestForFixture(path.join(fixtureDir, '23.js-proxy-symbol.fixture.yaml'));
+        });
+        
+        it('24: Ambient Modules & Triple-Slash Directives', async () => {
+            await runTestForFixture(path.join(fixtureDir, '24.ts-ambient-modules.fixture.yaml'));
+        });
+    });
+  test/ts/e2e/02-react-css.test.ts: |-
+    import { describe, it } from 'bun:test';
+    import { runTestForFixture } from '../test.util';
+    import path from 'node:path';
+
+    const fixtureDir = path.join(import.meta.dir, '..', 'fixtures');
+
+    describe('React & CSS Features', () => {
+        it('02: React/JSX and CSS Integration', async () => {
+            await runTestForFixture(path.join(fixtureDir, '02.react-css.fixture.yaml'));
+        });
+
+        it('07: Advanced React (Hooks, Context, HOCs, Refs)', async () => {
+            await runTestForFixture(path.join(fixtureDir, '07.advanced-react.fixture.yaml'));
+        });
+        
+        it('08: Advanced CSS (Variables, Media Queries, Pseudo-selectors)', async () => {
+            await runTestForFixture(path.join(fixtureDir, '08.advanced-css.fixture.yaml'));
+        });
+        
+        it('13: Advanced React Render Patterns (Render Props & Fragments)', async () => {
+            await runTestForFixture(path.join(fixtureDir, '13.react-render-props.fixture.yaml'));
+        });
+        
+        it('14: Complex CSS Selectors and Rules', async () => {
+            await runTestForFixture(path.join(fixtureDir, '14.complex-css.fixture.yaml'));
+        });
+        
+        it('20: CSS-in-JS (e.g., Styled-Components, Emotion)', async () => {
+            await runTestForFixture(path.join(fixtureDir, '20.css-in-js.fixture.yaml'));
+        });
+        
+        it('22: React Server Components & Directives', async () => {
+            await runTestForFixture(path.join(fixtureDir, '22.react-server-components.fixture.yaml'));
+        });
+    });
+  test/ts/e2e/03-dependencies.test.ts: |-
+    import { describe, it } from 'bun:test';
+    import { runTestForFixture } from '../test.util';
+    import path from 'node:path';
+
+    const fixtureDir = path.join(import.meta.dir, '..', 'fixtures');
+
+    describe('Dependency Graph Analysis', () => {
+        it('09: Complex Dependency Graph (Circular & Peer)', async () => {
+            await runTestForFixture(path.join(fixtureDir, '09.dep-graph-circular.fixture.yaml'));
+        });
+
+        it('10: Monorepo-style Path Aliases', async () => {
+            await runTestForFixture(path.join(fixtureDir, '10.monorepo-aliases.fixture.yaml'));
+        });
+        
+        it('16: Diamond Dependency Graph', async () => {
+            await runTestForFixture(path.join(fixtureDir, '16.dep-graph-diamond.fixture.yaml'));
+        });
+        
+        it('17: Dynamic Imports and Code Splitting', async () => {
+            await runTestForFixture(path.join(fixtureDir, '17.dynamic-imports.fixture.yaml'));
+        });
+        
+        it('25: GraphQL Code Generation Flow', async () => {
+            await runTestForFixture(path.join(fixtureDir, '25.graphql-codegen.fixture.yaml'));
+        });
+    });
+  src/types.ts: >-
+    import type Parser from 'web-tree-sitter';
+
+    import type { PathResolver, TsConfig } from './utils/tsconfig';
+
+
+    /**
+     * Represents a file to be processed.
+     */
+    export interface InputFile {
+      path: string; // relative path from root
+      content: string;
+    }
+
+
+    /**
+     * Configuration for the SCN generation process.
+     */
+    export interface ScnTsConfig {
+      files: InputFile[];
+      tsconfig?: TsConfig;
+      root?: string; // Optional: A virtual root path for resolution. Defaults to '/'.
+      _test_id?: string; // Special property for test runner to identify fixtures
+    }
+
+
+    /**
+     * Options for initializing the Tree-sitter parser.
+     */
+    export interface ParserInitOptions {
+        wasmBaseUrl: string;
+    }
+
+
+    /**
+     * Represents a supported programming language and its configuration.
+     */
+    export type SymbolKind =
+      // TS/JS
+      | 'class' | 'interface' | 'function' | 'method' | 'constructor'
+      | 'variable' | 'property' | 'enum' | 'enum_member' | 'type_alias' | 'module'
+      | 'decorator' | 'parameter' | 'type_parameter' | 'import_specifier' | 're_export'
+      // React
+      | 'react_component' | 'react_hook' | 'react_hoc' | 'jsx_attribute' | 'jsx_element'
+      // CSS
+      | 'css_class' | 'css_id' | 'css_tag' | 'css_at_rule' | 'css_property' | 'css_variable'
+      // Generic / Meta
+      | 'file' | 'reference' | 'comment' | 'error' | 'unresolved'
+      // Other Languages
+      | 'go_struct' | 'go_goroutine' | 'rust_trait' | 'rust_impl' | 'rust_macro'
+      | 'java_package' | 'python_class'
+      | 'unknown';
+
+    export interface Position {
+      line: number;
+      column: number;
+    }
+
+
+    export interface Range {
+      start: Position;
+      end: Position;
+    }
+
+
+    export interface CodeSymbol {
+      id: string;
+      fileId: number;
+      name: string;
+      kind: SymbolKind;
+      range: Range;
+      // Modifiers and metadata
+      isExported: boolean;
+      isAbstract?: boolean;
+      isStatic?: boolean;
+      isReadonly?: boolean;
+      isAsync?: boolean;
+      isPure?: boolean; // for 'o'
+      isGenerated?: boolean;
+      languageDirectives?: string[]; // e.g. 'use server'
+      superClass?: string;
+      implementedInterfaces?: string[];
+      scopeRange: Range; // The range of the entire scope (e.g., function body) for relationship association
+      // Relationships
+      dependencies: Relationship[];
+    }
+
+
+    export type RelationshipKind =
+      | 'imports'
+      | 'exports'
+      | 'calls'
+      | 'extends'
+      | 'implements'
+      | 'references'
+      | 'aliased';
+
+    export interface Relationship {
+      targetName: string; // The raw name of the target (e.g., './utils', 'MyClass', 'add', 'Button')
+      kind: RelationshipKind;
+      range: Range;
+      // Resolved info
+      resolvedFileId?: number;
+      resolvedSymbolId?: string;
+    }
+
+
+    export interface SourceFile {
+      id: number;
+      relativePath: string;
+      languageDirectives?: string[];
+      absolutePath: string;
+      language: LanguageConfig;
+      sourceCode: string;
+      ast?: Parser.Tree;
+      symbols: CodeSymbol[];
+      parseError: boolean;
+    }
+
+    export interface SourceFile { id: number; relativePath: string;
+    absolutePath: string; language: LanguageConfig; sourceCode: string; ast?:
+    Parser.Tree; symbols: CodeSymbol[]; parseError: boolean; isGenerated?:
+    boolean; languageDirectives?: string[]; }
+
+
+    /**
+     * Represents a supported programming language and its configuration.
+     */
+    export interface LanguageConfig {
+        id: string;
+        name: string;
+        extensions: string[];
+        wasmPath: string;
+        parser?: Parser;
+        queries?: Record<string, string>;
+    }
+
+
+    export interface AnalysisContext {
+        sourceFiles: SourceFile[];
+        pathResolver: PathResolver;
+    }
+  src/utils/ast.ts: >-
+    import type { Position, Range } from '../types';
+
+    import type Parser from 'web-tree-sitter';
+
+
+    export const getNodeText = (node: Parser.SyntaxNode, sourceCode: string):
+    string => {
+        return sourceCode.substring(node.startIndex, node.endIndex);
+    };
+
+
+    export const getNodeRange = (node: Parser.SyntaxNode): Range => {
+        return {
+            start: { line: node.startPosition.row, column: node.startPosition.column },
+            end: { line: node.endPosition.row, column: node.endPosition.column },
+        };
+    };
+
+
+    export const findChild = (node: Parser.SyntaxNode, type: string | string[]):
+    Parser.SyntaxNode | null => {
+        const types = Array.isArray(type) ? type : [type];
+        return node.children.find(c => types.includes(c.type)) || null;
+    }
+
+
+    export const findChildByFieldName = (node: Parser.SyntaxNode, fieldName:
+    string): Parser.SyntaxNode | null => {
+        return node.childForFieldName(fieldName);
+    };
+
+
+    export const getIdentifier = (node: Parser.SyntaxNode, sourceCode: string,
+    defaultName: string = '<anonymous>'): string => {
+        const nameNode = findChildByFieldName(node, 'name') ?? findChild(node, ['identifier', 'property_identifier']);
+        return nameNode ? getNodeText(nameNode, sourceCode) : defaultName;
+    };
+  test/ts/e2e/04-advanced.test.ts: |-
+    import { describe, it } from 'bun:test';
+    import { runTestForFixture } from '../test.util';
+    import path from 'node:path';
+
+    const fixtureDir = path.join(import.meta.dir, '..', 'fixtures');
+
+    describe('Advanced, Edge Case, and Multi-language Features', () => {
+        it('03: Advanced TS (Inheritance, Enums, Pure Functions)', async () => {
+            await runTestForFixture(path.join(fixtureDir, '03.advanced-ts.fixture.yaml'));
+        });
+
+        it('05: Edge Cases (Empty & Anonymous)', async () => {
+            await runTestForFixture(path.join(fixtureDir, '05.edge-cases.fixture.yaml'));
+        });
+        
+        it('06: Advanced TypeScript (Generics, Decorators, Type Guards, Re-exports)', async () => {
+            await runTestForFixture(path.join(fixtureDir, '06.advanced-ts-2.fixture.yaml'));
+        });
+
+        it('15: Multi-Language Project (Java & Python Integration)', async () => {
+            await runTestForFixture(path.join(fixtureDir, '15.multi-language.fixture.yaml'));
+        });
+        
+        it('18: File with Only Comments or Whitespace', async () => {
+            await runTestForFixture(path.join(fixtureDir, '18.empty-files.fixture.yaml'));
+        });
+        
+        it('21: WebAssembly (WASM) & Web Workers', async () => {
+            await runTestForFixture(path.join(fixtureDir, '21.wasm-workers.fixture.yaml'));
+        });
+
+        it('26: Go Language Features (Goroutines, Channels)', async () => {
+            await runTestForFixture(path.join(fixtureDir, '26.go-features.fixture.yaml'));
+        });
+
+        it('27: Rust Language Features (Traits, Impls, Macros)', async () => {
+            await runTestForFixture(path.join(fixtureDir, '27.rust-features.fixture.yaml'));
+        });
+
+        it('28: Error Resilience (Syntax Error in One File)', async () => {
+            await runTestForFixture(path.join(fixtureDir, '28.error-resilience.fixture.yaml'));
+        });
+    });
+  test/test.util.ts: >-
+    import { generateScn, initializeParser, type ScnTsConfig, type InputFile }
+    from '../src/main';
+
+    import fs from 'node:fs/promises';
+
+    import path from 'node:path';
+
+    import { expect } from 'bun:test';
+
+
+    interface Fixture {
+      id: string;
+      name: string;
+      input: { path: string; content: string }[];
+      expected: string;
+    }
+
+
+    function parseFixture(fileContent: string): Fixture {
+        const id = fileContent.match(/^id: (.*)$/m)?.[1].trim() ?? '';
+        const name = fileContent.match(/^name: (.*)$/m)?.[1].trim() ?? '';
+        
+        const [inputSection, expectedSection] = fileContent.split(/\nexpected:\s*\|?\n/);
+        if (!expectedSection) throw new Error(`Could not parse fixture: ${id || fileContent.slice(0, 100)}`);
+
+        const expected = expectedSection.replace(/^  /gm, '').trim();
+
+        const inputFiles = [];
+        const fileChunks = inputSection.split(/-\s*path:\s*/).slice(1);
+
+        for (const chunk of fileChunks) {
+            const lines = chunk.split('\n');
+            const filePath = lines[0].trim();
+            const contentLineIndex = lines.findIndex(l => l.trim().startsWith('content:'));
+            const content = lines.slice(contentLineIndex + 1).map(l => l.startsWith('      ') ? l.substring(6) : l).join('\n');
+            inputFiles.push({ path: filePath, content });
+        }
+
+        return { id, name, input: inputFiles, expected };
+    }
+
+
+    const rootDir = process.cwd();
+
+    const wasmDir = path.join(rootDir, 'test', 'wasm');
+
+    let parserInitialized = false;
+
+
+    export async function runTestForFixture(fixturePath: string): Promise<void>
+    {
+      if (!parserInitialized) {
+        await initializeParser({ wasmBaseUrl: wasmDir });
+        parserInitialized = true;
+      }
+      
+      const fixtureContent = await fs.readFile(fixturePath, 'utf-8');
+      const fixture = parseFixture(fixtureContent);
+
+      const inputFiles: InputFile[] = fixture.input.map(f => ({ path: f.path, content: f.content }));
+      
+      let tsconfig: Record<string, unknown> | undefined = {
+          compilerOptions: {
+              jsx: 'react-jsx',
+              allowJs: true,
+              moduleResolution: "node",
+              module: 'ESNext',
+          }
+      };
+
+      if (fixture.id === 'monorepo-aliases') {
+        tsconfig = {
+          compilerOptions: {
+              baseUrl: '.',
+              jsx: 'react-jsx',
+              paths: {
+                  '@shared-ui/*': ['packages/shared-ui/src/*'],
+                  '@/shared-lib/*': ['packages/shared-lib/src/*'],
+              },
+          },
+        };
+      }
+
+      const config: ScnTsConfig = {
+        files: inputFiles,
+        root: '/', // Use a virtual root
+        tsconfig: tsconfig as any,
+        _test_id: fixture.id,
+      };
+
+      const scnOutput = await generateScn(config);
+
+      if (scnOutput.trim() !== fixture.expected) {
+          console.error(`\n--- MISMATCH IN FIXTURE: ${fixture.id} ---\n`);
+          console.error('--- EXPECTED ---\n');
+          console.error(fixture.expected);
+          console.error('\n--- ACTUAL ---\n');
+          console.error(scnOutput.trim());
+          console.error('\n------------------\n');
+      }
+
+      expect(scnOutput.trim()).toBe(fixture.expected);
+    }
+  src/utils/tsconfig.ts: >-
+    import path from 'node:path';
+
+
+    export interface TsConfig {
+        compilerOptions?: {
+            baseUrl?: string;
+            paths?: Record<string, string[]>;
+        };
+    }
+
+
+    const createPathResolver = (baseUrl: string, paths: Record<string,
+    string[]>) => {
+        const aliasEntries = Object.entries(paths).map(([alias, resolutions]) => {
+            return {
+                pattern: new RegExp(`^${alias.replace('*', '(.*)')}$`),
+                resolutions,
+            };
+        });
+
+        return (importPath: string): string | null => {
+            for (const { pattern, resolutions } of aliasEntries) {
+                const match = importPath.match(pattern);
+                if (match) {
+                    const captured = match[1] || '';
+                    // Return the first resolved path.
+                    const resolvedPath = resolutions[0].replace('*', captured);
+                    return path.join(baseUrl, resolvedPath).replace(/\\/g, '/');
+                }
+            }
+            return null; // Not an alias
+        };
+    };
+
+
+    export type PathResolver = ReturnType<typeof createPathResolver>;
+
+
+    export const getPathResolver = (tsconfig?: TsConfig | null): PathResolver =>
+    {
+        const baseUrl = tsconfig?.compilerOptions?.baseUrl || '.';
+        const paths = tsconfig?.compilerOptions?.paths ?? {};
+        // The baseUrl from tsconfig is relative to the tsconfig file itself (the root).
+        // The final paths we create should be relative to the root to match our file list.
+        return createPathResolver(baseUrl, paths);
+    };
+approved: true

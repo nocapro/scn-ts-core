@@ -1,0 +1,455 @@
+uuid: e4a7f0e8-0b5c-42b3-96e0-e83693e5066a
+projectId: scn-ts-core
+createdAt: '2025-08-12T02:51:15.126Z'
+linesAdded: 368
+linesRemoved: 0
+gitCommitMsg: 'feat(test): add second batch of test fixtures (8-14)'
+promptSummary: >-
+  This is the second phase of converting the test plan markdown into YAML
+  fixtures. This batch covers test cases 8 through 14.
+reasoning:
+  - >-
+    Of course. Here is the next batch of test cases, converting tests 8 through
+    14 into fixture files.
+  - '### Phase 2: Test Cases 8-14'
+  - '**Step 8: Create fixture for Test Case 8**'
+  - >-
+    I'm creating `tests/fixtures/08.advanced-css.fixture.yaml` from "Test Case
+    8: Advanced CSS". This will verify the parsing of CSS variables, media
+    queries, and pseudo-selectors.
+  - '**Step 9: Create fixture for Test Case 9**'
+  - >-
+    Next is `tests/fixtures/09.dep-graph-circular.fixture.yaml` from "Test Case
+    9: Complex Dependency Graph". This test ensures the system can handle
+    circular dependencies gracefully.
+  - '**Step 10: Create fixture for Test Case 10**'
+  - >-
+    I'm creating `tests/fixtures/10.monorepo-aliases.fixture.yaml` from "Test
+    Case 10: Monorepo-style Path Aliases". This is to verify handling of
+    non-relative path aliases.
+  - '**Step 11: Create fixture for Test Case 11**'
+  - >-
+    This creates `tests/fixtures/11.ts-modifiers.fixture.yaml` from "Test Case
+    11: TypeScript Advanced Modifiers & Class Features". It tests parsing of
+    various TS keywords like `readonly`, `static`, and `abstract`.
+  - '**Step 12: Create fixture for Test Case 12**'
+  - >-
+    Here is `tests/fixtures/12.js-prototype-iife.fixture.yaml` from "Test Case
+    12: JavaScript Prototypes and IIFE". This tests classic JS patterns.
+  - '**Step 13: Create fixture for Test Case 13**'
+  - >-
+    I am creating `tests/fixtures/13.react-render-props.fixture.yaml` from "Test
+    Case 13: Advanced React Render Patterns". This covers render props and JSX
+    fragments.
+  - '**Step 14: Create fixture for Test Case 14**'
+  - >-
+    Finally for this phase, I'm creating
+    `tests/fixtures/14.complex-css.fixture.yaml` from "Test Case 14: Complex CSS
+    Selectors and Rules". This tests advanced CSS features like attribute
+    selectors and `@keyframes`.
+operations:
+  - type: write
+    path: tests/fixtures/08.advanced-css.fixture.yaml
+    content: |-
+      id: css-advanced
+      name: Advanced CSS (Variables, Media Queries, Pseudo-selectors)
+      input:
+        - path: src/styles.css
+          content: |
+            :root {
+              --primary-color: #007bff;
+              --base-font-size: 16px;
+            }
+
+            .card {
+              background-color: white;
+              border: 1px solid #ddd;
+              transition: transform 0.2s;
+            }
+
+            .card:hover {
+              transform: translateY(-5px);
+              border-color: var(--primary-color);
+            }
+
+            .card::before {
+              content: 'Card';
+              position: absolute;
+            }
+
+            @media (min-width: 768px) {
+              .card {
+                padding: 20px;
+              }
+            }
+      expected: |
+        § (1) src/styles.css
+          ¶ (1.1) :root { 💧 }
+            @ (1.2) --primary-color
+              <- (1.4)
+            @ --base-font-size
+          ¶ (1.3) .card { 💧 }
+            <- (1.6)
+          ¶ (1.4) .card:hover { 📐 💧 }
+            -> (1.2)
+          ¶ (1.5) .card::before { 📐 }
+          ¶ (1.6) @media(min-width: 768px) .card { 📐 }
+            -> (1.3)
+    patchStrategy: replace
+  - type: write
+    path: tests/fixtures/09.dep-graph-circular.fixture.yaml
+    content: |-
+      id: dep-graph-circular
+      name: Complex Dependency Graph (Circular & Peer)
+      input:
+        - path: src/moduleA.ts
+          content: |
+            import { funcB } from './moduleB';
+            import { util } from './utils';
+
+            export function funcA() {
+              if (util.shouldRun()) funcB();
+            }
+        - path: src/moduleB.ts
+          content: |
+            import { funcA } from './moduleA';
+            import { util } from './utils';
+
+            export function funcB() {
+              if (util.shouldRun()) funcA();
+            }
+        - path: src/utils.ts
+          content: |
+            export const util = { shouldRun: () => true };
+        - path: src/main.ts
+          content: |
+            import { funcA } from './moduleA';
+            funcA();
+      expected: |
+        § (3) src/utils.ts
+          <- (1.0), (2.0)
+          + @ (3.1) util
+            <- (1.1), (2.1)
+            @ shouldRun
+
+        § (1) src/moduleA.ts
+          -> (2.0), (3.0)
+          <- (2.1), (4.0)
+          + ~ (1.1) funcA()
+            -> (2.1), (3.1)
+            <- (2.1), (4.0)
+
+        § (2) src/moduleB.ts
+          -> (1.0), (3.0)
+          <- (1.1)
+          + ~ (2.1) funcB()
+            -> (1.1), (3.1)
+            <- (1.1)
+
+        § (4) src/main.ts
+          -> (1.0)
+          -> (1.1)
+    patchStrategy: replace
+  - type: write
+    path: tests/fixtures/10.monorepo-aliases.fixture.yaml
+    content: |-
+      id: monorepo-aliases
+      name: Monorepo-style Path Aliases
+      input:
+        - path: packages/shared-ui/src/Button.tsx
+          content: |
+            export const Button = () => <button>Click</button>;
+        - path: packages/shared-lib/src/utils.ts
+          content: |
+            export const log = (message: string) => console.log(message);
+        - path: packages/app/src/main.tsx
+          content: |
+            import { Button } from '@shared-ui/Button';
+            import { log } from '@/shared-lib/utils';
+
+            log('App started');
+            const App = () => <Button />;
+      expected: |
+        § (1) packages/shared-ui/src/Button.tsx
+          <- (3.0)
+          + ◇ (1.1) Button
+            <- (3.3)
+            ⛶ button
+
+        § (2) packages/shared-lib/src/utils.ts
+          <- (3.0)
+          + ~ (2.1) log(message: #string)
+            <- (3.0)
+
+        § (3) packages/app/src/main.tsx
+          -> (1.0), (2.0)
+          -> (2.1)
+          - ◇ (3.3) App
+            ⛶ Button
+              -> (1.1)
+    patchStrategy: replace
+  - type: write
+    path: tests/fixtures/11.ts-modifiers.fixture.yaml
+    content: |-
+      id: ts-modifiers
+      name: TypeScript Advanced Modifiers & Class Features
+      input:
+        - path: src/core/base.ts
+          content: |
+            export abstract class BaseEntity {
+              public readonly id: string;
+              static species = 'Homo Sapiens';
+
+              protected constructor(id: string) {
+                this.id = id;
+              }
+
+              abstract getDescription(): string;
+
+              static getSpeciesName(): string {
+                return BaseEntity.species;
+              }
+            }
+        - path: src/models/user.ts
+          content: |
+            import { BaseEntity } from '../core/base';
+
+            export class User extends BaseEntity {
+              private secret: string;
+
+              constructor(id: string, secret: string) {
+                super(id);
+                this.secret = secret;
+              }
+
+              public getDescription(): string {
+                return `User with ID: ${this.id}`;
+              }
+
+              private getSecret(): string {
+                return this.secret;
+              }
+            }
+        - path: src/main.ts
+          content: |
+            import { User } from './models/user';
+            import { BaseEntity } from './core/base';
+
+            const user = new User('user-123', 'password');
+            console.log(user.getDescription());
+            console.log(user.id);
+            console.log(BaseEntity.getSpeciesName());
+      expected: |
+        § (1) src/core/base.ts
+          <- (2.0), (3.0)
+          + ◇ (1.1) BaseEntity [abstract]
+            <- (2.1), (3.0)
+            + @ id: #string [readonly]
+              <- (2.2), (3.0)
+            + @ species: #string [static]
+            - ~ constructor(id: #string)
+              <- (2.2)
+            ~ getDescription(): #string [abstract]
+              <- (2.2)
+            + ~ (1.2) getSpeciesName(): #string [static] o
+              <- (3.0)
+
+        § (2) src/models/user.ts
+          -> (1.0)
+          <- (3.0)
+          + ◇ (2.1) User < (1.1)
+            <- (3.0)
+            - @ secret: #string
+            + ~ (2.2) constructor(id: #string, secret: #string)
+              -> (1.1)
+            + ~ getDescription(): #string o
+              -> (1.1)
+              <- (3.0)
+            - ~ getSecret(): #string o
+
+        § (3) src/main.ts
+          -> (2.0), (1.0)
+          -> (2.1)
+          -> (2.2)
+          -> (1.1)
+          -> (1.2)
+    patchStrategy: replace
+  - type: write
+    path: tests/fixtures/12.js-prototype-iife.fixture.yaml
+    content: |-
+      id: js-prototype-iife
+      name: JavaScript Prototypes and IIFE
+      input:
+        - path: src/legacy-widget.js
+          content: |
+            (function() {
+              function Widget(name) {
+                this.name = name;
+              }
+
+              Widget.prototype.render = function() {
+                return `Widget: ${this.name}`;
+              }
+
+              function* idGenerator() {
+                let i = 0;
+                while(true) yield i++;
+              }
+
+              window.Widget = Widget;
+              window.idGenerator = idGenerator;
+            })();
+        - path: src/app.js
+          content: |
+            const myWidget = new window.Widget('Dashboard');
+            document.body.innerHTML = myWidget.render();
+            const gen = window.idGenerator();
+            console.log(gen.next().value);
+      expected: |
+        § (1) src/legacy-widget.js
+          <- (2.0)
+          ~ (1.1) <anonymous>()
+            - ~ (1.2) Widget(name: #)
+              <- (1.1)
+              @ name
+              + ~ render()
+                <- (2.0)
+            - ~ (1.3) idGenerator*()
+              <- (1.1)
+            + @ window.Widget
+              -> (1.2)
+            + @ window.idGenerator
+              -> (1.3)
+
+        § (2) src/app.js
+          -> (1.0)
+          -> (1.2)
+          -> (1.3)
+    patchStrategy: replace
+  - type: write
+    path: tests/fixtures/13.react-render-props.fixture.yaml
+    content: |-
+      id: react-render-props
+      name: Advanced React Render Patterns (Render Props & Fragments)
+      input:
+        - path: src/components/MouseTracker.tsx
+          content: |
+            import React, { useState } from 'react';
+
+            interface MouseTrackerProps {
+              render: (state: { x: number; y: number }) => React.ReactNode;
+            }
+
+            export const MouseTracker = (props: MouseTrackerProps) => {
+              const [position, setPosition] = useState({ x: 0, y: 0 });
+
+              const handleMouseMove = (event: React.MouseEvent) => {
+                setPosition({ x: event.clientX, y: event.clientY });
+              };
+
+              return (
+                <div style={{ height: '100vh' }} onMouseMove={handleMouseMove}>
+                  {props.render(position)}
+                </div>
+              );
+            };
+        - path: src/App.tsx
+          content: |
+            import React from 'react';
+            import { MouseTracker } from './components/MouseTracker';
+
+            export const App = () => {
+              return (
+                <MouseTracker
+                  render={({ x, y }) => (
+                    <>
+                      <h1>Move the mouse!</h1>
+                      <p>The current mouse position is ({x}, {y})</p>
+                    </>
+                  )}
+                />
+              );
+            };
+      expected: |
+        § (1) src/components/MouseTracker.tsx
+          <- (2.0)
+          - {} (1.1) MouseTrackerProps
+            <- (1.2)
+            @ render: #({x:number, y:number})=>React.ReactNode
+          + ◇ (1.2) MouseTracker { props: #MouseTrackerProps }
+            -> (1.1)
+            <- (2.1)
+            - ~ handleMouseMove(event: #React.MouseEvent)
+            ⛶ div
+
+        § (2) src/App.tsx
+          -> (1.0)
+          + ◇ (2.1) App
+            ⛶ MouseTracker
+              -> (1.2)
+              - ~ <anonymous>({x:#, y:#})
+                ⛶ <>
+                  ⛶ h1
+                  ⛶ p
+    patchStrategy: replace
+  - type: write
+    path: tests/fixtures/14.complex-css.fixture.yaml
+    content: |-
+      id: css-complex
+      name: Complex CSS Selectors and Rules
+      input:
+        - path: src/styles.css
+          content: |
+            @font-face {
+              font-family: 'Open Sans';
+              src: url('/fonts/OpenSans-Regular.woff2');
+            }
+
+            @keyframes slide-in {
+              from { transform: translateX(-100%); }
+              to { transform: translateX(0); }
+            }
+
+            body {
+              font-family: 'Open Sans', sans-serif;
+            }
+
+            input[type="text"] {
+              border: 1px solid #ccc;
+            }
+
+            /* An element with class .icon directly after a .label span */
+            span.label + .icon {
+              margin-left: 4px;
+            }
+
+            /* All p tags inside an article with data-id='123' */
+            article[data-id='123'] > p {
+              line-height: 1.6;
+            }
+
+            .animated-box {
+              animation: slide-in 1s ease-out;
+            }
+      expected: |
+        § (1) src/styles.css
+          ¶ (1.1) @font-face { ✍ }
+          ¶ (1.2) @keyframes slide-in { 📐 }
+            <- (1.7)
+          ¶ (1.3) body { ✍ }
+            -> (1.1)
+          ¶ (1.4) input[type="text"] { 💧 }
+          ¶ (1.5) span.label + .icon { 📐 }
+          ¶ (1.6) article[data-id='123'] > p { ✍ }
+          ¶ (1.7) .animated-box { 📐 }
+            -> (1.2)
+    patchStrategy: replace
+snapshot:
+  tests/fixtures/08.advanced-css.fixture.yaml: null
+  tests/fixtures/09.dep-graph-circular.fixture.yaml: null
+  tests/fixtures/10.monorepo-aliases.fixture.yaml: null
+  tests/fixtures/11.ts-modifiers.fixture.yaml: null
+  tests/fixtures/12.js-prototype-iife.fixture.yaml: null
+  tests/fixtures/13.react-render-props.fixture.yaml: null
+  tests/fixtures/14.complex-css.fixture.yaml: null
+approved: true

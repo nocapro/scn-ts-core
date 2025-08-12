@@ -1,0 +1,953 @@
+uuid: d1669865-0a95-4673-a12b-3e583d735165
+projectId: scn-ts-core
+createdAt: '2025-08-12T03:46:32.607Z'
+linesAdded: 353
+linesRemoved: 34
+gitCommitMsg: 'feat: implement AST analysis and symbol extraction engine'
+promptSummary: >-
+  The user requested the next phase of development. I have implemented the core
+  analysis engine for `scn-ts-core`. This included defining data structures for
+  symbols and relationships, adding comprehensive Tree-sitter queries for
+  TypeScript and CSS, and building an analyzer to process ASTs into these
+  structures. The main entry point now uses this analyzer. The output is a
+  temporary debug format to verify the analysis before implementing the final
+  SCN formatter in the next phase.
+reasoning:
+  - Excellent. Let's proceed to the second phase.
+  - >-
+    In this phase, I will replace the placeholder stubs with the core analysis
+    engine. This involves defining the data structures for our code model
+    (symbols, relationships), using Tree-sitter queries to find nodes of
+    interest in the Abstract Syntax Tree (AST), and implementing the analyzer to
+    process these nodes into a structured representation for each file.
+  - '### Phase 2: AST Analysis and Symbol Extraction'
+  - >-
+    1.  **`src/types.ts`**: I will expand our type definitions to model the
+    code. This includes `SourceFile`, `Symbol`, and `Relationship` interfaces,
+    which will form the backbone of our analysis graph.
+  - >-
+    2.  **`src/utils/ast.ts`**: I'll create a new utility file for common AST
+    operations, like safely extracting text from nodes or getting node
+    positions. This keeps the main analyzer focused on logic.
+  - >-
+    3.  **`src/queries/*.ts`**: Storing complex Tree-sitter queries in their own
+    files is crucial for maintainability. I will create query files for
+    TypeScript and CSS, which are necessary to pass the initial sets of tests.
+  - >-
+    4.  **`src/languages.ts`**: The language configurations will be updated to
+    import and include these new, detailed queries.
+  - >-
+    5.  **`src/analyzer.ts`**: This is the core of this phase. The `analyze`
+    function will be implemented to take a file's AST, run the appropriate
+    language queries against it, and process the resulting captures into a list
+    of `Symbol` and `Relationship` objects.
+  - >-
+    6.  **`src/main.ts`**: The main entry point will be updated to orchestrate
+    this new analysis step. It will now pass the parsed AST to the analyzer. For
+    now, the output will be a simple JSON representation of the symbols found,
+    allowing us to verify the analysis step before moving on to formatting in
+    the next phase.
+  - Let's begin the modifications.
+  - First, I'll update `src/types.ts` with the new data models.
+  - Next, the new `ast.ts` utility file.
+  - >-
+    Now, I'll add the Tree-sitter queries. I'll start with a comprehensive set
+    for TypeScript.
+  - 'And for CSS:'
+  - Now, I'll update `src/languages.ts` to use these queries.
+  - The core of this phase is the new analyzer.
+  - >-
+    Finally, I will update `src/main.ts` to integrate the analyzer and output a
+    debug format.
+  - >-
+    This completes the second phase. We now have a system that can parse source
+    files and extract a preliminary list of symbols and relationships using
+    powerful Tree-sitter queries. The logic is still naive, especially in how it
+    links relationships, but it provides the essential foundation we'll build
+    upon to create the final, detailed SCN output.
+  - I am ready for Phase 3.
+operations:
+  - type: write
+    path: src/types.ts
+    content: |-
+      <<<<<<< SEARCH
+      export interface LanguageConfig {
+          id: string;
+          name: string;
+          extensions: string[];
+          wasmPath: string;
+          parser?: Parser;
+          queries?: Record<string, string>; // Capture queries for different symbols
+      }
+      =======
+      export type SymbolKind =
+        // TS/JS
+        | 'class' | 'interface' | 'function' | 'method' | 'constructor'
+        | 'variable' | 'property' | 'enum' | 'enum_member' | 'type_alias' | 'module'
+        | 'decorator' | 'parameter' | 'type_parameter' | 'import_specifier' | 're_export'
+        // React
+        | 'react_component' | 'react_hook' | 'react_hoc' | 'jsx_attribute' | 'jsx_element'
+        // CSS
+        | 'css_class' | 'css_id' | 'css_tag' | 'css_at_rule' | 'css_property' | 'css_variable'
+        // Generic / Meta
+        | 'file' | 'reference' | 'comment' | 'error' | 'unresolved'
+        // Other Languages
+        | 'go_struct' | 'go_goroutine' | 'rust_trait' | 'rust_impl' | 'rust_macro'
+        | 'java_package' | 'python_class'
+        | 'unknown';
+
+      export interface Position {
+        line: number;
+        column: number;
+      }
+
+      export interface Range {
+        start: Position;
+        end: Position;
+      }
+
+      export interface CodeSymbol {
+        id: string;
+        fileId: number;
+        name: string;
+        kind: SymbolKind;
+        range: Range;
+        // Modifiers and metadata
+        isExported: boolean;
+        isAbstract?: boolean;
+        isStatic?: boolean;
+        isReadonly?: boolean;
+        isAsync?: boolean;
+        // Relationships
+        dependencies: Relationship[];
+      }
+
+      export type RelationshipKind =
+        | 'imports'
+        | 'exports'
+        | 'calls'
+        | 'extends'
+        | 'implements'
+        | 'references'
+        | 'aliased';
+
+      export interface Relationship {
+        targetFileId?: number; // For inter-file relationships
+        targetSymbolId?: string; // For intra-file relationships
+        targetName?: string; // For unresolved symbols
+        kind: RelationshipKind;
+        range: Range;
+      }
+
+      export interface SourceFile {
+        id: number;
+        relativePath: string;
+        absolutePath: string;
+        language: LanguageConfig;
+        sourceCode: string;
+        ast?: Parser.Tree;
+        symbols: CodeSymbol[];
+        parseError: boolean;
+      }
+
+      /**
+       * Represents a supported programming language and its configuration.
+       */
+      export interface LanguageConfig {
+          id: string;
+          name: string;
+          extensions: string[];
+          wasmPath: string;
+          parser?: Parser;
+          queries?: Record<string, string>;
+      }
+      >>>>>>> REPLACE
+    patchStrategy: multi-search-replace
+  - type: write
+    path: src/utils/ast.ts
+    content: >-
+      import type { Position, Range } from '../types';
+
+      import type Parser from 'web-tree-sitter';
+
+
+      export const getNodeText = (node: Parser.SyntaxNode, sourceCode: string):
+      string => {
+          return sourceCode.substring(node.startIndex, node.endIndex);
+      };
+
+
+      export const getNodeRange = (node: Parser.SyntaxNode): Range => {
+          return {
+              start: { line: node.startPosition.row, column: node.startPosition.column },
+              end: { line: node.endPosition.row, column: node.endPosition.column },
+          };
+      };
+
+
+      export const findChild = (node: Parser.SyntaxNode, type: string |
+      string[]): Parser.SyntaxNode | null => {
+          const types = Array.isArray(type) ? type : [type];
+          return node.children.find(c => types.includes(c.type)) || null;
+      }
+
+
+      export const findChildByFieldName = (node: Parser.SyntaxNode, fieldName:
+      string): Parser.SyntaxNode | null => {
+          return node.childForFieldName(fieldName);
+      };
+
+
+      export const getIdentifier = (node: Parser.SyntaxNode, sourceCode: string,
+      defaultName: string = '<anonymous>'): string => {
+          const nameNode = findChildByFieldName(node, 'name') ?? findChild(node, ['identifier', 'property_identifier']);
+          return nameNode ? getNodeText(nameNode, sourceCode) : defaultName;
+      };
+    patchStrategy: replace
+  - type: write
+    path: src/queries/typescript.ts
+    content: |-
+      export const typescriptQueries = `
+      ;; -------------------------------------------------------------------
+      ;; Identifiers & Declarations
+      ;; -------------------------------------------------------------------
+
+      (class_declaration
+        name: (identifier) @symbol.class.def) @scope.class.def
+
+      (interface_declaration
+        name: (type_identifier) @symbol.interface.def) @scope.interface.def
+
+      (function_declaration
+        name: (identifier) @symbol.function.def) @scope.function.def
+
+      (method_definition
+        name: (property_identifier) @symbol.method.def) @scope.method.def
+
+      (enum_declaration
+        name: (identifier) @symbol.enum.def) @scope.enum.def
+
+      (enum_assignment
+        name: (property_identifier) @symbol.enum_member.def)
+
+      (type_alias_declaration
+        name: (type_identifier) @symbol.type_alias.def) @scope.type_alias.def
+
+      (lexical_declaration
+        (variable_declarator
+          name: (identifier) @symbol.variable.def))
+
+      (public_field_definition
+        name: (property_identifier) @symbol.property.def)
+
+      ;; -------------------------------------------------------------------
+      ;; Imports & Exports
+      ;; -------------------------------------------------------------------
+
+      (import_statement
+        source: (string) @rel.import.source)
+
+      (import_specifier
+        name: (identifier) @symbol.import.specifier)
+
+      (namespace_import
+        (identifier) @symbol.import.namespace)
+
+      (export_statement
+        source: (string) @rel.export.source)
+
+      (export_specifier
+        name: (identifier) @symbol.export.specifier)
+
+      ;; -------------------------------------------------------------------
+      ;; Relationships & References
+      ;; -------------------------------------------------------------------
+
+      (call_expression
+        function: [(identifier) @rel.call.id (property_identifier) @rel.call.prop])
+
+      (new_expression
+        constructor: (identifier) @rel.new.id)
+
+      (class_declaration
+        (class_heritage
+          (expression_with_type_arguments
+            (identifier) @rel.extends)))
+
+      (interface_declaration
+        (class_heritage
+          (expression_with_type_arguments
+            (type_identifier) @rel.extends)))
+
+      (implement_clause
+        (type_identifier) @rel.implements)
+
+      (type_identifier) @rel.type.reference
+      (generic_type (type_identifier) @rel.type.reference)
+
+      ;; -------------------------------------------------------------------
+      ;; JSX/TSX
+      ;; -------------------------------------------------------------------
+
+      (jsx_element
+        open_tag: (jsx_opening_element
+          name: (identifier) @symbol.jsx_element.def))
+
+      (jsx_self_closing_element
+        name: (identifier) @symbol.jsx_element.def)
+
+      (jsx_attribute
+        name: (property_identifier) @symbol.jsx_attribute.def)
+      `;
+    patchStrategy: replace
+  - type: write
+    path: src/queries/css.ts
+    content: |-
+      export const cssQueries = `
+      (class_selector
+        (class_name) @symbol.css_class.def)
+
+      (id_selector
+        (id_name) @symbol.css_id.def)
+        
+      (tag_selector
+        (tag_name) @symbol.css_tag.def)
+
+      (at_rule
+        (at_keyword) @symbol.css_at_rule.def)
+
+      (declaration
+        (property_name) @symbol.css_property.def
+        (variable_name) @rel.css_variable.ref)
+
+      (declaration
+        (custom_property) @symbol.css_variable.def)
+      `;
+    patchStrategy: replace
+  - type: write
+    path: src/languages.ts
+    content: |-
+      <<<<<<< SEARCH
+      import type { LanguageConfig } from './types';
+      import path from 'node:path';
+
+      // Based on test/wasm and test/fixtures
+      export const languages: LanguageConfig[] = [
+          {
+              id: 'typescript',
+              name: 'TypeScript',
+              extensions: ['.ts', '.mts', '.cts'],
+              wasmPath: 'tree-sitter-typescript.wasm',
+              queries: {},
+          },
+          {
+              id: 'tsx',
+              name: 'TypeScriptReact',
+              extensions: ['.tsx'],
+              wasmPath: 'tree-sitter-tsx.wasm',
+              queries: {},
+          },
+          {
+              id: 'javascript',
+              name: 'JavaScript',
+              extensions: ['.js', '.mjs', '.cjs'],
+              wasmPath: 'tree-sitter-typescript.wasm',
+              queries: {},
+          },
+          {
+              id: 'css',
+              name: 'CSS',
+              extensions: ['.css'],
+              wasmPath: 'tree-sitter-css.wasm',
+              queries: {},
+          },
+          {
+              id: 'go',
+              name: 'Go',
+              extensions: ['.go'],
+              wasmPath: 'tree-sitter-go.wasm',
+              queries: {},
+          },
+          {
+              id: 'java',
+              name: 'Java',
+              extensions: ['.java'],
+              wasmPath: 'tree-sitter-java.wasm',
+              queries: {},
+          },
+          {
+              id: 'python',
+              name: 'Python',
+              extensions: ['.py'],
+              wasmPath: 'tree-sitter-python.wasm',
+              queries: {},
+          },
+          {
+              id: 'rust',
+              name: 'Rust',
+              extensions: ['.rs'],
+              wasmPath: 'tree-sitter-rust.wasm',
+              queries: {},
+          },
+          {
+              id: 'c',
+              name: 'C',
+              extensions: ['.c'],
+              wasmPath: 'tree-sitter-c.wasm',
+              queries: {},
+          },
+          {
+              id: 'graphql',
+              name: 'GraphQL',
+              extensions: ['.graphql', '.gql'],
+              wasmPath: '', // No wasm file provided in the list
+              queries: {},
+          },
+      ];
+      =======
+      import type { LanguageConfig } from './types';
+      import path from 'node:path';
+      import { typescriptQueries } from '../queries/typescript';
+      import { cssQueries } from '../queries/css';
+
+      // Based on test/wasm and test/fixtures
+      export const languages: LanguageConfig[] = [
+          {
+              id: 'typescript',
+              name: 'TypeScript',
+              extensions: ['.ts', '.mts', '.cts'],
+              wasmPath: 'tree-sitter-typescript.wasm',
+              queries: { main: typescriptQueries },
+          },
+          {
+              id: 'tsx',
+              name: 'TypeScriptReact',
+              extensions: ['.tsx'],
+              wasmPath: 'tree-sitter-tsx.wasm',
+              queries: { main: typescriptQueries },
+          },
+          {
+              id: 'javascript',
+              name: 'JavaScript',
+              extensions: ['.js', '.mjs', '.cjs'],
+              wasmPath: 'tree-sitter-typescript.wasm',
+              queries: { main: typescriptQueries },
+          },
+          {
+              id: 'css',
+              name: 'CSS',
+              extensions: ['.css'],
+              wasmPath: 'tree-sitter-css.wasm',
+              queries: { main: cssQueries },
+          },
+          {
+              id: 'go',
+              name: 'Go',
+              extensions: ['.go'],
+              wasmPath: 'tree-sitter-go.wasm',
+              queries: {},
+          },
+          {
+              id: 'java',
+              name: 'Java',
+              extensions: ['.java'],
+              wasmPath: 'tree-sitter-java.wasm',
+              queries: {},
+          },
+          {
+              id: 'python',
+              name: 'Python',
+              extensions: ['.py'],
+              wasmPath: 'tree-sitter-python.wasm',
+              queries: {},
+          },
+          {
+              id: 'rust',
+              name: 'Rust',
+              extensions: ['.rs'],
+              wasmPath: 'tree-sitter-rust.wasm',
+              queries: {},
+          },
+          {
+              id: 'c',
+              name: 'C',
+              extensions: ['.c'],
+              wasmPath: 'tree-sitter-c.wasm',
+              queries: {},
+          },
+          {
+              id: 'graphql',
+              name: 'GraphQL',
+              extensions: ['.graphql', '.gql'],
+              wasmPath: '', // No wasm file provided in the list
+              queries: {},
+          },
+      ];
+      >>>>>>> REPLACE
+    patchStrategy: multi-search-replace
+  - type: write
+    path: src/analyzer.ts
+    content: >-
+      import type { SourceFile, CodeSymbol, Relationship, SymbolKind,
+      RelationshipKind } from './types';
+
+      import { getNodeRange, getNodeText, getIdentifier } from './utils/ast';
+
+      import type Parser from 'web-tree-sitter';
+
+
+      const createSymbol = (
+          capture: Parser.QueryCapture,
+          sourceFile: SourceFile
+      ): CodeSymbol | null => {
+          const { node, name: captureName } = capture;
+          const [cat, kind, role] = captureName.split('.');
+          
+          if (cat !== 'symbol' || role !== 'def') return null;
+
+          const range = getNodeRange(node);
+          const id = `${sourceFile.id}:${range.start.line}:${range.start.column}`;
+          const name = getNodeText(node, sourceFile.sourceCode);
+
+          // Naive check for export by looking for `export` keyword on parent.
+          // A more robust solution would check the AST structure precisely.
+          const isExported = node.parent?.type.includes('export') ?? false;
+
+          const symbol: CodeSymbol = {
+              id,
+              fileId: sourceFile.id,
+              name: getIdentifier(node, sourceFile.sourceCode),
+              kind: kind as SymbolKind,
+              range,
+              isExported,
+              dependencies: [],
+          };
+          return symbol;
+      };
+
+
+      const createRelationship = (
+          capture: Parser.QueryCapture,
+          sourceFile: SourceFile
+      ): Relationship | null => {
+          const { node, name: captureName } = capture;
+          const [cat, kind, role] = captureName.split('.');
+
+          if (cat !== 'rel') return null;
+
+          const range = getNodeRange(node);
+          const targetName = getNodeText(node, sourceFile.sourceCode);
+
+          const rel: Relationship = {
+              kind: kind as RelationshipKind,
+              targetName: targetName.replace(/['"`]/g, ''), // remove quotes from import paths
+              range,
+          };
+
+          return rel;
+      };
+
+
+      export const analyze = (sourceFile: SourceFile): SourceFile => {
+          if (!sourceFile.ast || !sourceFile.language.parser) {
+              return sourceFile;
+          }
+
+          const { ast, language, sourceCode } = sourceFile;
+          const mainQuery = language.queries?.main ?? '';
+
+          if (!mainQuery) {
+              return sourceFile;
+          }
+
+          const query = language.parser.getLanguage().query(mainQuery);
+          const captures = query.captures(ast.rootNode);
+
+          const symbols: CodeSymbol[] = [];
+          const relationships: Relationship[] = [];
+
+          for (const capture of captures) {
+              const symbol = createSymbol(capture, sourceFile);
+              if (symbol) {
+                  symbols.push(symbol);
+                  continue;
+              }
+
+              const relationship = createRelationship(capture, sourceFile);
+              if (relationship) {
+                  // In a real implementation, we'd associate this with a symbol
+                  // For now, we'll just collect them.
+                  relationships.push(relationship);
+              }
+          }
+          
+          // Naive association of relationships to the first symbol.
+          // This will be refined in the next phase.
+          if(symbols.length > 0 && relationships.length > 0) {
+              symbols[0].dependencies.push(...relationships);
+          }
+
+
+          sourceFile.symbols = symbols;
+          return sourceFile;
+      };
+    patchStrategy: replace
+  - type: write
+    path: src/main.ts
+    content: >-
+      <<<<<<< SEARCH
+
+      import { findFiles } from './utils/file-system';
+
+      import { getLanguageForFile } from './languages';
+
+      import { initializeParser as init, parse } from './parser';
+
+      import type { ScnTsConfig, ParserInitOptions } from './types';
+
+      // import { analyze } from './analyzer';
+
+      // import { formatScn } from './formatter';
+
+      import fs from 'node:fs/promises';
+
+      import path from 'node:path';
+
+      import { getPathResolver } from './utils/tsconfig';
+
+      =======
+
+      import { findFiles } from './utils/file-system';
+
+      import { getLanguageForFile } from './languages';
+
+      import { initializeParser as init, parse } from './parser';
+
+      import type { ScnTsConfig, ParserInitOptions, SourceFile } from './types';
+
+      import { analyze } from './analyzer';
+
+      // import { formatScn } from './formatter';
+
+      import fs from 'node:fs/promises';
+
+      import path from 'node:path';
+
+      import { getPathResolver } from './utils/tsconfig';
+
+      >>>>>>> REPLACE
+
+      <<<<<<< SEARCH
+
+      /**
+       * Generates an SCN string from a project directory.
+       */
+      export const generateScn = async (config: ScnTsConfig): Promise<string> =>
+      {
+          const allFiles = await findFiles(config.root, config.include, config.exclude);
+          const pathResolver = await getPathResolver(config.root);
+
+          const processingPromises = allFiles.map(async (relativeFilePath) => {
+              const lang = getLanguageForFile(relativeFilePath);
+              const absoluteFilePath = path.join(config.root, relativeFilePath);
+              const sourceCode = await fs.readFile(absoluteFilePath, 'utf-8');
+
+              if (!lang || !lang.wasmPath) {
+                  // For now, just show unsupported for anything without a parser
+                  return `§ (?) ${relativeFilePath} [unsupported]`;
+              }
+
+              if (sourceCode.trim() === '') {
+                  return `§ (?) ${relativeFilePath}`;
+              }
+
+              const tree = parse(sourceCode, lang);
+
+              if (!tree) {
+                  return `§ (?) ${relativeFilePath} [parsing_failed]`;
+              }
+              
+              // Placeholder until analyzer and formatter are implemented
+              return `§ (?) ${relativeFilePath} [parsed]`;
+          });
+          
+          const results = await Promise.all(processingPromises);
+          
+          // The final formatting will be more complex.
+          // For now, just join the results. Sorting is done in findFiles.
+          return results.join('\n\n').trim();
+      };
+
+      =======
+
+      /**
+       * Generates an SCN string from a project directory.
+       */
+      export const generateScn = async (config: ScnTsConfig): Promise<string> =>
+      {
+          const allFiles = await findFiles(config.root, config.include, config.exclude);
+          const pathResolver = await getPathResolver(config.root);
+
+          let fileIdCounter = 0;
+
+          const fileProcessingPromises = allFiles.map(async (relativeFilePath) => {
+              const lang = getLanguageForFile(relativeFilePath);
+              const absoluteFilePath = path.join(config.root, relativeFilePath);
+              const sourceCode = await fs.readFile(absoluteFilePath, 'utf-8');
+              const fileId = fileIdCounter++;
+
+              const sourceFile: SourceFile = {
+                  id: fileId,
+                  relativePath,
+                  absolutePath,
+                  sourceCode,
+                  language: lang!,
+                  symbols: [],
+                  parseError: false,
+              };
+
+              if (!lang || !lang.wasmPath) return sourceFile;
+              
+              const tree = parse(sourceCode, lang);
+              if (!tree) {
+                  sourceFile.parseError = true;
+                  return sourceFile;
+              }
+              sourceFile.ast = tree;
+
+              return analyze(sourceFile);
+          });
+          
+          const analyzedFiles = await Promise.all(fileProcessingPromises);
+
+          // Phase 2: Output a debug format to verify analysis.
+          // Phase 3 will replace this with the real SCN formatter.
+          const debugOutput = analyzedFiles.map(f => {
+              if (f.parseError) {
+                  return `§ (${f.id}) ${f.relativePath} [error]`;
+              }
+              if (f.symbols.length === 0 && f.sourceCode.trim() === '') {
+                  return `§ (${f.id}) ${f.relativePath}`;
+              }
+              const symbolsStr = f.symbols.map(s => `  + ${s.kind} ${s.name}`).join('\n');
+              return `§ (${f.id}) ${f.relativePath}\n${symbolsStr}`;
+          }).join('\n\n');
+
+          return debugOutput.trim();
+      };
+
+      >>>>>>> REPLACE
+    patchStrategy: multi-search-replace
+snapshot:
+  src/utils/ast.ts: null
+  src/queries/typescript.ts: null
+  src/queries/css.ts: null
+  src/types.ts: |-
+    import type Parser from 'web-tree-sitter';
+
+    /**
+     * Configuration for the SCN generation process.
+     */
+    export interface ScnTsConfig {
+      root: string;
+      include: string[];
+      exclude?: string[];
+      _test_id?: string; // Special property for test runner to identify fixtures
+    }
+
+    /**
+     * Options for initializing the Tree-sitter parser.
+     */
+    export interface ParserInitOptions {
+        wasmBaseUrl: string;
+    }
+
+    /**
+     * Represents a supported programming language and its configuration.
+     */
+    export interface LanguageConfig {
+        id: string;
+        name: string;
+        extensions: string[];
+        wasmPath: string;
+        parser?: Parser;
+        queries?: Record<string, string>; // Capture queries for different symbols
+    }
+  src/languages.ts: >-
+    import type { LanguageConfig } from './types';
+
+    import path from 'node:path';
+
+
+    // Based on test/wasm and test/fixtures
+
+    export const languages: LanguageConfig[] = [
+        {
+            id: 'typescript',
+            name: 'TypeScript',
+            extensions: ['.ts', '.mts', '.cts'],
+            wasmPath: 'tree-sitter-typescript.wasm',
+            queries: {},
+        },
+        {
+            id: 'tsx',
+            name: 'TypeScriptReact',
+            extensions: ['.tsx'],
+            wasmPath: 'tree-sitter-tsx.wasm',
+            queries: {},
+        },
+        {
+            id: 'javascript',
+            name: 'JavaScript',
+            extensions: ['.js', '.mjs', '.cjs'],
+            wasmPath: 'tree-sitter-typescript.wasm',
+            queries: {},
+        },
+        {
+            id: 'css',
+            name: 'CSS',
+            extensions: ['.css'],
+            wasmPath: 'tree-sitter-css.wasm',
+            queries: {},
+        },
+        {
+            id: 'go',
+            name: 'Go',
+            extensions: ['.go'],
+            wasmPath: 'tree-sitter-go.wasm',
+            queries: {},
+        },
+        {
+            id: 'java',
+            name: 'Java',
+            extensions: ['.java'],
+            wasmPath: 'tree-sitter-java.wasm',
+            queries: {},
+        },
+        {
+            id: 'python',
+            name: 'Python',
+            extensions: ['.py'],
+            wasmPath: 'tree-sitter-python.wasm',
+            queries: {},
+        },
+        {
+            id: 'rust',
+            name: 'Rust',
+            extensions: ['.rs'],
+            wasmPath: 'tree-sitter-rust.wasm',
+            queries: {},
+        },
+        {
+            id: 'c',
+            name: 'C',
+            extensions: ['.c'],
+            wasmPath: 'tree-sitter-c.wasm',
+            queries: {},
+        },
+        {
+            id: 'graphql',
+            name: 'GraphQL',
+            extensions: ['.graphql', '.gql'],
+            wasmPath: '', // No wasm file provided in the list
+            queries: {},
+        },
+    ];
+
+
+    const createLanguageMap = (): Map<string, LanguageConfig> => {
+        const map = new Map<string, LanguageConfig>();
+        languages.forEach(lang => {
+            lang.extensions.forEach(ext => {
+                map.set(ext, lang);
+            });
+        });
+        return map;
+    };
+
+
+    const languageMap = createLanguageMap();
+
+
+    export const getLanguageForFile = (filePath: string): LanguageConfig |
+    undefined => {
+        const extension = path.extname(filePath);
+        return languageMap.get(extension);
+    };
+  src/analyzer.ts: |-
+    /**
+     * This file will contain the logic to traverse a Tree-sitter AST
+     * and extract SCN symbols and relationships.
+     * It's a placeholder for the first phase.
+     */
+    export const analyze = () => {
+        // In next phases, this will return an array of SCN symbols.
+        return [];
+    };
+  src/main.ts: >-
+    import { findFiles } from './utils/file-system';
+
+    import { getLanguageForFile } from './languages';
+
+    import { initializeParser as init, parse } from './parser';
+
+    import type { ScnTsConfig, ParserInitOptions } from './types';
+
+    // import { analyze } from './analyzer';
+
+    // import { formatScn } from './formatter';
+
+    import fs from 'node:fs/promises';
+
+    import path from 'node:path';
+
+    import { getPathResolver } from './utils/tsconfig';
+
+
+    /**
+     * Public API to initialize the parser. Must be called before generateScn.
+     */
+    export const initializeParser = (options: ParserInitOptions): Promise<void>
+    => {
+        return init(options);
+    };
+
+
+    /**
+     * Generates an SCN string from a project directory.
+     */
+    export const generateScn = async (config: ScnTsConfig): Promise<string> => {
+        const allFiles = await findFiles(config.root, config.include, config.exclude);
+        const pathResolver = await getPathResolver(config.root);
+
+        const processingPromises = allFiles.map(async (relativeFilePath) => {
+            const lang = getLanguageForFile(relativeFilePath);
+            const absoluteFilePath = path.join(config.root, relativeFilePath);
+            const sourceCode = await fs.readFile(absoluteFilePath, 'utf-8');
+
+            if (!lang || !lang.wasmPath) {
+                // For now, just show unsupported for anything without a parser
+                return `§ (?) ${relativeFilePath} [unsupported]`;
+            }
+
+            if (sourceCode.trim() === '') {
+                return `§ (?) ${relativeFilePath}`;
+            }
+
+            const tree = parse(sourceCode, lang);
+
+            if (!tree) {
+                return `§ (?) ${relativeFilePath} [parsing_failed]`;
+            }
+            
+            // Placeholder until analyzer and formatter are implemented
+            return `§ (?) ${relativeFilePath} [parsed]`;
+        });
+        
+        const results = await Promise.all(processingPromises);
+        
+        // The final formatting will be more complex.
+        // For now, just join the results. Sorting is done in findFiles.
+        return results.join('\n\n').trim();
+    };
+approved: true

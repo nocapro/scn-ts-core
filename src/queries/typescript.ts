@@ -31,8 +31,7 @@ export const typescriptQueries = `
     name: (identifier) @symbol.variable.def)) @scope.variable.def
 
 (public_field_definition
-  name: (property_identifier) @symbol.property.def
-  accessibility: (accessibility_modifier) @mod.access) @scope.property.def
+  name: (property_identifier) @symbol.property.def) @scope.property.def
 
 (decorator (identifier) @symbol.decorator.def)
 

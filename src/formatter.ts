@@ -6,6 +6,8 @@ const ICONS: Record<string, string> = {
     variable: '@', property: '@', enum: '☰', enum_member: '@',
     type_alias: '=:', react_component: '◇', jsx_element: '⛶',
     css_class: '¶', css_id: '¶', css_tag: '¶', css_at_rule: '¶',
+    go_package: '◇',
+    rust_struct: '◇', rust_trait: '{}', rust_impl: '+',
     error: '[error]', default: '?',
 };
 
@@ -37,7 +39,13 @@ const formatSymbol = (symbol: CodeSymbol, allFiles: SourceFile[]): string[] => {
             if (!outgoing.has(dep.resolvedFileId)) outgoing.set(dep.resolvedFileId, new Set());
             if (dep.resolvedSymbolId) {
                 const targetSymbol = allFiles.find(f => f.id === dep.resolvedFileId)?.symbols.find(s => s.id === dep.resolvedSymbolId);
-                if (targetSymbol) outgoing.get(dep.resolvedFileId)!.add(formatSymbolId(targetSymbol));
+                if (targetSymbol) {
+                    let text = formatSymbolId(targetSymbol);
+                    if (dep.kind === 'goroutine') {
+                        text += ' [goroutine]';
+                    }
+                    outgoing.get(dep.resolvedFileId)!.add(text);
+                }
             }
         }
     });

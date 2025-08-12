@@ -42,7 +42,7 @@ export type SymbolKind =
   // Generic / Meta
   | 'file' | 'reference' | 'comment' | 'error' | 'unresolved'
   // Other Languages
-  | 'go_struct' | 'go_goroutine' | 'rust_trait' | 'rust_impl' | 'rust_macro'
+  | 'go_package' | 'go_struct' | 'go_goroutine' | 'rust_struct' | 'rust_trait' | 'rust_impl' | 'rust_macro'
   | 'java_package' | 'python_class'
   | 'unknown';
 
@@ -85,7 +85,8 @@ export type RelationshipKind =
   | 'extends'
   | 'implements'
   | 'references'
-  | 'aliased';
+  | 'aliased'
+  | 'goroutine';
 
 export interface Relationship {
   targetName: string; // The raw name of the target (e.g., './utils', 'MyClass', 'add', 'Button')

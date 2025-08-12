@@ -11,9 +11,6 @@ export const cssQueries = `
   (at_keyword) @symbol.css_at_rule.def)
 
 (declaration
-  (property_name) @symbol.css_property.def
-  (variable_name) @rel.css_variable.ref)
+  (property_name) @symbol.css_property.def)
 
-(declaration
-  (custom_property) @symbol.css_variable.def)
 `;

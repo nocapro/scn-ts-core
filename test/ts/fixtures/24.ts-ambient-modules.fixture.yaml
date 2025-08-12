@@ -1,0 +1,36 @@
+id: ts-ambient-modules
+name: Ambient Modules & Triple-Slash Directives
+input:
+  - path: src/types/global.d.ts
+    content: |
+      // This adds a 'uuid' property to the global Window interface.
+      interface Window {
+        uuid: string;
+      }
+  - path: src/main.ts
+    content: |
+      /// <reference path="./types/global.d.ts" />
+
+      // This module doesn't exist on disk, it's defined ambiently.
+      declare module 'virtual-logger' {
+        export function log(message: string): void;
+      }
+
+      import { log } from 'virtual-logger';
+
+      log('Hello from an ambient module!');
+      console.log(window.uuid);
+expected: |
+  § (1) src/types/global.d.ts
+    <- (2.0)
+    {} (1.1) Window
+      <- (2.0)
+      @ uuid: #string
+
+  § (2) src/main.ts
+    -> (1.0) [reference]
+    ◇ 'virtual-logger' [ambient]
+      + ~ (2.2) log(message: #string): #void
+        <- (2.0)
+    -> (2.2)
+    -> (1.1)

@@ -1,0 +1,59 @@
+id: ts-advanced
+name: Advanced TS (Inheritance, Enums, Pure Functions)
+input:
+  - path: src/lib/constants.ts
+    content: |
+      export enum LogLevel {
+        Info,
+        Warn,
+        Error
+      }
+  - path: src/lib/logger.ts
+    content: |
+      export class BaseLogger {
+        log(message: string) {
+          // This is impure because of console.log
+          console.log(message);
+        }
+      }
+  - path: src/services/fileLogger.ts
+    content: |
+      import { BaseLogger } from '../lib/logger';
+      import { LogLevel } from '../lib/constants';
+
+      export class FileLogger extends BaseLogger {
+        logWithLevel(level: LogLevel, message: string) {
+          const prefix = LogLevel[level];
+          super.log(`[${prefix}]: ${message}`);
+        }
+      }
+  - path: src/utils/math.ts
+    content: |
+      /** A pure function with no side effects */
+      export function add(a: number, b: number): number {
+        return a + b;
+      }
+expected: |
+  § (1) src/lib/constants.ts
+    <- (3.0)
+    + ☰ (1.1) LogLevel
+      <- (3.2)
+      @ Info
+      @ Warn
+      @ Error
+
+  § (2) src/lib/logger.ts
+    <- (3.0)
+    + ◇ (2.1) BaseLogger
+      <- (3.1)
+      + ~ (2.2) log(message: #string)
+        <- (3.1)
+
+  § (4) src/utils/math.ts
+    + ~ add(a: #number, b: #number): #number o
+
+  § (3) src/services/fileLogger.ts
+    -> (2.0), (1.0)
+    + ◇ (3.1) FileLogger < (2.1)
+      + ~ (3.2) logWithLevel(level: #LogLevel, message: #string)
+        -> (1.1), (2.2)

@@ -1,0 +1,46 @@
+id: react-server-components
+name: React Server Components & Directives
+input:
+  - path: src/actions/db.ts
+    content: |
+      'use server';
+
+      export async function getUsername(id: number): Promise<string> {
+        // In a real app, this would query a database.
+        return `User ${id}`;
+      }
+  - path: src/components/UsernameDisplay.tsx
+    content: |
+      import { getUsername } from '../actions/db';
+
+      // This is a React Server Component (RSC)
+      export async function UsernameDisplay({ userId }) {
+        const username = await getUsername(userId);
+        return <p>Welcome, {username}</p>;
+      }
+  - path: src/components/InteractiveButton.tsx
+    content: |
+      'use client';
+
+      import { useState } from 'react';
+
+      // This is a Client Component
+      export function InteractiveButton() {
+        const [count, setCount] = useState(0);
+        return <button onClick={() => setCount(c => c + 1)}>Clicked {count}</button>;
+      }
+expected: |
+  § (1) src/actions/db.ts [server]
+    <- (2.0)
+    + ~ (1.1) getUsername(id: #number): #Promise<string> ...
+      <- (2.1)
+
+  § (2) src/components/UsernameDisplay.tsx [server]
+    -> (1.0)
+    + ◇ (2.1) UsernameDisplay { props: { userId:# } } ...
+      -> (1.1)
+      ⛶ p
+
+  § (3) src/components/InteractiveButton.tsx [client]
+    + ◇ InteractiveButton
+      ⛶ button

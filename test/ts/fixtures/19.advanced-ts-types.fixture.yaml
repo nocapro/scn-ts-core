@@ -1,0 +1,47 @@
+id: ts-advanced-types
+name: Advanced TypeScript Types (Conditional, Mapped, Template Literals)
+input:
+  - path: src/types.ts
+    content: |
+      type EventName = 'click' | 'scroll' | 'mousemove';
+      type Style = 'bold' | 'italic';
+
+      // Template Literal Type
+      export type CssClass = `text-${Style}`;
+
+      // Mapped Type
+      export type HandlerMap = {
+        [K in EventName]: (event: K) => void;
+      };
+
+      // Conditional Type with 'infer'
+      export type UnpackPromise<T> = T extends Promise<infer U> ? U : T;
+
+      interface User { id: number; name: string; }
+
+      // Satisfies Operator
+      const config = {
+        user: { id: 1, name: 'admin' }
+      } satisfies { user: User };
+
+      export const getUserId = (): UnpackPromise<Promise<number>> => {
+        return config.user.id;
+      };
+expected: |
+  § (1) src/types.ts
+    - =: EventName #click|scroll|mousemove
+      <- (1.2)
+    - =: Style #bold|italic
+      <- (1.1)
+    - {} User
+      <- (1.4)
+      @ id: #number
+      @ name: #string
+    + =: (1.1) CssClass #`text-${Style}`
+    + =: (1.2) HandlerMap #K in EventName:(event:K)=>void
+    + =: (1.3) UnpackPromise<T> #T extends Promise<infer U>?U:T
+      <- (1.5)
+    - @ (1.4) config
+      -> User
+    + ~ (1.5) getUserId(): #UnpackPromise<Promise<number>> o
+      -> (1.3), (1.4)

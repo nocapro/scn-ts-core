@@ -1,0 +1,46 @@
+id: wasm-workers
+name: WebAssembly (WASM) & Web Workers
+input:
+  - path: src/wasm/calculator.c
+    content: |
+      // C code to be compiled to WASM
+      int add(int a, int b) {
+        return a + b;
+      }
+  - path: src/workers/heavy_task.js
+    content: |
+      self.onmessage = function(e) {
+        const result = e.data[0] * e.data[1];
+        self.postMessage(result);
+      };
+  - path: src/main.js
+    content: |
+      import init, { add } from './wasm/calculator.js'; // JS glue generated for WASM
+
+      // Initialize WASM
+      init().then(() => {
+        console.log('2 + 3 =', add(2, 3));
+      });
+
+      // Initialize Worker
+      const myWorker = new Worker(new URL('./workers/heavy_task.js', import.meta.url));
+      myWorker.postMessage([10, 20]);
+      myWorker.onmessage = (e) => {
+        console.log('Worker result:', e.data);
+      };
+expected: |
+  § (1) src/wasm/calculator.c
+    <- (3.0)
+    ~ add(a: #int, b: #int): #int
+      <- (3.0)
+
+  § (2) src/workers/heavy_task.js
+    <- (3.0)
+    @ self.onmessage
+    @ self.postMessage
+
+  § (3) src/main.js
+    -> (1.0) [wasm]
+    -> (2.0) [worker]
+    ~ <anonymous>() ...
+      -> add

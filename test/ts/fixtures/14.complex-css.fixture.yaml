@@ -1,0 +1,48 @@
+id: css-complex
+name: Complex CSS Selectors and Rules
+input:
+  - path: src/styles.css
+    content: |
+      @font-face {
+        font-family: 'Open Sans';
+        src: url('/fonts/OpenSans-Regular.woff2');
+      }
+
+      @keyframes slide-in {
+        from { transform: translateX(-100%); }
+        to { transform: translateX(0); }
+      }
+
+      body {
+        font-family: 'Open Sans', sans-serif;
+      }
+
+      input[type="text"] {
+        border: 1px solid #ccc;
+      }
+
+      /* An element with class .icon directly after a .label span */
+      span.label + .icon {
+        margin-left: 4px;
+      }
+
+      /* All p tags inside an article with data-id='123' */
+      article[data-id='123'] > p {
+        line-height: 1.6;
+      }
+
+      .animated-box {
+        animation: slide-in 1s ease-out;
+      }
+expected: |
+  § (1) src/styles.css
+    ¶ (1.1) @font-face { ✍ }
+    ¶ (1.2) @keyframes slide-in { 📐 }
+      <- (1.7)
+    ¶ (1.3) body { ✍ }
+      -> (1.1)
+    ¶ (1.4) input[type="text"] { 💧 }
+    ¶ (1.5) span.label + .icon { 📐 }
+    ¶ (1.6) article[data-id='123'] > p { ✍ }
+    ¶ (1.7) .animated-box { 📐 }
+      -> (1.2)

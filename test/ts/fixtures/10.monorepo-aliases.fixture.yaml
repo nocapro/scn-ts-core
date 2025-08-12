@@ -1,0 +1,34 @@
+id: monorepo-aliases
+name: Monorepo-style Path Aliases
+input:
+  - path: packages/shared-ui/src/Button.tsx
+    content: |
+      export const Button = () => <button>Click</button>;
+  - path: packages/shared-lib/src/utils.ts
+    content: |
+      export const log = (message: string) => console.log(message);
+  - path: packages/app/src/main.tsx
+    content: |
+      import { Button } from '@shared-ui/Button';
+      import { log } from '@/shared-lib/utils';
+
+      log('App started');
+      const App = () => <Button />;
+expected: |
+  § (1) packages/shared-ui/src/Button.tsx
+    <- (3.0)
+    + ◇ (1.1) Button
+      <- (3.3)
+      ⛶ button
+
+  § (2) packages/shared-lib/src/utils.ts
+    <- (3.0)
+    + ~ (2.1) log(message: #string)
+      <- (3.0)
+
+  § (3) packages/app/src/main.tsx
+    -> (1.0), (2.0)
+    -> (2.1)
+    - ◇ (3.3) App
+      ⛶ Button
+        -> (1.1)

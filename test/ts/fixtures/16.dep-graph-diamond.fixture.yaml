@@ -1,0 +1,35 @@
+id: dep-graph-diamond
+name: Diamond Dependency Graph
+input:
+  - path: src/D.ts
+    content: "export const D = 'D';"
+  - path: src/B.ts
+    content: "import { D } from './D'; export const B = `B uses ${D}`;"
+  - path: src/C.ts
+    content: "import { D } from './D'; export const C = `C uses ${D}`;"
+  - path: src/A.ts
+    content: "import { B } from './B'; import { C } from './C'; export const A = `${B} and ${C}`;"
+expected: |
+  § (1) src/D.ts
+    <- (2.0), (3.0)
+    + @ (1.1) D
+      <- (2.1), (3.1)
+
+  § (2) src/B.ts
+    -> (1.0)
+    <- (4.0)
+    + @ (2.1) B
+      -> (1.1)
+      <- (4.1)
+
+  § (3) src/C.ts
+    -> (1.0)
+    <- (4.0)
+    + @ (3.1) C
+      -> (1.1)
+      <- (4.1)
+
+  § (4) src/A.ts
+    -> (2.0), (3.0)
+    + @ (4.1) A
+      -> (2.1), (3.1)

@@ -1,0 +1,22 @@
+id: dynamic-imports
+name: Dynamic Imports and Code Splitting
+input:
+  - path: src/heavy-module.ts
+    content: "export function doHeavyCalculation() { return 42; }"
+  - path: src/main.ts
+    content: |
+      document.getElementById('load-btn').addEventListener('click', async () => {
+        const { doHeavyCalculation } = await import('./heavy-module');
+        const result = doHeavyCalculation();
+        console.log(result);
+      });
+expected: |
+  § (1) src/heavy-module.ts
+    <- (2.0)
+    + ~ (1.1) doHeavyCalculation() o
+      <- (2.1)
+
+  § (2) src/main.ts
+    - ~ <anonymous>() ...
+      -> (1.0) [dynamic]
+      -> (1.1)

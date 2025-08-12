@@ -1,0 +1,65 @@
+id: react-advanced
+name: Advanced React (Hooks, Context, HOCs, Refs)
+input:
+  - path: src/hooks/useCounter.ts
+    content: |
+      import { useState } from 'react';
+      export const useCounter = () => {
+        const [count, setCount] = useState(0);
+        const increment = () => setCount(c => c + 1);
+        return { count, increment };
+      };
+  - path: src/context/ThemeContext.ts
+    content: |
+      import { createContext } from 'react';
+      export const ThemeContext = createContext('light');
+  - path: src/hocs/withLogger.tsx
+    content: |
+      export const withLogger = (WrappedComponent) => {
+        const WithLogger = (props) => {
+          console.log(`Rendering ${WrappedComponent.name}`);
+          return <WrappedComponent {...props} />;
+        };
+        return WithLogger;
+      };
+  - path: src/components/Counter.tsx
+    content: |
+      import { useCounter } from '../hooks/useCounter';
+      import { withLogger } from '../hocs/withLogger';
+      import { useContext, useRef } from 'react';
+      import { ThemeContext } from '../context/ThemeContext';
+
+      const Counter = () => {
+        const { count, increment } = useCounter();
+        const theme = useContext(ThemeContext);
+        const buttonRef = useRef(null);
+        return <button ref={buttonRef} onClick={increment}>Count: {count} ({theme})</button>;
+      };
+
+      export default withLogger(Counter);
+expected: |
+  § (1) src/hooks/useCounter.ts
+    <- (4.0)
+    + ~ (1.1) useCounter()
+      <- (4.2)
+
+  § (2) src/context/ThemeContext.ts
+    <- (4.0)
+    + @ (2.1) ThemeContext
+      <- (4.2)
+
+  § (3) src/hocs/withLogger.tsx
+    <- (4.0)
+    + ~ (3.1) withLogger(WrappedComponent: #): #
+      <- (4.0)
+      - ◇ WithLogger { props: # }
+        ⛶ WrappedComponent
+
+  § (4) src/components/Counter.tsx
+    -> (1.0), (3.0), (2.0)
+    - ◇ (4.2) Counter
+      -> (1.1), (2.1)
+      <- (4.0)
+      ⛶ button
+    + @ (4.3) default
+      -> (3.1), (4.2)

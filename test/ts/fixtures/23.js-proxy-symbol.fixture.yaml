@@ -1,0 +1,58 @@
+id: js-proxy-symbol
+name: JavaScript Proxy, Symbol, and Tagged Templates
+input:
+  - path: src/utils.js
+    content: |
+      export const hiddenProp = Symbol('hidden');
+
+      export function styler(strings, ...values) {
+        let result = strings[0];
+        values.forEach((val, i) => {
+          result += `<span>${val}</span>` + strings[i + 1];
+        });
+        return result;
+      }
+  - path: src/model.js
+    content: |
+      import { hiddenProp } from './utils';
+
+      const user = {
+        firstName: 'John',
+        lastName: 'Doe',
+        [hiddenProp]: 'secret_agent'
+      };
+
+      export const userProxy = new Proxy(user, {
+        get(target, prop) {
+          if (prop === 'fullName') return `${target.firstName} ${target.lastName}`;
+          return target[prop];
+        }
+      });
+  - path: src/main.js
+    content: |
+      import { userProxy } from './model';
+      import { styler } from './utils';
+
+      const name = userProxy.fullName;
+      document.body.innerHTML = styler`Hello, ${name}!`;
+expected: |
+  § (1) src/utils.js
+    <- (2.0), (3.0)
+    + @ (1.1) hiddenProp [symbol]
+      <- (2.0)
+    + ~ (1.2) styler(strings: #, ...values: #)
+      <- (3.0)
+
+  § (2) src/model.js
+    -> (1.0)
+    <- (3.0)
+    - @ user
+      -> (1.1)
+    + @ (2.1) userProxy [proxy]
+      <- (3.0)
+      - ~ get(target: #, prop: #)
+
+  § (3) src/main.js
+    -> (2.0), (1.0)
+    -> (2.1)
+    -> (1.2) [tagged]

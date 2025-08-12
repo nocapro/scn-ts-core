@@ -1,0 +1,26 @@
+id: error-resilience
+name: Error Resilience (Syntax Error in One File)
+input:
+  - path: src/utils.ts
+    content: "export const add = (a: number, b: number) => a + b;"
+  - path: src/broken.ts
+    content: |
+      export function multiply(a: number, b: number) {
+        return a * b
+        // Missing closing brace
+  - path: src/main.ts
+    content: |
+      import { add } from './utils';
+      // Cannot import from broken file
+      console.log(add(2, 3));
+expected: |
+  § (1) src/utils.ts
+    <- (3.0)
+    + ~ (1.1) add(a: #number, b: #number): #number o
+      <- (3.0)
+
+  § (2) src/broken.ts [error]
+
+  § (3) src/main.ts
+    -> (1.0)
+    -> (1.1)

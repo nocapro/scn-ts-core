@@ -1,0 +1,66 @@
+id: ts-advanced-2
+name: Advanced TypeScript (Generics, Decorators, Type Guards, Re-exports)
+input:
+  - path: src/types.ts
+    content: |
+      export interface Vehicle { drive(): void; }
+      export class Car implements Vehicle { drive() {} }
+  - path: src/decorators.ts
+    content: |
+      export function Injectable() {
+        return function(target: any) { /* no-op */ };
+      }
+  - path: src/utils.ts
+    content: |
+      import { Vehicle, Car } from './types';
+
+      export function createInstance<T>(constructor: new () => T): T {
+        return new constructor();
+      }
+
+      export function isCar(v: Vehicle): v is Car {
+        return v instanceof Car;
+      }
+  - path: src/services.ts
+    content: |
+      import { Injectable } from './decorators';
+
+      @Injectable()
+      export class NavigationService {
+        public route(path: string) {}
+      }
+  - path: src/index.ts
+    content: |
+      export * from './types';
+      export { NavigationService } from './services';
+expected: |
+  § (2) src/decorators.ts
+    <- (4.0)
+    + ~ (2.1) Injectable()
+      <- (4.1)
+
+  § (1) src/types.ts
+    <- (3.0), (5.0)
+    + {} (1.1) Vehicle
+      <- (3.2)
+      ~ drive()
+    + ◇ (1.2) Car < (1.1)
+      <- (3.2)
+      + ~ drive()
+
+  § (3) src/utils.ts
+    -> (1.0)
+    + ~ createInstance<T>(constructor: #new()=>T): #T
+    + ~ (3.2) isCar(v: #Vehicle): #v is Car
+      -> (1.1), (1.2)
+
+  § (4) src/services.ts
+    -> (2.0)
+    <- (5.0)
+    + ◇ (4.1) NavigationService
+      -> (2.1)
+      <- (5.0)
+      + ~ route(path: #string)
+
+  § (5) src/index.ts
+    -> (1.0), (4.0)

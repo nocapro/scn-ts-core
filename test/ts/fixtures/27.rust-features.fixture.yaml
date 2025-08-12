@@ -1,0 +1,38 @@
+id: rust-features
+name: Rust Language Features (Traits, Impls, Macros)
+input:
+  - path: src/lib.rs
+    content: |
+      #[derive(Debug)]
+      pub struct Point { x: i32, y: i32 }
+
+      pub trait Drawable {
+          fn draw(&self);
+      }
+
+      impl Drawable for Point {
+          fn draw(&self) {
+              println!("Drawing point: {:?}", self);
+          }
+      }
+
+      // A function that uses the trait
+      pub fn render(item: &impl Drawable) {
+          item.draw();
+      }
+expected: |
+  § (1) src/lib.rs
+    + ◇ (1.1) Point
+      -> Debug [macro]
+      <- (1.3)
+      @ x: #i32
+      @ y: #i32
+    + {} (1.2) Drawable
+      <- (1.3), (1.4)
+      ~ draw(&self)
+    + (1.3) impl Drawable for Point
+      -> (1.2), (1.1)
+      + ~ draw(&self)
+        <- (1.4)
+    + ~ (1.4) render(item: &#impl Drawable)
+      -> (1.2), (1.3)

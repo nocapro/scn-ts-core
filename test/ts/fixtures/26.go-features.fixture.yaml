@@ -1,0 +1,45 @@
+id: go-features
+name: Go Language Features (Goroutines, Channels)
+input:
+  - path: util/parser.go
+    content: |
+      package util
+
+      func Parse(data string) string {
+          return "parsed:" + data
+      }
+  - path: main.go
+    content: |
+      package main
+
+      import (
+          "fmt"
+          "app/util"
+      )
+
+      func processData(ch chan string) {
+          data := <-ch // Receive from channel
+          parsed := util.Parse(data)
+          fmt.Println(parsed)
+      }
+
+      func main() {
+          ch := make(chan string)
+          go processData(ch) // Start goroutine
+          ch <- "hello" // Send to channel
+      }
+expected: |
+  § (1) util/parser.go
+    <- (2.0)
+    ◇ (1.1) util
+      + ~ (1.2) Parse(data: #string): #string o
+        <- (2.2)
+
+  § (2) main.go
+    -> (1.0)
+    + ◇ main
+      - ~ (2.2) processData(ch: #chan string)
+        -> (1.2)
+        <- (2.3)
+      + ~ (2.3) main()
+        -> (2.2) [goroutine]

@@ -1,0 +1,48 @@
+id: js-prototype-iife
+name: JavaScript Prototypes and IIFE
+input:
+  - path: src/legacy-widget.js
+    content: |
+      (function() {
+        function Widget(name) {
+          this.name = name;
+        }
+
+        Widget.prototype.render = function() {
+          return `Widget: ${this.name}`;
+        }
+
+        function* idGenerator() {
+          let i = 0;
+          while(true) yield i++;
+        }
+
+        window.Widget = Widget;
+        window.idGenerator = idGenerator;
+      })();
+  - path: src/app.js
+    content: |
+      const myWidget = new window.Widget('Dashboard');
+      document.body.innerHTML = myWidget.render();
+      const gen = window.idGenerator();
+      console.log(gen.next().value);
+expected: |
+  § (1) src/legacy-widget.js
+    <- (2.0)
+    ~ (1.1) <anonymous>()
+      - ~ (1.2) Widget(name: #)
+        <- (1.1)
+        @ name
+        + ~ render()
+          <- (2.0)
+      - ~ (1.3) idGenerator*()
+        <- (1.1)
+      + @ window.Widget
+        -> (1.2)
+      + @ window.idGenerator
+        -> (1.3)
+
+  § (2) src/app.js
+    -> (1.0)
+    -> (1.2)
+    -> (1.3)

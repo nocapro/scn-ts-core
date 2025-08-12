@@ -1,0 +1,82 @@
+id: ts-modifiers
+name: TypeScript Advanced Modifiers & Class Features
+input:
+  - path: src/core/base.ts
+    content: |
+      export abstract class BaseEntity {
+        public readonly id: string;
+        static species = 'Homo Sapiens';
+
+        protected constructor(id: string) {
+          this.id = id;
+        }
+
+        abstract getDescription(): string;
+
+        static getSpeciesName(): string {
+          return BaseEntity.species;
+        }
+      }
+  - path: src/models/user.ts
+    content: |
+      import { BaseEntity } from '../core/base';
+
+      export class User extends BaseEntity {
+        private secret: string;
+
+        constructor(id: string, secret: string) {
+          super(id);
+          this.secret = secret;
+        }
+
+        public getDescription(): string {
+          return `User with ID: ${this.id}`;
+        }
+
+        private getSecret(): string {
+          return this.secret;
+        }
+      }
+  - path: src/main.ts
+    content: |
+      import { User } from './models/user';
+      import { BaseEntity } from './core/base';
+
+      const user = new User('user-123', 'password');
+      console.log(user.getDescription());
+      console.log(user.id);
+      console.log(BaseEntity.getSpeciesName());
+expected: |
+  § (1) src/core/base.ts
+    <- (2.0), (3.0)
+    + ◇ (1.1) BaseEntity [abstract]
+      <- (2.1), (3.0)
+      + @ id: #string [readonly]
+        <- (2.2), (3.0)
+      + @ species: #string [static]
+      - ~ constructor(id: #string)
+        <- (2.2)
+      ~ getDescription(): #string [abstract]
+        <- (2.2)
+      + ~ (1.2) getSpeciesName(): #string [static] o
+        <- (3.0)
+
+  § (2) src/models/user.ts
+    -> (1.0)
+    <- (3.0)
+    + ◇ (2.1) User < (1.1)
+      <- (3.0)
+      - @ secret: #string
+      + ~ (2.2) constructor(id: #string, secret: #string)
+        -> (1.1)
+      + ~ getDescription(): #string o
+        -> (1.1)
+        <- (3.0)
+      - ~ getSecret(): #string o
+
+  § (3) src/main.ts
+    -> (2.0), (1.0)
+    -> (2.1)
+    -> (2.2)
+    -> (1.1)
+    -> (1.2)

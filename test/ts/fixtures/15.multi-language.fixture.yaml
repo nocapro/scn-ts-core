@@ -1,0 +1,62 @@
+id: multi-language
+name: Multi-Language Project (Java & Python Integration)
+input:
+  - path: src/main.ts
+    content: |
+      // Assume 'java' and 'python' are functions that execute code in another runtime
+      import { java_call } from './interop/java';
+      import { python_call } from './interop/python';
+
+      const userJson = java_call('com.example.User', 'getById', '1');
+      const greeting = python_call('analyzer.TextProcessor', 'process', 'hello');
+  - path: src/com/example/User.java
+    content: |
+      package com.example;
+
+      public class User {
+          private String id;
+          private String name;
+
+          public User(String id, String name) {
+              this.id = id;
+              this.name = name;
+          }
+
+          public static User getById(String id) {
+              return new User(id, "Mock User");
+          }
+      }
+  - path: src/analyzer.py
+    content: |
+      class TextProcessor:
+          def __init__(self, language='en'):
+              self.lang = language
+
+          def process(self, text: str) -> str:
+              return f"Processed: {text.upper()}"
+expected: |
+  § (2) src/com/example/User.java
+    <- (1.0)
+    ◇ (2.1) com.example
+      + ◇ (2.2) User
+        <- (1.0)
+        - @ id: #String
+        - @ name: #String
+        + ~ User(id: #String, name: #String)
+        + ~ (2.3) getById(id: #String): #User [static]
+          <- (1.0)
+
+  § (3) src/analyzer.py
+    <- (1.0)
+    + ◇ (3.1) TextProcessor
+      <- (1.0)
+      + ~ __init__(self, language: #str='en')
+      + ~ (3.2) process(self, text: #str): #str
+        <- (1.0)
+
+  § (1) src/main.ts
+    -> (2.0), (3.0)
+    -> (2.2)
+    -> (2.3)
+    -> (3.1)
+    -> (3.2)

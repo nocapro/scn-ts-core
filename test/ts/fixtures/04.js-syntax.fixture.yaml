@@ -1,0 +1,48 @@
+id: js-syntax
+name: JavaScript Syntax (ESM & CJS)
+input:
+  - path: src/es_module.js
+    content: |
+      export const esValue = 'ESM';
+      export default function esFunc() { return 'ESM Func'; }
+  - path: src/cjs_module.js
+    content: |
+      function cjsFunc() {
+        return 'CJS Func';
+      }
+
+      module.exports = {
+        value: 'CJS',
+        run: cjsFunc
+      };
+  - path: src/consumer.js
+    content: |
+      import esFunc, { esValue } from './es_module';
+      const cjs = require('./cjs_module');
+
+      console.log(esValue);
+      console.log(esFunc());
+      console.log(cjs.value);
+      console.log(cjs.run());
+expected: |
+  § (1) src/es_module.js
+    <- (3.0)
+    + @ (1.1) esValue
+      <- (3.0)
+    + ~ (1.2) esFunc()
+      <- (3.0)
+
+  § (2) src/cjs_module.js
+    <- (3.0)
+    - ~ (2.1) cjsFunc()
+      <- (2.4)
+    + @ (2.2) module.exports
+    + @ (2.3) value
+    + @ (2.4) run
+      -> (2.1)
+
+  § (3) src/consumer.js
+    -> (1.0), (2.0)
+    -> (1.1)
+    -> (1.2)
+    -> (2.2)

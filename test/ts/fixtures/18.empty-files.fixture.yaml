@@ -1,0 +1,23 @@
+id: empty-files
+name: File with Only Comments or Whitespace
+input:
+  - path: src/empty.ts
+    content: ""
+  - path: src/only-comments.ts
+    content: |
+      // This is a single-line comment.
+      /*
+       * This is a multi-line comment.
+       */
+  - path: src/only-whitespace.ts
+    content: |
+      
+        	
+
+         
+expected: |
+  § (1) src/empty.ts
+
+  § (2) src/only-comments.ts
+
+  § (3) src/only-whitespace.ts

@@ -1,0 +1,66 @@
+id: ts-core
+name: Core TypeScript Features (Class, Interface, Qualifiers)
+input:
+  - path: src/models/user.ts
+    content: |
+      export interface User {
+        id: number;
+        name: string;
+      }
+
+      export type UserId = number | string;
+  - path: src/services/apiClient.ts
+    content: |
+      import { User, UserId } from '../models/user';
+
+      export class ApiClient {
+        private apiKey: string;
+
+        constructor(key: string) {
+          this.apiKey = key;
+        }
+
+        public async fetchUser(id: UserId): Promise<User> {
+          if (!id) {
+            throw new Error('Invalid ID');
+          }
+          // Fake API call
+          return { id: 1, name: 'Test User' };
+        }
+
+        private _log(message: string): void {
+          console.log(`[API]: ${message}`);
+        }
+      }
+  - path: src/main.ts
+    content: |
+      import { ApiClient } from './services/apiClient';
+
+      const client = new ApiClient('secret-key');
+      client.fetchUser(123).then(user => console.log(user.name));
+expected: |
+  § (1) src/models/user.ts
+    <- (2.0)
+    + {} (1.1) User
+      <- (2.2)
+      + @ id: #number
+      + @ name: #string
+    + =: (1.2) UserId #number|string
+      <- (2.2)
+
+  § (2) src/services/apiClient.ts
+    -> (1.0)
+    <- (3.0)
+    + ◇ (2.1) ApiClient
+      <- (3.0)
+      - @ apiKey: #string
+      + ~ constructor(key: #string)
+      + ~ (2.2) fetchUser(id: #UserId): #Promise<User> ...!
+        -> (1.1), (1.2)
+        <- (3.0)
+      - ~ _log(message: #string): #void
+
+  § (3) src/main.ts
+    -> (2.0)
+    -> (2.1)
+    -> (2.2)

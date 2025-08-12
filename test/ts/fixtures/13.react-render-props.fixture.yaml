@@ -1,0 +1,62 @@
+id: react-render-props
+name: Advanced React Render Patterns (Render Props & Fragments)
+input:
+  - path: src/components/MouseTracker.tsx
+    content: |
+      import React, { useState } from 'react';
+
+      interface MouseTrackerProps {
+        render: (state: { x: number; y: number }) => React.ReactNode;
+      }
+
+      export const MouseTracker = (props: MouseTrackerProps) => {
+        const [position, setPosition] = useState({ x: 0, y: 0 });
+
+        const handleMouseMove = (event: React.MouseEvent) => {
+          setPosition({ x: event.clientX, y: event.clientY });
+        };
+
+        return (
+          <div style={{ height: '100vh' }} onMouseMove={handleMouseMove}>
+            {props.render(position)}
+          </div>
+        );
+      };
+  - path: src/App.tsx
+    content: |
+      import React from 'react';
+      import { MouseTracker } from './components/MouseTracker';
+
+      export const App = () => {
+        return (
+          <MouseTracker
+            render={({ x, y }) => (
+              <>
+                <h1>Move the mouse!</h1>
+                <p>The current mouse position is ({x}, {y})</p>
+              </>
+            )}
+          />
+        );
+      };
+expected: |
+  § (1) src/components/MouseTracker.tsx
+    <- (2.0)
+    - {} (1.1) MouseTrackerProps
+      <- (1.2)
+      @ render: #({x:number, y:number})=>React.ReactNode
+    + ◇ (1.2) MouseTracker { props: #MouseTrackerProps }
+      -> (1.1)
+      <- (2.1)
+      - ~ handleMouseMove(event: #React.MouseEvent)
+      ⛶ div
+
+  § (2) src/App.tsx
+    -> (1.0)
+    + ◇ (2.1) App
+      ⛶ MouseTracker
+        -> (1.2)
+        - ~ <anonymous>({x:#, y:#})
+          ⛶ <>
+            ⛶ h1
+            ⛶ p

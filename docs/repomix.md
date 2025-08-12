@@ -444,8 +444,8 @@ const processCapture = (
 };
 
 export const analyze = (sourceFile: SourceFile): SourceFile => {
-    if (!sourceFile.ast || !sourceFile.language.parser) return sourceFile;
     const { ast, language, sourceCode } = sourceFile;
+    if (!ast || !language.parser) return sourceFile;
 
     const directives = sourceCode.match(/^['"](use (?:server|client))['"];/gm);
     if(directives) {
@@ -670,10 +670,10 @@ export const resolveGraph = (sourceFiles: SourceFile[], pathResolver: PathResolv
 ```typescript
 import type { LanguageConfig } from './types';
 import path from 'node:path';
-import { typescriptQueries } from '../queries/typescript.ts';
-import { cssQueries } from '../queries/css.ts';
-import { goQueries } from '../queries/go.ts';
-import { rustQueries } from '../queries/rust.ts';
+import { typescriptQueries } from './queries/typescript';
+import { cssQueries } from './queries/css';
+import { goQueries } from './queries/go';
+import { rustQueries } from './queries/rust';
 
 // Based on test/wasm and test/fixtures
 export const languages: LanguageConfig[] = [
@@ -898,8 +898,8 @@ export const parse = (sourceCode: string, lang: LanguageConfig): Parser.Tree | n
 ## File: src/types.ts
 ```typescript
 import type Parser from 'web-tree-sitter';
-import type { TsConfig } from './utils/tsconfig';
-export type { PathResolver } from './utils/tsconfig';
+import type { TsConfig, PathResolver } from './utils/tsconfig';
+export type { PathResolver };
 
 /**
  * Represents a file to be processed.
@@ -998,15 +998,15 @@ export interface Relationship {
 export interface SourceFile {
   id: number;
   relativePath: string;
-  languageDirectives?: string[];
   absolutePath: string;
   language: LanguageConfig;
   sourceCode: string;
   ast?: Parser.Tree;
   symbols: CodeSymbol[];
   parseError: boolean;
+  isGenerated?: boolean;
+  languageDirectives?: string[];
 }
-export interface SourceFile { id: number; relativePath: string; absolutePath: string; language: LanguageConfig; sourceCode: string; ast?: Parser.Tree; symbols: CodeSymbol[]; parseError: boolean; isGenerated?: boolean; languageDirectives?: string[]; }
 
 /**
  * Represents a supported programming language and its configuration.
@@ -1024,162 +1024,6 @@ export interface AnalysisContext {
     sourceFiles: SourceFile[];
     pathResolver: PathResolver;
 }
-```
-
-## File: test/ts/e2e/01-core.test.ts
-```typescript
-import { describe, it } from 'bun:test';
-import { runTestForFixture } from '../../test.util.ts';
-import path from 'node:path';
-
-const fixtureDir = path.join(import.meta.dir, '..', 'fixtures');
-
-describe('Core Language Features', () => {
-    it('01: Core TypeScript Features (Class, Interface, Qualifiers)', async () => {
-        await runTestForFixture(path.join(fixtureDir, '01.core-ts.fixture.yaml'));
-    });
-
-    it('04: JavaScript Syntax (ESM & CJS)', async () => {
-        await runTestForFixture(path.join(fixtureDir, '04.js-syntax.fixture.yaml'));
-    });
-    
-    it('11: TypeScript Advanced Modifiers & Class Features', async () => {
-        await runTestForFixture(path.join(fixtureDir, '11.ts-modifiers.fixture.yaml'));
-    });
-    
-    it('12: JavaScript Prototypes and IIFE', async () => {
-        await runTestForFixture(path.join(fixtureDir, '12.js-prototype-iife.fixture.yaml'));
-    });
-    
-    it('19: Advanced TypeScript Types (Conditional, Mapped, Template Literals)', async () => {
-        await runTestForFixture(path.join(fixtureDir, '19.advanced-ts-types.fixture.yaml'));
-    });
-    
-    it('23: JavaScript Proxy, Symbol, and Tagged Templates', async () => {
-        await runTestForFixture(path.join(fixtureDir, '23.js-proxy-symbol.fixture.yaml'));
-    });
-    
-    it('24: Ambient Modules & Triple-Slash Directives', async () => {
-        await runTestForFixture(path.join(fixtureDir, '24.ts-ambient-modules.fixture.yaml'));
-    });
-});
-```
-
-## File: test/ts/e2e/02-react-css.test.ts
-```typescript
-import { describe, it } from 'bun:test';
-import { runTestForFixture } from '../../test.util.ts';
-import path from 'node:path';
-
-const fixtureDir = path.join(import.meta.dir, '..', 'fixtures');
-
-describe('React & CSS Features', () => {
-    it('02: React/JSX and CSS Integration', async () => {
-        await runTestForFixture(path.join(fixtureDir, '02.react-css.fixture.yaml'));
-    });
-
-    it('07: Advanced React (Hooks, Context, HOCs, Refs)', async () => {
-        await runTestForFixture(path.join(fixtureDir, '07.advanced-react.fixture.yaml'));
-    });
-    
-    it('08: Advanced CSS (Variables, Media Queries, Pseudo-selectors)', async () => {
-        await runTestForFixture(path.join(fixtureDir, '08.advanced-css.fixture.yaml'));
-    });
-    
-    it('13: Advanced React Render Patterns (Render Props & Fragments)', async () => {
-        await runTestForFixture(path.join(fixtureDir, '13.react-render-props.fixture.yaml'));
-    });
-    
-    it('14: Complex CSS Selectors and Rules', async () => {
-        await runTestForFixture(path.join(fixtureDir, '14.complex-css.fixture.yaml'));
-    });
-    
-    it('20: CSS-in-JS (e.g., Styled-Components, Emotion)', async () => {
-        await runTestForFixture(path.join(fixtureDir, '20.css-in-js.fixture.yaml'));
-    });
-    
-    it('22: React Server Components & Directives', async () => {
-        await runTestForFixture(path.join(fixtureDir, '22.react-server-components.fixture.yaml'));
-    });
-});
-```
-
-## File: test/ts/e2e/03-dependencies.test.ts
-```typescript
-import { describe, it } from 'bun:test';
-import { runTestForFixture } from '../../test.util.ts';
-import path from 'node:path';
-
-const fixtureDir = path.join(import.meta.dir, '..', 'fixtures');
-
-describe('Dependency Graph Analysis', () => {
-    it('09: Complex Dependency Graph (Circular & Peer)', async () => {
-        await runTestForFixture(path.join(fixtureDir, '09.dep-graph-circular.fixture.yaml'));
-    });
-
-    it('10: Monorepo-style Path Aliases', async () => {
-        await runTestForFixture(path.join(fixtureDir, '10.monorepo-aliases.fixture.yaml'));
-    });
-    
-    it('16: Diamond Dependency Graph', async () => {
-        await runTestForFixture(path.join(fixtureDir, '16.dep-graph-diamond.fixture.yaml'));
-    });
-    
-    it('17: Dynamic Imports and Code Splitting', async () => {
-        await runTestForFixture(path.join(fixtureDir, '17.dynamic-imports.fixture.yaml'));
-    });
-    
-    it('25: GraphQL Code Generation Flow', async () => {
-        await runTestForFixture(path.join(fixtureDir, '25.graphql-codegen.fixture.yaml'));
-    });
-});
-```
-
-## File: test/ts/e2e/04-advanced.test.ts
-```typescript
-import { describe, it } from 'bun:test';
-import { runTestForFixture } from '../../test.util.ts';
-import path from 'node:path';
-
-const fixtureDir = path.join(import.meta.dir, '..', 'fixtures');
-
-describe('Advanced, Edge Case, and Multi-language Features', () => {
-    it('03: Advanced TS (Inheritance, Enums, Pure Functions)', async () => {
-        await runTestForFixture(path.join(fixtureDir, '03.advanced-ts.fixture.yaml'));
-    });
-
-    it('05: Edge Cases (Empty & Anonymous)', async () => {
-        await runTestForFixture(path.join(fixtureDir, '05.edge-cases.fixture.yaml'));
-    });
-    
-    it('06: Advanced TypeScript (Generics, Decorators, Type Guards, Re-exports)', async () => {
-        await runTestForFixture(path.join(fixtureDir, '06.advanced-ts-2.fixture.yaml'));
-    });
-
-    it('15: Multi-Language Project (Java & Python Integration)', async () => {
-        await runTestForFixture(path.join(fixtureDir, '15.multi-language.fixture.yaml'));
-    });
-    
-    it('18: File with Only Comments or Whitespace', async () => {
-        await runTestForFixture(path.join(fixtureDir, '18.empty-files.fixture.yaml'));
-    });
-    
-    it('21: WebAssembly (WASM) & Web Workers', async () => {
-        await runTestForFixture(path.join(fixtureDir, '21.wasm-workers.fixture.yaml'));
-    });
-
-    it('26: Go Language Features (Goroutines, Channels)', async () => {
-        await runTestForFixture(path.join(fixtureDir, '26.go-features.fixture.yaml'));
-    });
-
-    it('27: Rust Language Features (Traits, Impls, Macros)', async () => {
-        await runTestForFixture(path.join(fixtureDir, '27.rust-features.fixture.yaml'));
-    });
-
-    it('28: Error Resilience (Syntax Error in One File)', async () => {
-        await runTestForFixture(path.join(fixtureDir, '28.error-resilience.fixture.yaml'));
-    });
-});
 ```
 
 ## File: test/ts/fixtures/01.core-ts.fixture.yaml
@@ -2661,6 +2505,195 @@ expected: |
     -> (1.1)
 ```
 
+## File: tsconfig.json
+```json
+{
+  "compilerOptions": {
+    // Environment setup & latest features
+    "lib": ["ESNext"],
+    "target": "ESNext",
+    "module": "Preserve",
+    "moduleDetection": "force",
+    "jsx": "react-jsx",
+    "allowJs": true,
+
+    // Bundler mode
+    "moduleResolution": "bundler",
+    "allowImportingTsExtensions": true,
+    "verbatimModuleSyntax": true,
+    "noEmit": true,
+
+    // Best practices
+    "strict": true,
+    "skipLibCheck": true,
+    "noFallthroughCasesInSwitch": true,
+    "noUncheckedIndexedAccess": true,
+    "noImplicitOverride": true,
+
+    // Some stricter flags (disabled by default)
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noPropertyAccessFromIndexSignature": false
+  }
+}
+```
+
+## File: test/ts/e2e/01-core.test.ts
+```typescript
+import { describe, it } from 'bun:test';
+import { runTestForFixture } from '../../test.util.ts';
+import path from 'node:path';
+
+const fixtureDir = path.join(import.meta.dir, '..', 'fixtures');
+
+describe('Core Language Features', () => {
+    it('01: Core TypeScript Features (Class, Interface, Qualifiers)', async () => {
+        await runTestForFixture(path.join(fixtureDir, '01.core-ts.fixture.yaml'));
+    });
+
+    it('04: JavaScript Syntax (ESM & CJS)', async () => {
+        await runTestForFixture(path.join(fixtureDir, '04.js-syntax.fixture.yaml'));
+    });
+    
+    it('11: TypeScript Advanced Modifiers & Class Features', async () => {
+        await runTestForFixture(path.join(fixtureDir, '11.ts-modifiers.fixture.yaml'));
+    });
+    
+    it('12: JavaScript Prototypes and IIFE', async () => {
+        await runTestForFixture(path.join(fixtureDir, '12.js-prototype-iife.fixture.yaml'));
+    });
+    
+    it('19: Advanced TypeScript Types (Conditional, Mapped, Template Literals)', async () => {
+        await runTestForFixture(path.join(fixtureDir, '19.advanced-ts-types.fixture.yaml'));
+    });
+    
+    it('23: JavaScript Proxy, Symbol, and Tagged Templates', async () => {
+        await runTestForFixture(path.join(fixtureDir, '23.js-proxy-symbol.fixture.yaml'));
+    });
+    
+    it('24: Ambient Modules & Triple-Slash Directives', async () => {
+        await runTestForFixture(path.join(fixtureDir, '24.ts-ambient-modules.fixture.yaml'));
+    });
+});
+```
+
+## File: test/ts/e2e/02-react-css.test.ts
+```typescript
+import { describe, it } from 'bun:test';
+import { runTestForFixture } from '../../test.util.ts';
+import path from 'node:path';
+
+const fixtureDir = path.join(import.meta.dir, '..', 'fixtures');
+
+describe('React & CSS Features', () => {
+    it('02: React/JSX and CSS Integration', async () => {
+        await runTestForFixture(path.join(fixtureDir, '02.react-css.fixture.yaml'));
+    });
+
+    it('07: Advanced React (Hooks, Context, HOCs, Refs)', async () => {
+        await runTestForFixture(path.join(fixtureDir, '07.advanced-react.fixture.yaml'));
+    });
+    
+    it('08: Advanced CSS (Variables, Media Queries, Pseudo-selectors)', async () => {
+        await runTestForFixture(path.join(fixtureDir, '08.advanced-css.fixture.yaml'));
+    });
+    
+    it('13: Advanced React Render Patterns (Render Props & Fragments)', async () => {
+        await runTestForFixture(path.join(fixtureDir, '13.react-render-props.fixture.yaml'));
+    });
+    
+    it('14: Complex CSS Selectors and Rules', async () => {
+        await runTestForFixture(path.join(fixtureDir, '14.complex-css.fixture.yaml'));
+    });
+    
+    it('20: CSS-in-JS (e.g., Styled-Components, Emotion)', async () => {
+        await runTestForFixture(path.join(fixtureDir, '20.css-in-js.fixture.yaml'));
+    });
+    
+    it('22: React Server Components & Directives', async () => {
+        await runTestForFixture(path.join(fixtureDir, '22.react-server-components.fixture.yaml'));
+    });
+});
+```
+
+## File: test/ts/e2e/03-dependencies.test.ts
+```typescript
+import { describe, it } from 'bun:test';
+import { runTestForFixture } from '../../test.util.ts';
+import path from 'node:path';
+
+const fixtureDir = path.join(import.meta.dir, '..', 'fixtures');
+
+describe('Dependency Graph Analysis', () => {
+    it('09: Complex Dependency Graph (Circular & Peer)', async () => {
+        await runTestForFixture(path.join(fixtureDir, '09.dep-graph-circular.fixture.yaml'));
+    });
+
+    it('10: Monorepo-style Path Aliases', async () => {
+        await runTestForFixture(path.join(fixtureDir, '10.monorepo-aliases.fixture.yaml'));
+    });
+    
+    it('16: Diamond Dependency Graph', async () => {
+        await runTestForFixture(path.join(fixtureDir, '16.dep-graph-diamond.fixture.yaml'));
+    });
+    
+    it('17: Dynamic Imports and Code Splitting', async () => {
+        await runTestForFixture(path.join(fixtureDir, '17.dynamic-imports.fixture.yaml'));
+    });
+    
+    it('25: GraphQL Code Generation Flow', async () => {
+        await runTestForFixture(path.join(fixtureDir, '25.graphql-codegen.fixture.yaml'));
+    });
+});
+```
+
+## File: test/ts/e2e/04-advanced.test.ts
+```typescript
+import { describe, it } from 'bun:test';
+import { runTestForFixture } from '../../test.util.ts';
+import path from 'node:path';
+
+const fixtureDir = path.join(import.meta.dir, '..', 'fixtures');
+
+describe('Advanced, Edge Case, and Multi-language Features', () => {
+    it('03: Advanced TS (Inheritance, Enums, Pure Functions)', async () => {
+        await runTestForFixture(path.join(fixtureDir, '03.advanced-ts.fixture.yaml'));
+    });
+
+    it('05: Edge Cases (Empty & Anonymous)', async () => {
+        await runTestForFixture(path.join(fixtureDir, '05.edge-cases.fixture.yaml'));
+    });
+    
+    it('06: Advanced TypeScript (Generics, Decorators, Type Guards, Re-exports)', async () => {
+        await runTestForFixture(path.join(fixtureDir, '06.advanced-ts-2.fixture.yaml'));
+    });
+
+    it('15: Multi-Language Project (Java & Python Integration)', async () => {
+        await runTestForFixture(path.join(fixtureDir, '15.multi-language.fixture.yaml'));
+    });
+    
+    it('18: File with Only Comments or Whitespace', async () => {
+        await runTestForFixture(path.join(fixtureDir, '18.empty-files.fixture.yaml'));
+    });
+    
+    it('21: WebAssembly (WASM) & Web Workers', async () => {
+        await runTestForFixture(path.join(fixtureDir, '21.wasm-workers.fixture.yaml'));
+    });
+
+    it('26: Go Language Features (Goroutines, Channels)', async () => {
+        await runTestForFixture(path.join(fixtureDir, '26.go-features.fixture.yaml'));
+    });
+
+    it('27: Rust Language Features (Traits, Impls, Macros)', async () => {
+        await runTestForFixture(path.join(fixtureDir, '27.rust-features.fixture.yaml'));
+    });
+
+    it('28: Error Resilience (Syntax Error in One File)', async () => {
+        await runTestForFixture(path.join(fixtureDir, '28.error-resilience.fixture.yaml'));
+    });
+});
+```
+
 ## File: test/test.util.ts
 ```typescript
 import { generateScn, initializeParser, type ScnTsConfig, type InputFile } from '../src/main';
@@ -2773,39 +2806,6 @@ export async function runTestForFixture(fixturePath: string): Promise<void> {
   },
   "peerDependencies": {
     "typescript": "^5"
-  }
-}
-```
-
-## File: tsconfig.json
-```json
-{
-  "compilerOptions": {
-    // Environment setup & latest features
-    "lib": ["ESNext"],
-    "target": "ESNext",
-    "module": "Preserve",
-    "moduleDetection": "force",
-    "jsx": "react-jsx",
-    "allowJs": true,
-
-    // Bundler mode
-    "moduleResolution": "bundler",
-    "allowImportingTsExtensions": true,
-    "verbatimModuleSyntax": true,
-    "noEmit": true,
-
-    // Best practices
-    "strict": true,
-    "skipLibCheck": true,
-    "noFallthroughCasesInSwitch": true,
-    "noUncheckedIndexedAccess": true,
-    "noImplicitOverride": true,
-
-    // Some stricter flags (disabled by default)
-    "noUnusedLocals": true,
-    "noUnusedParameters": true,
-    "noPropertyAccessFromIndexSignature": false
   }
 }
 ```

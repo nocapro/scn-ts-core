@@ -3,13 +3,10 @@ import Parser from 'web-tree-sitter';
 import path from 'node:path';
 import { languages } from './languages';
 
+let initializePromise: Promise<void> | null = null;
 let isInitialized = false;
 
-const createInitializer = (options: ParserInitOptions) => async (): Promise<void> => {
-    if (isInitialized) {
-        return;
-    }
-    
+const doInitialize = async (options: ParserInitOptions): Promise<void> => {
     await Parser.init({
         locateFile: (scriptName: string, _scriptDirectory: string) => {
             return path.join(options.wasmBaseUrl, scriptName);
@@ -27,6 +24,7 @@ const createInitializer = (options: ParserInitOptions) => async (): Promise<void
                 lang.parser = parser;
             } catch (error) {
                 console.error(`Failed to load parser for ${lang.name} from ${wasmPath}`, error);
+                throw error;
             }
         });
     
@@ -34,13 +32,12 @@ const createInitializer = (options: ParserInitOptions) => async (): Promise<void
     isInitialized = true;
 };
 
-let initializeFn: (() => Promise<void>) | null = null;
-
-export const initializeParser = async (options: ParserInitOptions): Promise<void> => {
-    if (!initializeFn) {
-        initializeFn = createInitializer(options);
+export const initializeParser = (options: ParserInitOptions): Promise<void> => {
+    if (initializePromise) {
+        return initializePromise;
     }
-    await initializeFn();
+    initializePromise = doInitialize(options);
+    return initializePromise;
 };
 
 export const parse = (sourceCode: string, lang: LanguageConfig): Parser.Tree | null => {

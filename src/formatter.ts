@@ -34,6 +34,7 @@ const formatSymbol = (symbol: CodeSymbol, allFiles: SourceFile[]): string[] => {
     const result = [line];
 
     const outgoing = new Map<number, Set<string>>();
+    const unresolvedDeps: string[] = [];
     symbol.dependencies.forEach(dep => {
         if (dep.resolvedFileId !== undefined && dep.resolvedFileId !== symbol.fileId) {
             if (!outgoing.has(dep.resolvedFileId)) outgoing.set(dep.resolvedFileId, new Set());
@@ -47,14 +48,24 @@ const formatSymbol = (symbol: CodeSymbol, allFiles: SourceFile[]): string[] => {
                     outgoing.get(dep.resolvedFileId)!.add(text);
                 }
             }
+        } else if (dep.resolvedFileId === undefined) {
+            if (dep.kind === 'macro') {
+                unresolvedDeps.push(`${dep.targetName} [macro]`);
+            }
         }
     });
 
+    const outgoingParts: string[] = [];
     if (outgoing.size > 0) {
-        const parts = Array.from(outgoing.entries()).map(([fileId, symbolIds]) => {
+        const resolvedParts = Array.from(outgoing.entries()).map(([fileId, symbolIds]) => {
             return symbolIds.size > 0 ? `${Array.from(symbolIds).join(', ')}` : `(${fileId}.0)`;
         });
-        result.push(`    -> ${parts.join(', ')}`);
+        outgoingParts.push(...resolvedParts);
+    }
+    outgoingParts.push(...unresolvedDeps);
+
+    if (outgoingParts.length > 0) {
+        result.push(`    -> ${outgoingParts.join(', ')}`);
     }
     
     const incoming = new Map<number, Set<string>>();

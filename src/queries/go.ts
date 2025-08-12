@@ -1,5 +1,5 @@
 export const goQueries = `
-(package_declaration
+(package_clause
   (package_identifier) @symbol.go_package.def)
 
 (function_declaration

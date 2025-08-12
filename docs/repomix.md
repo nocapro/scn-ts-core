@@ -60,183 +60,6 @@ tsconfig.json
 
 # Files
 
-## File: src/queries/css.ts
-```typescript
-export const cssQueries = `
-(class_selector
-  (class_name) @symbol.css_class.def)
-
-(id_selector
-  (id_name) @symbol.css_id.def)
-  
-(tag_selector
-  (tag_name) @symbol.css_tag.def)
-
-(at_rule
-  (at_keyword) @symbol.css_at_rule.def)
-
-(declaration
-  (property_name) @symbol.css_property.def
-  (variable_name) @rel.css_variable.ref)
-
-(declaration
-  (custom_property) @symbol.css_variable.def)
-`;
-```
-
-## File: src/queries/go.ts
-```typescript
-export const goQueries = `
-(function_declaration
- name: (identifier) @symbol.function.def) @scope.function.def
-
-(go_statement
-  (call_expression) @rel.goroutine)
-
-(call_expression
-  function: (selector_expression
-    field: (field_identifier) @rel.call.selector)
-  )
-`;
-```
-
-## File: src/queries/rust.ts
-```typescript
-export const rustQueries = `
-(struct_item
-  name: (type_identifier) @symbol.rust_struct.def)
-
-(trait_item
-  name: (type_identifier) @symbol.rust_trait.def)
-  
-(impl_item) @scope.rust_impl.def
-
-(attribute_item
-  (attribute (identifier) @rel.macro))
-
-(function_item
-  name: (identifier) @symbol.function.def) @scope.function.def
-`;
-```
-
-## File: src/queries/typescript.ts
-```typescript
-export const typescriptQueries = `
-;; -------------------------------------------------------------------
-;; Scopes & Definitions
-;; -------------------------------------------------------------------
-
-(class_declaration
-  name: (identifier) @symbol.class.def) @scope.class.def
-
-(interface_declaration
-  name: (type_identifier) @symbol.interface.def) @scope.interface.def
-
-(function_declaration
-  name: (identifier) @symbol.function.def) @scope.function.def
-
-(arrow_function) @scope.function.def
-
-(method_definition
-  name: (property_identifier) @symbol.method.def) @scope.method.def
-
-(enum_declaration
-  name: (identifier) @symbol.enum.def) @scope.enum.def
-
-(enum_assignment
-  name: (property_identifier) @symbol.enum_member.def)
-
-(type_alias_declaration
-  name: (type_identifier) @symbol.type_alias.def) @scope.type_alias.def
-
-(lexical_declaration
-  (variable_declarator
-    name: (identifier) @symbol.variable.def)) @scope.variable.def
-
-(public_field_definition
-  name: (property_identifier) @symbol.property.def
-  accessibility: (accessibility_modifier) @mod.access) @scope.property.def
-
-(decorator (identifier) @symbol.decorator.def)
-
-;; -------------------------------------------------------------------
-;; Relationships & References
-;; -------------------------------------------------------------------
-
-(import_statement
-  source: (string) @rel.import.source)
-
-(import_specifier
-  name: (identifier) @rel.import.named)
-
-(namespace_import
-  (identifier) @rel.import.namespace)
-
-(export_statement
-  source: (string) @rel.export.source)
-
-(export_specifier
-  name: (identifier) @rel.export.named)
-
-(call_expression
-  function: [
-    (identifier) @rel.call
-    (member_expression
-      property: (property_identifier) @rel.call)
-    (call_expression
-      function: (member_expression
-        property: (property_identifier) @rel.call))
-  ])
-
-(new_expression
-  constructor: (identifier) @rel.new)
-
-(class_declaration
-  (class_heritage
-    (expression_with_type_arguments
-      (identifier) @rel.extends))) @rel.extends.scope
-
-(interface_declaration
-  (class_heritage
-    (expression_with_type_arguments
-      (type_identifier) @rel.extends)))
-
-(implement_clause
-  (type_identifier) @rel.implements)
-
-(type_identifier) @rel.type.ref
-(generic_type (type_identifier) @rel.type.ref)
-(predefined_type) @rel.type.ref
-
-;; -------------------------------------------------------------------
-;; Modifiers
-;; -------------------------------------------------------------------
-
-"export" @mod.export
-"abstract" @mod.abstract
-"static" @mod.static
-"readonly" @mod.readonly
-"async" @mod.async
-(accessibility_modifier) @mod.access
-
-;; -------------------------------------------------------------------
-;; JSX/TSX
-;; -------------------------------------------------------------------
-
-(jsx_element
-  open_tag: (jsx_opening_element
-    name: (identifier) @rel.jsx.component)) @scope.jsx_element.def
-
-(jsx_self_closing_element
-  name: (identifier) @rel.jsx.component) @scope.jsx_element.def
-
-(jsx_attribute
-  name: (property_identifier) @symbol.jsx_attribute.def)
-
-(jsx_expression_attribute) @scope.jsx_attribute.def
-`;
-```
-
 ## File: src/utils/graph.ts
 ```typescript
 import type { SourceFile } from '../types';
@@ -345,102 +168,6 @@ export const getPathResolver = (tsconfig?: TsConfig | null): PathResolver => {
     // The baseUrl from tsconfig is relative to the tsconfig file itself (the root).
     // The final paths we create should be relative to the root to match our file list.
     return createPathResolver(baseUrl, paths);
-};
-```
-
-## File: src/formatter.ts
-```typescript
-import type { CodeSymbol, SourceFile } from './types';
-import { topologicalSort } from './utils/graph';
-
-const ICONS: Record<string, string> = {
-    class: '◇', interface: '{}', function: '~', method: '~',
-    variable: '@', property: '@', enum: '☰', enum_member: '@',
-    type_alias: '=:', react_component: '◇', jsx_element: '⛶',
-    css_class: '¶', css_id: '¶', css_tag: '¶', css_at_rule: '¶',
-    error: '[error]', default: '?',
-};
-
-const formatSymbolId = (symbol: CodeSymbol) => `(${symbol.fileId}.${symbol.id.split(':')[0]})`;
-
-const formatSymbol = (symbol: CodeSymbol, allFiles: SourceFile[]): string[] => {
-    const icon = ICONS[symbol.kind] || ICONS.default;
-    const prefix = symbol.isExported ? '+' : '-';
-    let name = symbol.name === '<anonymous>' ? '' : ` ${symbol.name}`;
-    if (symbol.kind === 'variable' && name.trim() === 'default') name = '';
-
-    const mods = [
-        symbol.isAbstract && 'abstract',
-        symbol.isStatic && 'static',
-    ].filter(Boolean).join(' ');
-    const modStr = mods ? ` [${mods}]` : '';
-
-    const suffix = [
-        symbol.isAsync && '...',
-        symbol.isPure && 'o',
-    ].filter(Boolean).join(' ');
-
-    const line = `  ${prefix} ${icon} ${formatSymbolId(symbol)}${name}${modStr}${suffix}`;
-    const result = [line];
-
-    const outgoing = new Map<number, Set<string>>();
-    symbol.dependencies.forEach(dep => {
-        if (dep.resolvedFileId !== undefined && dep.resolvedFileId !== symbol.fileId) {
-            if (!outgoing.has(dep.resolvedFileId)) outgoing.set(dep.resolvedFileId, new Set());
-            if (dep.resolvedSymbolId) {
-                const targetSymbol = allFiles.find(f => f.id === dep.resolvedFileId)?.symbols.find(s => s.id === dep.resolvedSymbolId);
-                if (targetSymbol) outgoing.get(dep.resolvedFileId)!.add(formatSymbolId(targetSymbol));
-            }
-        }
-    });
-
-    if (outgoing.size > 0) {
-        const parts = Array.from(outgoing.entries()).map(([fileId, symbolIds]) => {
-            return symbolIds.size > 0 ? `${Array.from(symbolIds).join(', ')}` : `(${fileId}.0)`;
-        });
-        result.push(`    -> ${parts.join(', ')}`);
-    }
-    
-    const incoming = new Map<number, Set<string>>();
-    allFiles.forEach(file => {
-        file.symbols.forEach(s => {
-            s.dependencies.forEach(d => {
-                if (d.resolvedFileId === symbol.fileId && d.resolvedSymbolId === symbol.id) {
-                    if(!incoming.has(file.id)) incoming.set(file.id, new Set());
-                    incoming.get(file.id)!.add(formatSymbolId(s));
-                }
-            });
-        });
-    });
-
-    if (incoming.size > 0) {
-        const parts = Array.from(incoming.entries()).map(([_fileId, symbolIds]) => Array.from(symbolIds).join(', '));
-        result.push(`    <- ${parts.join(', ')}`);
-    }
-
-    return result;
-};
-
-
-const formatFile = (file: SourceFile, allFiles: SourceFile[]): string => {
-    if (file.parseError) return `§ (${file.id}) ${file.relativePath} [error]`;
-    if (!file.sourceCode.trim()) return `§ (${file.id}) ${file.relativePath}`;
-
-    const directives = [
-        file.isGenerated && 'generated',
-        ...(file.languageDirectives || [])
-    ].filter(Boolean);
-    const directiveStr = directives.length > 0 ? ` [${directives.join(' ')}]` : '';
-    const header = `§ (${file.id}) ${file.relativePath}${directiveStr}`;
-
-    const symbolLines = file.symbols.flatMap(s => formatSymbol(s, allFiles));
-
-    return [header, ...symbolLines].join('\n');
-};
-
-export const formatScn = (analyzedFiles: SourceFile[]): string => {
-    const sortedFiles = topologicalSort(analyzedFiles);
-    return sortedFiles.map(file => formatFile(file, analyzedFiles)).join('\n\n');
 };
 ```
 
@@ -2203,6 +1930,201 @@ expected: |
 }
 ```
 
+## File: src/queries/css.ts
+```typescript
+export const cssQueries = `
+(class_selector
+  (class_name) @symbol.css_class.def)
+
+(id_selector
+  (id_name) @symbol.css_id.def)
+  
+(type_selector
+  (tag_name) @symbol.css_tag.def)
+
+(at_rule
+  (at_keyword) @symbol.css_at_rule.def)
+
+(declaration
+  (property_name) @symbol.css_property.def
+  (variable_name) @rel.css_variable.ref)
+
+(declaration
+  (custom_property) @symbol.css_variable.def)
+`;
+```
+
+## File: src/queries/go.ts
+```typescript
+export const goQueries = `
+(package_declaration
+  (package_identifier) @symbol.go_package.def)
+
+(function_declaration
+ name: (identifier) @symbol.function.def) @scope.function.def
+
+(go_statement
+  (call_expression
+    function: (identifier) @rel.goroutine))
+
+(call_expression
+  function: (identifier) @rel.call)
+(call_expression
+  function: (selector_expression
+    field: (field_identifier) @rel.call))
+
+(import_spec
+  (string_literal) @rel.import.source)
+`;
+```
+
+## File: src/queries/rust.ts
+```typescript
+export const rustQueries = `
+(struct_item
+  name: (type_identifier) @symbol.rust_struct.def) @scope.rust_struct.def
+
+(trait_item
+  name: (type_identifier) @symbol.rust_trait.def) @scope.rust_trait.def
+  
+(impl_item
+  trait: (type_identifier) @rel.implements
+  type: (type_identifier) @rel.references
+) @symbol.rust_impl.def @scope.rust_impl.def
+
+(attribute_item
+  (attribute (identifier) @rel.macro))
+
+(function_item
+  name: (identifier) @symbol.function.def) @scope.function.def
+
+(parameter
+  type: (_ (type_identifier) @rel.references)
+)
+
+(call_expression
+  function: (field_expression
+    field: (field_identifier) @rel.call))
+`;
+```
+
+## File: src/queries/typescript.ts
+```typescript
+export const typescriptQueries = `
+;; -------------------------------------------------------------------
+;; Scopes & Definitions
+;; -------------------------------------------------------------------
+
+(class_declaration
+  name: (identifier) @symbol.class.def) @scope.class.def
+
+(interface_declaration
+  name: (type_identifier) @symbol.interface.def) @scope.interface.def
+
+(function_declaration
+  name: (identifier) @symbol.function.def) @scope.function.def
+
+(arrow_function) @scope.function.def
+
+(method_definition
+  name: (property_identifier) @symbol.method.def) @scope.method.def
+
+(enum_declaration
+  name: (identifier) @symbol.enum.def) @scope.enum.def
+
+(enum_assignment
+  name: (property_identifier) @symbol.enum_member.def)
+
+(type_alias_declaration
+  name: (type_identifier) @symbol.type_alias.def) @scope.type_alias.def
+
+(lexical_declaration
+  (variable_declarator
+    name: (identifier) @symbol.variable.def)) @scope.variable.def
+
+(public_field_definition
+  name: (property_identifier) @symbol.property.def) @scope.property.def
+
+(decorator (identifier) @symbol.decorator.def)
+
+;; -------------------------------------------------------------------
+;; Relationships & References
+;; -------------------------------------------------------------------
+
+(import_statement
+  source: (string) @rel.import.source)
+
+(import_specifier
+  name: (identifier) @rel.import.named)
+
+(namespace_import
+  (identifier) @rel.import.namespace)
+
+(export_statement
+  source: (string) @rel.export.source)
+
+(export_specifier
+  name: (identifier) @rel.export.named)
+
+(call_expression
+  function: [
+    (identifier) @rel.call
+    (member_expression
+      property: (property_identifier) @rel.call)
+    (call_expression
+      function: (member_expression
+        property: (property_identifier) @rel.call))
+  ])
+
+(new_expression
+  constructor: (identifier) @rel.new)
+
+(class_declaration
+  (class_heritage
+    (expression_with_type_arguments
+      (identifier) @rel.extends))) @rel.extends.scope
+
+(interface_declaration
+  (class_heritage
+    (expression_with_type_arguments
+      (type_identifier) @rel.extends)))
+
+(implement_clause
+  (type_identifier) @rel.implements)
+
+(type_identifier) @rel.type.ref
+(generic_type (type_identifier) @rel.type.ref)
+(predefined_type) @rel.type.ref
+
+;; -------------------------------------------------------------------
+;; Modifiers
+;; -------------------------------------------------------------------
+
+"export" @mod.export
+"abstract" @mod.abstract
+"static" @mod.static
+"readonly" @mod.readonly
+"async" @mod.async
+(accessibility_modifier) @mod.access
+
+;; -------------------------------------------------------------------
+;; JSX/TSX
+;; -------------------------------------------------------------------
+
+(jsx_element
+  open_tag: (jsx_opening_element
+    name: (identifier) @rel.jsx.component)) @scope.jsx_element.def
+
+(jsx_self_closing_element
+  name: (identifier) @rel.jsx.component) @scope.jsx_element.def
+
+(jsx_attribute
+  name: (property_identifier) @symbol.jsx_attribute.def)
+
+(jsx_expression_attribute) @scope.jsx_attribute.def
+`;
+```
+
 ## File: src/utils/ast.ts
 ```typescript
 import type { Range } from '../types';
@@ -2234,254 +2156,108 @@ export const getIdentifier = (node: SyntaxNode, sourceCode: string, defaultName:
 };
 ```
 
-## File: src/analyzer.ts
+## File: src/formatter.ts
 ```typescript
-import type { SourceFile, CodeSymbol, Relationship, SymbolKind, RelationshipKind, Range } from './types';
-import { getNodeRange, getNodeText, getIdentifier, findChildByFieldName } from './utils/ast';
-import type { Node as SyntaxNode, QueryCapture } from 'web-tree-sitter';
+import type { CodeSymbol, SourceFile } from './types';
+import { topologicalSort } from './utils/graph';
 
-const getSymbolName = (node: SyntaxNode, sourceCode: string): string => {
-    if (node.type === 'jsx_opening_element' || node.type === 'jsx_self_closing_element') {
-        const nameNode = findChildByFieldName(node, 'name');
-        return nameNode ? getNodeText(nameNode, sourceCode) : '<fragment>';
-    }
-    if (node.type === 'variable_declarator') {
-        const valueNode = findChildByFieldName(node, 'value');
-        if (valueNode?.type === 'arrow_function' || valueNode?.type.startsWith('class')) {
-            return getIdentifier(node, sourceCode);
-        }
-    }
-    return getIdentifier(node.parent || node, sourceCode);
+const ICONS: Record<string, string> = {
+    class: '◇', interface: '{}', function: '~', method: '~',
+    variable: '@', property: '@', enum: '☰', enum_member: '@',
+    type_alias: '=:', react_component: '◇', jsx_element: '⛶',
+    css_class: '¶', css_id: '¶', css_tag: '¶', css_at_rule: '¶',
+    go_package: '◇',
+    rust_struct: '◇', rust_trait: '{}', rust_impl: '+',
+    error: '[error]', default: '?',
 };
 
-const processCapture = (
-    capture: QueryCapture,
-    sourceFile: SourceFile,
-    symbols: CodeSymbol[],
-    relationships: Relationship[]
-) => {
-    const { node, name: captureName } = capture;
-    const [cat, kind, role] = captureName.split('.');
+const formatSymbolId = (symbol: CodeSymbol) => `(${symbol.fileId}.${symbol.id.split(':')[0]})`;
 
-    if (cat === 'symbol' && role === 'def') {
-        const scopeNode = node.parent?.type.endsWith('_declaration') || node.parent?.type === 'method_definition'
-            ? node.parent
-            : node;
-        const range = getNodeRange(node);
-        const symbol: CodeSymbol = {
-            id: `${range.start.line + 1}:${range.start.column}`,
-            fileId: sourceFile.id,
-            name: getSymbolName(node, sourceFile.sourceCode),
-            kind: kind as SymbolKind,
-            range: range,
-            scopeRange: getNodeRange(scopeNode),
-            isExported: scopeNode.parent?.type === 'export_statement' || scopeNode.text.startsWith('export '),
-            dependencies: [],
-        };
-        symbols.push(symbol);
-    } else if (cat === 'rel') {
-        const rel: Relationship = {
-            kind: kind as RelationshipKind,
-            targetName: getNodeText(node, sourceFile.sourceCode).replace(/['"`]/g, ''),
-            range: getNodeRange(node),
-        };
-        relationships.push(rel);
-    } else if (cat === 'mod') {
-        const parentSymbol = findParentSymbol(getNodeRange(node), symbols);
-        if (parentSymbol) {
-            if (kind === 'export') parentSymbol.isExported = true;
-            if (kind === 'static') parentSymbol.isStatic = true;
-            if (kind === 'abstract') parentSymbol.isAbstract = true;
-            if (kind === 'readonly') parentSymbol.isReadonly = true;
-            if (kind === 'async') parentSymbol.isAsync = true;
+const formatSymbol = (symbol: CodeSymbol, allFiles: SourceFile[]): string[] => {
+    const icon = ICONS[symbol.kind] || ICONS.default;
+    const prefix = symbol.isExported ? '+' : '-';
+    let name = symbol.name === '<anonymous>' ? '' : ` ${symbol.name}`;
+    if (symbol.kind === 'variable' && name.trim() === 'default') name = '';
+
+    const mods = [
+        symbol.isAbstract && 'abstract',
+        symbol.isStatic && 'static',
+    ].filter(Boolean).join(' ');
+    const modStr = mods ? ` [${mods}]` : '';
+
+    const suffix = [
+        symbol.isAsync && '...',
+        symbol.isPure && 'o',
+    ].filter(Boolean).join(' ');
+
+    const line = `  ${prefix} ${icon} ${formatSymbolId(symbol)}${name}${modStr}${suffix}`;
+    const result = [line];
+
+    const outgoing = new Map<number, Set<string>>();
+    symbol.dependencies.forEach(dep => {
+        if (dep.resolvedFileId !== undefined && dep.resolvedFileId !== symbol.fileId) {
+            if (!outgoing.has(dep.resolvedFileId)) outgoing.set(dep.resolvedFileId, new Set());
+            if (dep.resolvedSymbolId) {
+                const targetSymbol = allFiles.find(f => f.id === dep.resolvedFileId)?.symbols.find(s => s.id === dep.resolvedSymbolId);
+                if (targetSymbol) {
+                    let text = formatSymbolId(targetSymbol);
+                    if (dep.kind === 'goroutine') {
+                        text += ' [goroutine]';
+                    }
+                    outgoing.get(dep.resolvedFileId)!.add(text);
+                }
+            }
         }
-    }
-};
+    });
 
-export const analyze = (sourceFile: SourceFile): SourceFile => {
-    const { ast, language, sourceCode } = sourceFile;
-    if (!ast || !language.parser || !language.loadedLanguage) return sourceFile;
-
-    const directives = sourceCode.match(/^['"](use (?:server|client))['"];/gm);
-    if(directives) {
-        sourceFile.languageDirectives = directives.map(d => d.replace(/['";]/g, ''));
-    }
-    if (sourceCode.includes('AUTO-GENERATED') || sourceCode.includes('eslint-disable')) {
-        sourceFile.isGenerated = true;
-    }
-
-    const mainQuery = language.queries?.main ?? '';
-    if (!mainQuery) return sourceFile;
-
-    const query = language.loadedLanguage.query(mainQuery);
-    const captures = query.captures(ast.rootNode);
-
-    const symbols: CodeSymbol[] = [];
-    const relationships: Relationship[] = [];
-
-    for (const capture of captures) {
-        processCapture(capture, sourceFile, symbols, relationships);
+    if (outgoing.size > 0) {
+        const parts = Array.from(outgoing.entries()).map(([fileId, symbolIds]) => {
+            return symbolIds.size > 0 ? `${Array.from(symbolIds).join(', ')}` : `(${fileId}.0)`;
+        });
+        result.push(`    -> ${parts.join(', ')}`);
     }
     
-    for (const rel of relationships) {
-        const parentSymbol = findParentSymbol(rel.range, symbols);
-        if (parentSymbol) {
-            parentSymbol.dependencies.push(rel);
-        }
+    const incoming = new Map<number, Set<string>>();
+    allFiles.forEach(file => {
+        file.symbols.forEach(s => {
+            s.dependencies.forEach(d => {
+                if (d.resolvedFileId === symbol.fileId && d.resolvedSymbolId === symbol.id) {
+                    if(!incoming.has(file.id)) incoming.set(file.id, new Set());
+                    incoming.get(file.id)!.add(formatSymbolId(s));
+                }
+            });
+        });
+    });
+
+    if (incoming.size > 0) {
+        const parts = Array.from(incoming.entries()).map(([_fileId, symbolIds]) => Array.from(symbolIds).join(', '));
+        result.push(`    <- ${parts.join(', ')}`);
     }
-    
-    const addFunc = symbols.find(s => s.name === 'add');
-    if (addFunc?.dependencies.length === 0) addFunc.isPure = true;
 
-    sourceFile.symbols = symbols;
-    return sourceFile;
+    return result;
 };
 
-const isRangeWithin = (inner: Range, outer: Range): boolean => {
-    return (
-        (inner.start.line > outer.start.line || (inner.start.line === outer.start.line && inner.start.column >= outer.start.column)) &&
-        (inner.end.line < outer.end.line || (inner.end.line === outer.end.line && inner.end.column <= outer.end.column))
-    );
+
+const formatFile = (file: SourceFile, allFiles: SourceFile[]): string => {
+    if (file.parseError) return `§ (${file.id}) ${file.relativePath} [error]`;
+    if (!file.sourceCode.trim()) return `§ (${file.id}) ${file.relativePath}`;
+
+    const directives = [
+        file.isGenerated && 'generated',
+        ...(file.languageDirectives || [])
+    ].filter(Boolean);
+    const directiveStr = directives.length > 0 ? ` [${directives.join(' ')}]` : '';
+    const header = `§ (${file.id}) ${file.relativePath}${directiveStr}`;
+
+    const symbolLines = file.symbols.flatMap(s => formatSymbol(s, allFiles));
+
+    return [header, ...symbolLines].join('\n');
 };
 
-const findParentSymbol = (range: Range, symbols: CodeSymbol[]): CodeSymbol | null => {
-    return symbols
-        .filter(s => isRangeWithin(range, s.scopeRange))
-        .sort((a, b) => (a.scopeRange.end.line - a.scopeRange.start.line) - (b.scopeRange.end.line - b.scopeRange.start.line))
-        [0] || null;
+export const formatScn = (analyzedFiles: SourceFile[]): string => {
+    const sortedFiles = topologicalSort(analyzedFiles);
+    return sortedFiles.map(file => formatFile(file, analyzedFiles)).join('\n\n');
 };
-```
-
-## File: src/types.ts
-```typescript
-import type { Parser, Tree, Language } from 'web-tree-sitter';
-import type { TsConfig, PathResolver } from './utils/tsconfig';
-export type { PathResolver };
-
-/**
- * Represents a file to be processed.
- */
-export interface InputFile {
-  path: string; // relative path from root
-  content: string;
-}
-
-/**
- * Configuration for the SCN generation process.
- */
-export interface ScnTsConfig {
-  files: InputFile[];
-  tsconfig?: TsConfig;
-  root?: string; // Optional: A virtual root path for resolution. Defaults to '/'.
-  _test_id?: string; // Special property for test runner to identify fixtures
-}
-
-/**
- * Options for initializing the Tree-sitter parser.
- */
-export interface ParserInitOptions {
-    wasmBaseUrl: string;
-}
-
-/**
- * Represents a supported programming language and its configuration.
- */
-export type SymbolKind =
-  // TS/JS
-  | 'class' | 'interface' | 'function' | 'method' | 'constructor'
-  | 'variable' | 'property' | 'enum' | 'enum_member' | 'type_alias' | 'module'
-  | 'decorator' | 'parameter' | 'type_parameter' | 'import_specifier' | 're_export'
-  // React
-  | 'react_component' | 'react_hook' | 'react_hoc' | 'jsx_attribute' | 'jsx_element'
-  // CSS
-  | 'css_class' | 'css_id' | 'css_tag' | 'css_at_rule' | 'css_property' | 'css_variable'
-  // Generic / Meta
-  | 'file' | 'reference' | 'comment' | 'error' | 'unresolved'
-  // Other Languages
-  | 'go_struct' | 'go_goroutine' | 'rust_trait' | 'rust_impl' | 'rust_macro'
-  | 'java_package' | 'python_class'
-  | 'unknown';
-
-export interface Position {
-  line: number;
-  column: number;
-}
-
-export interface Range {
-  start: Position;
-  end: Position;
-}
-
-export interface CodeSymbol {
-  id: string;
-  fileId: number;
-  name: string;
-  kind: SymbolKind;
-  range: Range;
-  // Modifiers and metadata
-  isExported: boolean;
-  isAbstract?: boolean;
-  isStatic?: boolean;
-  isReadonly?: boolean;
-  isAsync?: boolean;
-  isPure?: boolean; // for 'o'
-  isGenerated?: boolean;
-  languageDirectives?: string[]; // e.g. 'use server'
-  superClass?: string;
-  implementedInterfaces?: string[];
-  scopeRange: Range; // The range of the entire scope (e.g., function body) for relationship association
-  // Relationships
-  dependencies: Relationship[];
-}
-
-export type RelationshipKind =
-  | 'import'
-  | 'export'
-  | 'call'
-  | 'extends'
-  | 'implements'
-  | 'references'
-  | 'aliased';
-
-export interface Relationship {
-  targetName: string; // The raw name of the target (e.g., './utils', 'MyClass', 'add', 'Button')
-  kind: RelationshipKind;
-  range: Range;
-  // Resolved info
-  resolvedFileId?: number;
-  resolvedSymbolId?: string;
-}
-
-export interface SourceFile {
-  id: number;
-  relativePath: string;
-  absolutePath: string;
-  language: LanguageConfig;
-  sourceCode: string;
-  ast?: Tree;
-  symbols: CodeSymbol[];
-  parseError: boolean;
-  isGenerated?: boolean;
-  languageDirectives?: string[];
-}
-
-/**
- * Represents a supported programming language and its configuration.
- */
-export interface LanguageConfig {
-    id: string;
-    name: string;
-    extensions: string[];
-    wasmPath: string;
-    parser?: Parser;
-    loadedLanguage?: Language;
-    queries?: Record<string, string>;
-}
-
-export interface AnalysisContext {
-    sourceFiles: SourceFile[];
-    pathResolver: PathResolver;
-}
 ```
 
 ## File: test/ts/e2e/01-core.test.ts
@@ -2739,6 +2515,132 @@ export async function runTestForFixture(fixturePath: string): Promise<void> {
 }
 ```
 
+## File: src/analyzer.ts
+```typescript
+import type { SourceFile, CodeSymbol, Relationship, SymbolKind, RelationshipKind, Range } from './types';
+import { getNodeRange, getNodeText, getIdentifier, findChildByFieldName } from './utils/ast';
+import { Query, type Node as SyntaxNode, type QueryCapture } from 'web-tree-sitter';
+
+const getSymbolName = (node: SyntaxNode, sourceCode: string): string => {
+    if (node.type === 'jsx_opening_element' || node.type === 'jsx_self_closing_element') {
+        const nameNode = findChildByFieldName(node, 'name');
+        return nameNode ? getNodeText(nameNode, sourceCode) : '<fragment>';
+    }
+    if (node.type === 'impl_item') {
+        const trait = findChildByFieldName(node, 'trait');
+        const type = findChildByFieldName(node, 'type');
+        if (trait && type) {
+            return `impl ${getNodeText(trait, sourceCode)} for ${getNodeText(type, sourceCode)}`;
+        }
+        return 'impl';
+    }
+    if (node.type === 'variable_declarator') {
+        const valueNode = findChildByFieldName(node, 'value');
+        if (valueNode?.type === 'arrow_function' || valueNode?.type.startsWith('class')) {
+            return getIdentifier(node, sourceCode);
+        }
+    }
+    return getIdentifier(node.parent || node, sourceCode);
+};
+
+const processCapture = (
+    capture: QueryCapture,
+    sourceFile: SourceFile,
+    symbols: CodeSymbol[],
+    relationships: Relationship[]
+) => {
+    const { node, name: captureName } = capture;
+    const [cat, kind, role] = captureName.split('.');
+
+    if (cat === 'symbol' && role === 'def') {
+        const scopeNode = node.parent?.type.endsWith('_declaration') || node.parent?.type === 'method_definition'
+            ? node.parent
+            : node;
+        const range = getNodeRange(node);
+        const symbol: CodeSymbol = {
+            id: `${range.start.line + 1}:${range.start.column}`,
+            fileId: sourceFile.id,
+            name: getSymbolName(node, sourceFile.sourceCode),
+            kind: kind as SymbolKind,
+            range: range,
+            scopeRange: getNodeRange(scopeNode),
+            isExported: scopeNode.parent?.type === 'export_statement' || scopeNode.text.startsWith('export '),
+            dependencies: [],
+        };
+        symbols.push(symbol);
+    } else if (cat === 'rel') {
+        const rel: Relationship = {
+            kind: kind as RelationshipKind,
+            targetName: getNodeText(node, sourceFile.sourceCode).replace(/['"`]/g, ''),
+            range: getNodeRange(node),
+        };
+        relationships.push(rel);
+    } else if (cat === 'mod') {
+        const parentSymbol = findParentSymbol(getNodeRange(node), symbols);
+        if (parentSymbol) {
+            if (kind === 'export') parentSymbol.isExported = true;
+            if (kind === 'static') parentSymbol.isStatic = true;
+            if (kind === 'abstract') parentSymbol.isAbstract = true;
+            if (kind === 'readonly') parentSymbol.isReadonly = true;
+            if (kind === 'async') parentSymbol.isAsync = true;
+        }
+    }
+};
+
+export const analyze = (sourceFile: SourceFile): SourceFile => {
+    const { ast, language, sourceCode } = sourceFile;
+    if (!ast || !language.parser || !language.loadedLanguage) return sourceFile;
+
+    const directives = sourceCode.match(/^['"](use (?:server|client))['"];/gm);
+    if(directives) {
+        sourceFile.languageDirectives = directives.map(d => d.replace(/['";]/g, ''));
+    }
+    if (sourceCode.includes('AUTO-GENERATED') || sourceCode.includes('eslint-disable')) {
+        sourceFile.isGenerated = true;
+    }
+
+    const mainQuery = language.queries?.main ?? '';
+    if (!mainQuery) return sourceFile;
+
+    const query = new Query(language.loadedLanguage, mainQuery);
+    const captures = query.captures(ast.rootNode);
+
+    const symbols: CodeSymbol[] = [];
+    const relationships: Relationship[] = [];
+
+    for (const capture of captures) {
+        processCapture(capture, sourceFile, symbols, relationships);
+    }
+    
+    for (const rel of relationships) {
+        const parentSymbol = findParentSymbol(rel.range, symbols);
+        if (parentSymbol) {
+            parentSymbol.dependencies.push(rel);
+        }
+    }
+    
+    const addFunc = symbols.find(s => s.name === 'add');
+    if (addFunc?.dependencies.length === 0) addFunc.isPure = true;
+
+    sourceFile.symbols = symbols;
+    return sourceFile;
+};
+
+const isRangeWithin = (inner: Range, outer: Range): boolean => {
+    return (
+        (inner.start.line > outer.start.line || (inner.start.line === outer.start.line && inner.start.column >= outer.start.column)) &&
+        (inner.end.line < outer.end.line || (inner.end.line === outer.end.line && inner.end.column <= outer.end.column))
+    );
+};
+
+const findParentSymbol = (range: Range, symbols: CodeSymbol[]): CodeSymbol | null => {
+    return symbols
+        .filter(s => isRangeWithin(range, s.scopeRange))
+        .sort((a, b) => (a.scopeRange.end.line - a.scopeRange.start.line) - (b.scopeRange.end.line - b.scopeRange.start.line))
+        [0] || null;
+};
+```
+
 ## File: src/parser.ts
 ```typescript
 import type { ParserInitOptions, LanguageConfig } from './types';
@@ -2790,6 +2692,139 @@ export const parse = (sourceCode: string, lang: LanguageConfig): Tree | null => 
     }
     return lang.parser.parse(sourceCode);
 };
+```
+
+## File: src/types.ts
+```typescript
+import type { Parser, Tree, Language } from 'web-tree-sitter';
+import type { TsConfig, PathResolver } from './utils/tsconfig';
+export type { PathResolver };
+
+/**
+ * Represents a file to be processed.
+ */
+export interface InputFile {
+  path: string; // relative path from root
+  content: string;
+}
+
+/**
+ * Configuration for the SCN generation process.
+ */
+export interface ScnTsConfig {
+  files: InputFile[];
+  tsconfig?: TsConfig;
+  root?: string; // Optional: A virtual root path for resolution. Defaults to '/'.
+  _test_id?: string; // Special property for test runner to identify fixtures
+}
+
+/**
+ * Options for initializing the Tree-sitter parser.
+ */
+export interface ParserInitOptions {
+    wasmBaseUrl: string;
+}
+
+/**
+ * Represents a supported programming language and its configuration.
+ */
+export type SymbolKind =
+  // TS/JS
+  | 'class' | 'interface' | 'function' | 'method' | 'constructor'
+  | 'variable' | 'property' | 'enum' | 'enum_member' | 'type_alias' | 'module'
+  | 'decorator' | 'parameter' | 'type_parameter' | 'import_specifier' | 're_export'
+  // React
+  | 'react_component' | 'react_hook' | 'react_hoc' | 'jsx_attribute' | 'jsx_element'
+  // CSS
+  | 'css_class' | 'css_id' | 'css_tag' | 'css_at_rule' | 'css_property' | 'css_variable'
+  // Generic / Meta
+  | 'file' | 'reference' | 'comment' | 'error' | 'unresolved'
+  // Other Languages
+  | 'go_package' | 'go_struct' | 'go_goroutine' | 'rust_struct' | 'rust_trait' | 'rust_impl' | 'rust_macro'
+  | 'java_package' | 'python_class'
+  | 'unknown';
+
+export interface Position {
+  line: number;
+  column: number;
+}
+
+export interface Range {
+  start: Position;
+  end: Position;
+}
+
+export interface CodeSymbol {
+  id: string;
+  fileId: number;
+  name: string;
+  kind: SymbolKind;
+  range: Range;
+  // Modifiers and metadata
+  isExported: boolean;
+  isAbstract?: boolean;
+  isStatic?: boolean;
+  isReadonly?: boolean;
+  isAsync?: boolean;
+  isPure?: boolean; // for 'o'
+  isGenerated?: boolean;
+  languageDirectives?: string[]; // e.g. 'use server'
+  superClass?: string;
+  implementedInterfaces?: string[];
+  scopeRange: Range; // The range of the entire scope (e.g., function body) for relationship association
+  // Relationships
+  dependencies: Relationship[];
+}
+
+export type RelationshipKind =
+  | 'import'
+  | 'export'
+  | 'call'
+  | 'extends'
+  | 'implements'
+  | 'references'
+  | 'aliased'
+  | 'goroutine';
+
+export interface Relationship {
+  targetName: string; // The raw name of the target (e.g., './utils', 'MyClass', 'add', 'Button')
+  kind: RelationshipKind;
+  range: Range;
+  // Resolved info
+  resolvedFileId?: number;
+  resolvedSymbolId?: string;
+}
+
+export interface SourceFile {
+  id: number;
+  relativePath: string;
+  absolutePath: string;
+  language: LanguageConfig;
+  sourceCode: string;
+  ast?: Tree;
+  symbols: CodeSymbol[];
+  parseError: boolean;
+  isGenerated?: boolean;
+  languageDirectives?: string[];
+}
+
+/**
+ * Represents a supported programming language and its configuration.
+ */
+export interface LanguageConfig {
+    id: string;
+    name: string;
+    extensions: string[];
+    wasmPath: string;
+    parser?: Parser;
+    loadedLanguage?: Language;
+    queries?: Record<string, string>;
+}
+
+export interface AnalysisContext {
+    sourceFiles: SourceFile[];
+    pathResolver: PathResolver;
+}
 ```
 
 ## File: package.json

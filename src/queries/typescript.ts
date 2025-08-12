@@ -68,14 +68,10 @@ export const typescriptQueries = `
   constructor: (identifier) @rel.new)
 
 (class_declaration
-  (class_heritage
-    (expression_with_type_arguments
-      (identifier) @rel.extends))) @rel.extends.scope
+  (class_heritage [ (identifier) @rel.extends (generic_type (type_identifier) @rel.extends) ])) @rel.extends.scope
 
 (interface_declaration
-  (class_heritage
-    (expression_with_type_arguments
-      (type_identifier) @rel.extends)))
+  (extends_clause [ (type_identifier) @rel.extends (generic_type (type_identifier) @rel.extends) ]))
 
 (implement_clause
   (type_identifier) @rel.implements)

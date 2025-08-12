@@ -5,8 +5,7 @@ export const cssQueries = `
 (id_selector
   (id_name) @symbol.css_id.def)
   
-(type_selector
-  (tag_name) @symbol.css_tag.def)
+(tag_name) @symbol.css_tag.def
 
 (at_rule
   (at_keyword) @symbol.css_at_rule.def)

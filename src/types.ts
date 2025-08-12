@@ -86,7 +86,8 @@ export type RelationshipKind =
   | 'implements'
   | 'references'
   | 'aliased'
-  | 'goroutine';
+  | 'goroutine'
+  | 'macro';
 
 export interface Relationship {
   targetName: string; // The raw name of the target (e.g., './utils', 'MyClass', 'add', 'Button')

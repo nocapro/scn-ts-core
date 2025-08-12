@@ -11,7 +11,7 @@ export const rustQueries = `
 ) @symbol.rust_impl.def @scope.rust_impl.def
 
 (attribute_item
-  (attribute (identifier) @rel.macro))
+  (attribute (token_tree (identifier) @rel.macro)))
 
 (function_item
   name: (identifier) @symbol.function.def) @scope.function.def
@@ -23,4 +23,6 @@ export const rustQueries = `
 (call_expression
   function: (field_expression
     field: (field_identifier) @rel.call))
+
+(visibility_modifier) @mod.export
 `;

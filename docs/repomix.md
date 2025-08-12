@@ -240,29 +240,29 @@ export const typescriptQueries = `
 ## File: src/utils/ast.ts
 ```typescript
 import type { Range } from '../types';
-import type Parser from 'web-tree-sitter';
+import type { Node as SyntaxNode } from 'web-tree-sitter';
 
-export const getNodeText = (node: Parser.SyntaxNode, sourceCode: string): string => {
+export const getNodeText = (node: SyntaxNode, sourceCode: string): string => {
     return sourceCode.substring(node.startIndex, node.endIndex);
 };
 
-export const getNodeRange = (node: Parser.SyntaxNode): Range => {
+export const getNodeRange = (node: SyntaxNode): Range => {
     return {
         start: { line: node.startPosition.row, column: node.startPosition.column },
         end: { line: node.endPosition.row, column: node.endPosition.column },
     };
 };
 
-export const findChild = (node: Parser.SyntaxNode, type: string | string[]): Parser.SyntaxNode | null => {
+export const findChild = (node: SyntaxNode, type: string | string[]): SyntaxNode | null => {
     const types = Array.isArray(type) ? type : [type];
-    return node.children.find((c: Parser.SyntaxNode) => types.includes(c.type)) || null;
+    return node.children.find((c: SyntaxNode) => types.includes(c.type)) || null;
 }
 
-export const findChildByFieldName = (node: Parser.SyntaxNode, fieldName: string): Parser.SyntaxNode | null => {
+export const findChildByFieldName = (node: SyntaxNode, fieldName: string): SyntaxNode | null => {
     return node.childForFieldName(fieldName);
 };
 
-export const getIdentifier = (node: Parser.SyntaxNode, sourceCode: string, defaultName: string = '<anonymous>'): string => {
+export const getIdentifier = (node: SyntaxNode, sourceCode: string, defaultName: string = '<anonymous>'): string => {
     const nameNode = findChildByFieldName(node, 'name') ?? findChild(node, ['identifier', 'property_identifier']);
     return nameNode ? getNodeText(nameNode, sourceCode) : defaultName;
 };
@@ -383,9 +383,9 @@ export const getPathResolver = (tsconfig?: TsConfig | null): PathResolver => {
 ```typescript
 import type { SourceFile, CodeSymbol, Relationship, SymbolKind, RelationshipKind, Range } from './types';
 import { getNodeRange, getNodeText, getIdentifier, findChildByFieldName } from './utils/ast';
-import type Parser from 'web-tree-sitter';
+import type { Node as SyntaxNode, QueryCapture } from 'web-tree-sitter';
 
-const getSymbolName = (node: Parser.SyntaxNode, sourceCode: string): string => {
+const getSymbolName = (node: SyntaxNode, sourceCode: string): string => {
     if (node.type === 'jsx_opening_element' || node.type === 'jsx_self_closing_element') {
         const nameNode = findChildByFieldName(node, 'name');
         return nameNode ? getNodeText(nameNode, sourceCode) : '<fragment>';
@@ -400,7 +400,7 @@ const getSymbolName = (node: Parser.SyntaxNode, sourceCode: string): string => {
 };
 
 const processCapture = (
-    capture: Parser.QueryCapture,
+    capture: QueryCapture,
     sourceFile: SourceFile,
     symbols: CodeSymbol[],
     relationships: Relationship[]
@@ -445,7 +445,7 @@ const processCapture = (
 
 export const analyze = (sourceFile: SourceFile): SourceFile => {
     const { ast, language, sourceCode } = sourceFile;
-    if (!ast || !language.parser) return sourceFile;
+    if (!ast || !language.parser || !language.loadedLanguage) return sourceFile;
 
     const directives = sourceCode.match(/^['"](use (?:server|client))['"];/gm);
     if(directives) {
@@ -458,7 +458,7 @@ export const analyze = (sourceFile: SourceFile): SourceFile => {
     const mainQuery = language.queries?.main ?? '';
     if (!mainQuery) return sourceFile;
 
-    const query = language.parser.getLanguage().query(mainQuery);
+    const query = language.loadedLanguage.query(mainQuery);
     const captures = query.captures(ast.rootNode);
 
     const symbols: CodeSymbol[] = [];
@@ -840,64 +840,9 @@ export const generateScn = async (config: ScnTsConfig): Promise<string> => {
 };
 ```
 
-## File: src/parser.ts
-```typescript
-import type { ParserInitOptions, LanguageConfig } from './types';
-import Parser from 'web-tree-sitter';
-import path from 'node:path';
-import { languages } from './languages';
-
-let isInitialized = false;
-
-const createInitializer = (options: ParserInitOptions) => async (): Promise<void> => {
-    if (isInitialized) {
-        return;
-    }
-    
-    await Parser.init({
-        locateFile: (scriptName: string, _scriptDirectory: string) => {
-            return path.join(options.wasmBaseUrl, scriptName);
-        }
-    });
-
-    const languageLoaders = languages
-        .filter(lang => lang.wasmPath)
-        .map(async (lang: LanguageConfig) => {
-            const wasmPath = path.join(options.wasmBaseUrl, lang.wasmPath);
-            try {
-                const loadedLang = await Parser.Language.load(wasmPath);
-                const parser = new Parser();
-                parser.setLanguage(loadedLang);
-                lang.parser = parser;
-            } catch (error) {
-                console.error(`Failed to load parser for ${lang.name} from ${wasmPath}`, error);
-            }
-        });
-    
-    await Promise.all(languageLoaders);
-    isInitialized = true;
-};
-
-let initializeFn: (() => Promise<void>) | null = null;
-
-export const initializeParser = async (options: ParserInitOptions): Promise<void> => {
-    if (!initializeFn) {
-        initializeFn = createInitializer(options);
-    }
-    await initializeFn();
-};
-
-export const parse = (sourceCode: string, lang: LanguageConfig): Parser.Tree | null => {
-    if (!isInitialized || !lang.parser) {
-        return null;
-    }
-    return lang.parser.parse(sourceCode);
-};
-```
-
 ## File: src/types.ts
 ```typescript
-import type Parser from 'web-tree-sitter';
+import type { Parser, Tree, Language } from 'web-tree-sitter';
 import type { TsConfig, PathResolver } from './utils/tsconfig';
 export type { PathResolver };
 
@@ -1001,7 +946,7 @@ export interface SourceFile {
   absolutePath: string;
   language: LanguageConfig;
   sourceCode: string;
-  ast?: Parser.Tree;
+  ast?: Tree;
   symbols: CodeSymbol[];
   parseError: boolean;
   isGenerated?: boolean;
@@ -1017,6 +962,7 @@ export interface LanguageConfig {
     extensions: string[];
     wasmPath: string;
     parser?: Parser;
+    loadedLanguage?: Language;
     queries?: Record<string, string>;
 }
 
@@ -2538,6 +2484,59 @@ expected: |
 }
 ```
 
+## File: src/parser.ts
+```typescript
+import type { ParserInitOptions, LanguageConfig } from './types';
+import { Parser, Language, type Tree } from 'web-tree-sitter';
+import path from 'node:path';
+import { languages } from './languages';
+
+let initializePromise: Promise<void> | null = null;
+let isInitialized = false;
+
+const doInitialize = async (options: ParserInitOptions): Promise<void> => {
+    await Parser.init({
+        locateFile: (scriptName: string, _scriptDirectory: string) => {
+            return path.join(options.wasmBaseUrl, scriptName);
+        }
+    });
+
+    const languageLoaders = languages
+        .filter(lang => lang.wasmPath)
+        .map(async (lang: LanguageConfig) => {
+            const wasmPath = path.join(options.wasmBaseUrl, lang.wasmPath);
+            try {
+                const loadedLang = await Language.load(wasmPath);
+                const parser = new Parser();
+                parser.setLanguage(loadedLang);
+                lang.parser = parser;
+                lang.loadedLanguage = loadedLang;
+            } catch (error) {
+                console.error(`Failed to load parser for ${lang.name} from ${wasmPath}`, error);
+                throw error;
+            }
+        });
+    
+    await Promise.all(languageLoaders);
+    isInitialized = true;
+};
+
+export const initializeParser = (options: ParserInitOptions): Promise<void> => {
+    if (initializePromise) {
+        return initializePromise;
+    }
+    initializePromise = doInitialize(options);
+    return initializePromise;
+};
+
+export const parse = (sourceCode: string, lang: LanguageConfig): Tree | null => {
+    if (!isInitialized || !lang.parser) {
+        return null;
+    }
+    return lang.parser.parse(sourceCode);
+};
+```
+
 ## File: test/ts/e2e/01-core.test.ts
 ```typescript
 import { describe, it } from 'bun:test';
@@ -2802,7 +2801,7 @@ export async function runTestForFixture(fixturePath: string): Promise<void> {
   "private": true,
   "devDependencies": {
     "@types/bun": "latest",
-    "web-tree-sitter": "^0.22.6"
+    "web-tree-sitter": "0.25.8"
   },
   "peerDependencies": {
     "typescript": "^5"

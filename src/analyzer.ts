@@ -1,8 +1,8 @@
 import type { SourceFile, CodeSymbol, Relationship, SymbolKind, RelationshipKind, Range } from './types';
 import { getNodeRange, getNodeText, getIdentifier, findChildByFieldName } from './utils/ast';
-import type Parser from 'web-tree-sitter';
+import type { Node as SyntaxNode, QueryCapture } from 'web-tree-sitter';
 
-const getSymbolName = (node: Parser.SyntaxNode, sourceCode: string): string => {
+const getSymbolName = (node: SyntaxNode, sourceCode: string): string => {
     if (node.type === 'jsx_opening_element' || node.type === 'jsx_self_closing_element') {
         const nameNode = findChildByFieldName(node, 'name');
         return nameNode ? getNodeText(nameNode, sourceCode) : '<fragment>';
@@ -17,7 +17,7 @@ const getSymbolName = (node: Parser.SyntaxNode, sourceCode: string): string => {
 };
 
 const processCapture = (
-    capture: Parser.QueryCapture,
+    capture: QueryCapture,
     sourceFile: SourceFile,
     symbols: CodeSymbol[],
     relationships: Relationship[]
@@ -62,7 +62,7 @@ const processCapture = (
 
 export const analyze = (sourceFile: SourceFile): SourceFile => {
     const { ast, language, sourceCode } = sourceFile;
-    if (!ast || !language.parser) return sourceFile;
+    if (!ast || !language.parser || !language.loadedLanguage) return sourceFile;
 
     const directives = sourceCode.match(/^['"](use (?:server|client))['"];/gm);
     if(directives) {
@@ -75,7 +75,7 @@ export const analyze = (sourceFile: SourceFile): SourceFile => {
     const mainQuery = language.queries?.main ?? '';
     if (!mainQuery) return sourceFile;
 
-    const query = language.parser.getLanguage().query(mainQuery);
+    const query = language.loadedLanguage.query(mainQuery);
     const captures = query.captures(ast.rootNode);
 
     const symbols: CodeSymbol[] = [];

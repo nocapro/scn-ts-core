@@ -5,7 +5,7 @@
       "name": "scn-ts-core",
       "devDependencies": {
         "@types/bun": "latest",
-        "web-tree-sitter": "^0.22.6",
+        "web-tree-sitter": "0.25.8",
       },
       "peerDependencies": {
         "typescript": "^5",
@@ -27,6 +27,6 @@
 
     "undici-types": ["undici-types@7.10.0", "", {}, "sha512-t5Fy/nfn+14LuOc2KNYg75vZqClpAiqscVvMygNnlsHBFpSXdJaYtXMcdNLpl/Qvc3P2cB3s6lOV51nqsFq4ag=="],
 
-    "web-tree-sitter": ["web-tree-sitter@0.22.6", "", {}, "sha512-hS87TH71Zd6mGAmYCvlgxeGDjqd9GTeqXNqTT+u0Gs51uIozNIaaq/kUAbV/Zf56jb2ZOyG8BxZs2GG9wbLi6Q=="],
+    "web-tree-sitter": ["web-tree-sitter@0.25.8", "", {}, "sha512-AOWIoUifUcpwILOI38RtfIh0X1nlMRuqmw/sMgfQko1lbQJOJQf1Mqmtjw+GLW0ewvJyWFWTqGaWy5rPfS3XDw=="],
   }
 }

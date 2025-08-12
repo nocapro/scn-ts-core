@@ -26,7 +26,8 @@
     "test",
     "package.json",
     "src",
-    "tsconfig.json"
+    "tsconfig.json",
+    "node_modules/web-tree-sitter/src/index.ts"
   ],
   "ignore": {
     "useGitignore": true,

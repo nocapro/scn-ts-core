@@ -1,4 +1,4 @@
-import type Parser from 'web-tree-sitter';
+import type { Parser, Tree, Language } from 'web-tree-sitter';
 import type { TsConfig, PathResolver } from './utils/tsconfig';
 export type { PathResolver };
 
@@ -102,7 +102,7 @@ export interface SourceFile {
   absolutePath: string;
   language: LanguageConfig;
   sourceCode: string;
-  ast?: Parser.Tree;
+  ast?: Tree;
   symbols: CodeSymbol[];
   parseError: boolean;
   isGenerated?: boolean;
@@ -118,6 +118,7 @@ export interface LanguageConfig {
     extensions: string[];
     wasmPath: string;
     parser?: Parser;
+    loadedLanguage?: Language;
     queries?: Record<string, string>;
 }
 

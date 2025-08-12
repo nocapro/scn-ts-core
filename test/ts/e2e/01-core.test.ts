@@ -1,5 +1,5 @@
 import { describe, it } from 'bun:test';
-import { runTestForFixture } from '../test.util';
+import { runTestForFixture } from '../../test.util.ts';
 import path from 'node:path';
 
 const fixtureDir = path.join(import.meta.dir, '..', 'fixtures');

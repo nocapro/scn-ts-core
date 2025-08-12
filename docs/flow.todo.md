@@ -1,3 +1,7 @@
+no need fs, this is in-memory based programmatic api
+
+===
+
 ** SCN is A hyper-efficient, language-agnostic representation of your codebase's structure, API, and inter-file relationships. Unlock unparalleled context for Large Language Models (LLMs) and advanced code analysis, using a fraction of the tokens.**
 
 please develop the `src` logic files in production ready manner, also follow below rules;

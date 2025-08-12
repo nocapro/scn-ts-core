@@ -25,7 +25,7 @@
   "include": [
     "test",
     "package.json",
-    // "README.md",
+    "src",
     "tsconfig.json"
   ],
   "ignore": {

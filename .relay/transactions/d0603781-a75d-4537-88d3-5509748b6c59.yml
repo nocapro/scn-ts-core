@@ -1,0 +1,866 @@
+uuid: d0603781-a75d-4537-88d3-5509748b6c59
+projectId: scn-ts-core
+createdAt: '2025-08-12T05:45:54.905Z'
+linesAdded: 164
+linesRemoved: 58
+gitCommitMsg: 'fix(parser): overhaul tree-sitter queries and fix logic'
+promptSummary: >-
+  The user's tests are failing with multiple errors, including Tree-sitter query
+  errors for TypeScript, Go, and issues with CSS and Rust parsing. The
+  dependency graph formatting is also broken. I need to fix all these issues.
+reasoning:
+  - >-
+    This is anton. I've analyzed the test failures and found several issues
+    related to malformed Tree-sitter queries and incomplete logic in the
+    analyzer and formatter. Here's my plan to fix them:
+  - >-
+    1.  **Fix TypeScript Queries:** The primary cause of crashes (`QueryError:
+    Bad pattern structure`) is an invalid query for TypeScript. I will replace
+    `src/queries/typescript.ts` with a much more robust and syntactically
+    correct set of queries. This will fix the majority of test failures across
+    all suites.
+  - >-
+    2.  **Fix Go Query:** The Go-related test fails because of a `Bad node name
+    'string_literal'`. I will correct this in `src/queries/go.ts` to use the
+    valid `interpreted_string_literal` node type.
+  - >-
+    3.  **Fix Rust Queries:** The Rust test fixture is failing due to incorrect
+    output. The queries are not specific enough to differentiate methods from
+    functions, and the relationships are not being captured correctly. I will
+    rewrite `src/queries/rust.ts` to be more precise.
+  - >-
+    4.  **Fix CSS Queries & Logic:** The CSS tests are failing because the
+    queries are too generic and the symbol naming logic is incorrect. I will
+    replace `src/queries/css.ts` to capture entire rules and at-rules as
+    symbols. I'll also update `src/analyzer.ts` to correctly extract the
+    selector or at-rule name from these new symbol nodes.
+  - >-
+    5.  **Fix Dependency Formatting:** The `dep-graph-diamond` test fails
+    because file-level dependencies (imports without specific named symbols) are
+    not being formatted. I'll add the missing `else` block in `src/formatter.ts`
+    to handle this.
+  - >-
+    6.  **Handle Dynamic Imports:** To pass the `dynamic-imports` test, I'll
+    introduce a new `dynamic_import` relationship kind in `src/types.ts`, use it
+    in the TypeScript query, and update the formatter to append the required
+    `[dynamic]` tag.
+  - I will now apply these changes.
+  - '### 1. Rewriting Language Queries'
+  - >-
+    I'll start by replacing the faulty query files for TypeScript, CSS, Go, and
+    Rust.
+  - '### 2. Updating Types and Logic'
+  - >-
+    Now I'll modify the analyzer, formatter, and type definitions to support the
+    new queries and fix logic bugs.
+  - >-
+    I've made all the necessary changes to fix the query errors, improve symbol
+    identification, and correct the formatter logic. This comprehensive set of
+    fixes should resolve all the reported test failures.
+operations:
+  - type: write
+    path: src/queries/typescript.ts
+    content: |-
+      export const typescriptQueries = `
+      ; =============================================
+      ; Definitions
+      ; =============================================
+
+      (function_declaration
+        name: (identifier) @symbol.function.def) @scope.function.def
+
+      (arrow_function) @scope.function.def
+
+      (method_definition
+        name: (property_identifier) @symbol.method.def) @scope.function.def
+
+      (class_declaration
+        name: (type_identifier) @symbol.class.def) @scope.class.def
+
+      (interface_declaration
+        name: (type_identifier) @symbol.interface.def) @scope.interface.def
+
+      (enum_declaration
+        name: (identifier) @symbol.enum.def) @scope.enum.def
+
+      (type_alias_declaration
+        name: (type_identifier) @symbol.type_alias.def) @scope.type_alias.def
+
+      ; 'export const MyVar = ...' or 'const MyVar = ...'
+      (variable_declarator
+        name: (identifier) @symbol.variable.def) @scope.variable.def
+
+      ; 'const MyReactComponent = () => <div />'
+      (variable_declarator
+        name: (identifier) @symbol.react_component.def
+        value: (arrow_function
+          body: (jsx_element)
+        )
+      ) @scope.react_component.def
+      (variable_declarator
+        name: (identifier) @symbol.react_component.def
+        value: (arrow_function
+          body: (parenthesized_expression (jsx_element))
+        )
+      ) @scope.react_component.def
+
+      (jsx_opening_element
+        name: (_) @symbol.jsx_element.def) @scope.jsx_element.def
+
+      (jsx_self_closing_element
+        name: (_) @symbol.jsx_element.def) @scope.jsx_element.def
+
+
+      ; =============================================
+      ; Relationships
+      ; =============================================
+
+      ; Imports: 'import { A, B } from './foo''
+      (import_statement
+        source: (string) @rel.import.source)
+
+      ; require calls: 'const foo = require('./foo')'
+      (call_expression
+        function: (identifier) @_fn
+        arguments: (arguments (string) @rel.import.source)
+        (#eq? @_fn "require")
+      )
+
+      ; Dynamic imports: 'import('./foo')'
+      (call_expression
+        function: (import)
+        arguments: (arguments (string) @rel.dynamic_import.source))
+
+      ; 'export { A, B } from './foo''
+      (export_statement
+        source: (string) @rel.export.source)
+
+      ; Class extension: 'class A extends B'
+      (class_declaration
+        (heritage_clause
+          (expression) @rel.extends))
+
+      ; Interface extension: 'interface A extends B'
+      (interface_declaration
+        (heritage_clause
+          (expression) @rel.extends))
+
+      ; 'implements' clause
+      (class_declaration
+        (heritage_clause
+          (expression) @rel.implements))
+
+      ; Function/method calls
+      (call_expression
+        function: (identifier) @rel.call)
+      (call_expression
+        function: (member_expression
+          property: (property_identifier) @rel.call))
+
+      ; Decorators
+      (decorator
+        (identifier) @rel.decorator)
+      (decorator
+        (call_expression
+          function: (identifier) @rel.decorator))
+          
+      ; New expression 'new MyClass()'
+      (new_expression
+        constructor: (identifier) @rel.call)
+      (new_expression
+        constructor: (member_expression
+          property: (property_identifier) @rel.call))
+
+      ; Type annotations
+      (type_annotation
+        (type_identifier) @rel.references)
+      (generic_type
+        (type_identifier) @rel.references)
+
+      ; JSX element usage
+      (jsx_opening_element
+        name: (identifier) @rel.call)
+      (jsx_self_closing_element
+        name: (identifier) @rel.call)
+
+      ; =============================================
+      ; Modifiers
+      ; =============================================
+      ((export_statement) @mod.export)
+      ((method_definition
+        "static" @mod.static))
+      ((method_definition
+        "abstract" @mod.abstract))
+      ((public_field_definition
+        "readonly" @mod.readonly))
+      ((method_definition
+        "async" @mod.async))
+      ((function_declaration
+        "async" @mod.async))
+      ((arrow_function
+        "async" @mod.async))
+      `;
+    patchStrategy: replace
+  - type: write
+    path: src/queries/css.ts
+    content: >-
+      export const cssQueries = `
+
+      (rule_set) @symbol.css_class.def @scope.css_class.def
+
+      (at_rule) @symbol.css_at_rule.def @scope.css_at_rule.def
+
+      (declaration (variable_name) @symbol.css_variable.def)
+
+      (call_expression (identifier) @_fn (arguments (variable_name)
+      @rel.references) (#eq? @_fn "var"))
+
+      `;
+    patchStrategy: replace
+  - type: write
+    path: src/queries/go.ts
+    content: |-
+      export const goQueries = `
+      (package_clause
+        name: (package_identifier) @symbol.go_package.def) @scope.go_package.def
+
+      (function_declaration
+       name: (identifier) @symbol.function.def) @scope.function.def
+
+      (go_statement
+        (call_expression
+          function: (_) @rel.goroutine))
+
+      (call_expression
+        function: (_) @rel.call)
+
+      (import_spec
+        path: (interpreted_string_literal) @rel.import.source)
+      `;
+    patchStrategy: replace
+  - type: write
+    path: src/queries/rust.ts
+    content: |-
+      export const rustQueries = `
+      (struct_item
+        name: (type_identifier) @symbol.rust_struct.def) @scope.rust_struct.def
+
+      (trait_item
+        name: (type_identifier) @symbol.rust_trait.def) @scope.rust_trait.def
+        
+      (impl_item) @symbol.rust_impl.def @scope.rust_impl.def
+
+      (impl_item
+        trait: (type_identifier) @rel.implements
+        type: (type_identifier) @rel.references
+      )
+
+      (attribute_item
+        (attribute . (token_tree (identifier) @rel.macro)))
+
+      (function_item
+        name: (identifier) @symbol.function.def) @scope.function.def
+
+      (impl_item
+        body: (declaration_list
+          (function_item
+            name: (identifier) @symbol.method.def) @scope.method.def))
+
+      (parameter
+        type: (impl_trait_type (type_identifier) @rel.references)
+      )
+
+      (call_expression
+        function: (field_expression
+          field: (field_identifier) @rel.call))
+
+      ((struct_item (visibility_modifier) @mod.export))
+      ((trait_item (visibility_modifier) @mod.export))
+      ((function_item (visibility_modifier) @mod.export))
+      `;
+    patchStrategy: replace
+  - type: write
+    path: src/types.ts
+    content: |-
+      --- src/types.ts
+      +++ src/types.ts
+      @@ -82,6 +82,7 @@
+       
+       export type RelationshipKind =
+         | 'import'
+      +  | 'dynamic_import'
+         | 'export'
+         | 'call'
+         | 'extends'
+    patchStrategy: new-unified
+  - type: write
+    path: src/analyzer.ts
+    content: >-
+      --- src/analyzer.ts
+
+      +++ src/analyzer.ts
+
+      @@ -2,6 +2,15 @@
+       import { getNodeRange, getNodeText, getIdentifier, findChildByFieldName } from './utils/ast';
+       import { Query, type Node as SyntaxNode, type QueryCapture } from 'web-tree-sitter';
+       
+       const getSymbolName = (node: SyntaxNode, sourceCode: string): string => {
+      +    if (node.type === 'rule_set' || node.type === 'at_rule') {
+
+      +        const text = getNodeText(node, sourceCode);
+
+      +        const bodyStart = text.indexOf('{');
+
+      +        const name = (bodyStart === -1 ? text : text.substring(0,
+      bodyStart)).trim();
+
+      +        // for at-rules, the name is the @keyword, so we need the full
+      line.
+
+      +        return name.endsWith(';') ? name.slice(0, -1) : name;
+
+      +    }
+           if (node.type === 'jsx_opening_element' || node.type === 'jsx_self_closing_element') {
+               const nameNode = findChildByFieldName(node, 'name');
+               return nameNode ? getNodeText(nameNode, sourceCode) : '<fragment>';
+      @@ -32,7 +41,12 @@
+               symbols.push(symbol);
+           } else if (cat === 'rel') {
+               const rel: Relationship = {
+      -            kind: kind as RelationshipKind,
+
+      +            // special case for dynamic import from TS query
+
+      +            kind: captureName.startsWith('rel.dynamic_import') 
+
+      +                ? 'dynamic_import' 
+
+      +                : kind as RelationshipKind,
+                   targetName: getNodeText(node, sourceCode).replace(/['"`]/g, ''),
+                   range: getNodeRange(node),
+               };
+    patchStrategy: new-unified
+  - type: write
+    path: src/formatter.ts
+    content: |-
+      --- src/formatter.ts
+      +++ src/formatter.ts
+      @@ -37,12 +37,18 @@
+               if (dep.resolvedFileId !== undefined && dep.resolvedFileId !== symbol.fileId) {
+                   if (!outgoing.has(dep.resolvedFileId)) outgoing.set(dep.resolvedFileId, new Set());
+                   if (dep.resolvedSymbolId) {
+                       const targetSymbol = allFiles.find(f => f.id === dep.resolvedFileId)?.symbols.find(s => s.id === dep.resolvedSymbolId);
+                       if (targetSymbol) {
+                           let text = formatSymbolId(targetSymbol);
+                           if (dep.kind === 'goroutine') {
+                               text += ' [goroutine]';
+                           }
+                           outgoing.get(dep.resolvedFileId)!.add(text);
+                       }
+      +            } else {
+      +                let text = `(${dep.resolvedFileId}.0)`;
+      +                if (dep.kind === 'dynamic_import') text += ' [dynamic]';
+      +                outgoing.get(dep.resolvedFileId)!.add(text);
+                   }
+               } else if (dep.resolvedFileId === undefined) {
+                   if (dep.kind === 'macro') {
+    patchStrategy: new-unified
+snapshot:
+  src/queries/typescript.ts: |-
+    export const typescriptQueries = `
+    ; Variable declarations (const, let, var)
+    (lexical_declaration 
+      (variable_declarator 
+        (identifier) @symbol.variable.def))
+
+    ; Export statements with variable declarations
+    (export_statement
+      (lexical_declaration 
+        (variable_declarator 
+          (identifier) @symbol.variable.def)))
+
+    ; Function declarations
+    (function_declaration 
+      (identifier) @symbol.function.def)
+
+    ; Class declarations
+    (class_declaration 
+      (identifier) @symbol.class.def)
+
+    ; Import statements - capture the source string
+    (import_statement 
+      (string) @rel.import.source)
+
+    ; Import specifiers - capture imported names
+    (import_specifier 
+      (identifier) @rel.import.named)
+
+    ; Export statements - capture the source string
+    (export_statement 
+      (string) @rel.export.source)
+
+    ; Function calls
+    (call_expression 
+      (identifier) @rel.call)
+
+    ; Member expression calls
+    (call_expression 
+      (member_expression 
+        (property_identifier) @rel.call))
+
+    ; All identifiers as fallback
+    (identifier) @symbol.identifier.def
+    `;
+  src/queries/css.ts: |-
+    export const cssQueries = `
+    (class_selector
+      (class_name) @symbol.css_class.def)
+
+    (id_selector
+      (id_name) @symbol.css_id.def)
+      
+    (tag_name) @symbol.css_tag.def
+
+    (at_rule
+      (at_keyword) @symbol.css_at_rule.def)
+
+    (declaration
+      (property_name) @symbol.css_property.def)
+
+    `;
+  src/queries/go.ts: |-
+    export const goQueries = `
+    (package_clause
+      (package_identifier) @symbol.go_package.def)
+
+    (function_declaration
+     name: (identifier) @symbol.function.def) @scope.function.def
+
+    (go_statement
+      (call_expression
+        function: (identifier) @rel.goroutine))
+
+    (call_expression
+      function: (identifier) @rel.call)
+    (call_expression
+      function: (selector_expression
+        field: (field_identifier) @rel.call))
+
+    (import_spec
+      (string_literal) @rel.import.source)
+    `;
+  src/queries/rust.ts: |-
+    export const rustQueries = `
+    (struct_item
+      name: (type_identifier) @symbol.rust_struct.def) @scope.rust_struct.def
+
+    (trait_item
+      name: (type_identifier) @symbol.rust_trait.def) @scope.rust_trait.def
+      
+    (impl_item
+      trait: (type_identifier) @rel.implements
+      type: (type_identifier) @rel.references
+    ) @symbol.rust_impl.def @scope.rust_impl.def
+
+    (attribute_item
+      (attribute (token_tree (identifier) @rel.macro)))
+
+    (function_item
+      name: (identifier) @symbol.function.def) @scope.function.def
+
+    (parameter
+      type: (_ (type_identifier) @rel.references)
+    )
+
+    (call_expression
+      function: (field_expression
+        field: (field_identifier) @rel.call))
+
+    (visibility_modifier) @mod.export
+    `;
+  src/types.ts: |-
+    import type { Parser, Tree, Language } from 'web-tree-sitter';
+    import type { TsConfig, PathResolver } from './utils/tsconfig';
+    export type { PathResolver };
+
+    /**
+     * Represents a file to be processed.
+     */
+    export interface InputFile {
+      path: string; // relative path from root
+      content: string;
+    }
+
+    /**
+     * Configuration for the SCN generation process.
+     */
+    export interface ScnTsConfig {
+      files: InputFile[];
+      tsconfig?: TsConfig;
+      root?: string; // Optional: A virtual root path for resolution. Defaults to '/'.
+      _test_id?: string; // Special property for test runner to identify fixtures
+    }
+
+    /**
+     * Options for initializing the Tree-sitter parser.
+     */
+    export interface ParserInitOptions {
+        wasmBaseUrl: string;
+    }
+
+    /**
+     * Represents a supported programming language and its configuration.
+     */
+    export type SymbolKind =
+      // TS/JS
+      | 'class' | 'interface' | 'function' | 'method' | 'constructor'
+      | 'variable' | 'property' | 'enum' | 'enum_member' | 'type_alias' | 'module'
+      | 'decorator' | 'parameter' | 'type_parameter' | 'import_specifier' | 're_export'
+      // React
+      | 'react_component' | 'react_hook' | 'react_hoc' | 'jsx_attribute' | 'jsx_element'
+      // CSS
+      | 'css_class' | 'css_id' | 'css_tag' | 'css_at_rule' | 'css_property' | 'css_variable'
+      // Generic / Meta
+      | 'file' | 'reference' | 'comment' | 'error' | 'unresolved'
+      // Other Languages
+      | 'go_package' | 'go_struct' | 'go_goroutine' | 'rust_struct' | 'rust_trait' | 'rust_impl' | 'rust_macro'
+      | 'java_package' | 'python_class'
+      | 'unknown';
+
+    export interface Position {
+      line: number;
+      column: number;
+    }
+
+    export interface Range {
+      start: Position;
+      end: Position;
+    }
+
+    export interface CodeSymbol {
+      id: string;
+      fileId: number;
+      name: string;
+      kind: SymbolKind;
+      range: Range;
+      // Modifiers and metadata
+      isExported: boolean;
+      isAbstract?: boolean;
+      isStatic?: boolean;
+      isReadonly?: boolean;
+      isAsync?: boolean;
+      isPure?: boolean; // for 'o'
+      isGenerated?: boolean;
+      languageDirectives?: string[]; // e.g. 'use server'
+      superClass?: string;
+      implementedInterfaces?: string[];
+      scopeRange: Range; // The range of the entire scope (e.g., function body) for relationship association
+      // Relationships
+      dependencies: Relationship[];
+    }
+
+    export type RelationshipKind =
+      | 'import'
+      | 'export'
+      | 'call'
+      | 'extends'
+      | 'implements'
+      | 'references'
+      | 'aliased'
+      | 'goroutine'
+      | 'macro';
+
+    export interface Relationship {
+      targetName: string; // The raw name of the target (e.g., './utils', 'MyClass', 'add', 'Button')
+      kind: RelationshipKind;
+      range: Range;
+      // Resolved info
+      resolvedFileId?: number;
+      resolvedSymbolId?: string;
+    }
+
+    export interface SourceFile {
+      id: number;
+      relativePath: string;
+      absolutePath: string;
+      language: LanguageConfig;
+      sourceCode: string;
+      ast?: Tree;
+      symbols: CodeSymbol[];
+      parseError: boolean;
+      isGenerated?: boolean;
+      languageDirectives?: string[];
+    }
+
+    /**
+     * Represents a supported programming language and its configuration.
+     */
+    export interface LanguageConfig {
+        id: string;
+        name: string;
+        extensions: string[];
+        wasmPath: string;
+        parser?: Parser;
+        loadedLanguage?: Language;
+        queries?: Record<string, string>;
+    }
+
+    export interface AnalysisContext {
+        sourceFiles: SourceFile[];
+        pathResolver: PathResolver;
+    }
+  src/analyzer.ts: >-
+    import type { SourceFile, CodeSymbol, Relationship, SymbolKind,
+    RelationshipKind, Range } from './types';
+
+    import { getNodeRange, getNodeText, getIdentifier, findChildByFieldName }
+    from './utils/ast';
+
+    import { Query, type Node as SyntaxNode, type QueryCapture } from
+    'web-tree-sitter';
+
+
+    const getSymbolName = (node: SyntaxNode, sourceCode: string): string => {
+        if (node.type === 'jsx_opening_element' || node.type === 'jsx_self_closing_element') {
+            const nameNode = findChildByFieldName(node, 'name');
+            return nameNode ? getNodeText(nameNode, sourceCode) : '<fragment>';
+        }
+        if (node.type === 'impl_item') {
+            const trait = findChildByFieldName(node, 'trait');
+            const type = findChildByFieldName(node, 'type');
+            if (trait && type) {
+                return `impl ${getNodeText(trait, sourceCode)} for ${getNodeText(type, sourceCode)}`;
+            }
+            return 'impl';
+        }
+        if (node.type === 'variable_declarator') {
+            const valueNode = findChildByFieldName(node, 'value');
+            if (valueNode?.type === 'arrow_function' || valueNode?.type.startsWith('class')) {
+                return getIdentifier(node, sourceCode);
+            }
+        }
+        return getIdentifier(node.parent || node, sourceCode);
+    };
+
+
+    const processCapture = (
+        capture: QueryCapture,
+        sourceFile: SourceFile,
+        symbols: CodeSymbol[],
+        relationships: Relationship[]
+    ) => {
+        const { node, name: captureName } = capture;
+        const [cat, kind, role] = captureName.split('.');
+
+        if (cat === 'symbol' && role === 'def') {
+            const scopeNode = node.parent?.type.endsWith('_declaration') || node.parent?.type === 'method_definition'
+                ? node.parent
+                : node;
+            const range = getNodeRange(node);
+            const symbol: CodeSymbol = {
+                id: `${range.start.line + 1}:${range.start.column}`,
+                fileId: sourceFile.id,
+                name: getSymbolName(node, sourceFile.sourceCode),
+                kind: kind as SymbolKind,
+                range: range,
+                scopeRange: getNodeRange(scopeNode),
+                isExported: scopeNode.parent?.type === 'export_statement' || scopeNode.text.startsWith('export '),
+                dependencies: [],
+            };
+            symbols.push(symbol);
+        } else if (cat === 'rel') {
+            const rel: Relationship = {
+                kind: kind as RelationshipKind,
+                targetName: getNodeText(node, sourceFile.sourceCode).replace(/['"`]/g, ''),
+                range: getNodeRange(node),
+            };
+            relationships.push(rel);
+        } else if (cat === 'mod') {
+            const parentSymbol = findParentSymbol(getNodeRange(node), symbols);
+            if (parentSymbol) {
+                if (kind === 'export') parentSymbol.isExported = true;
+                if (kind === 'static') parentSymbol.isStatic = true;
+                if (kind === 'abstract') parentSymbol.isAbstract = true;
+                if (kind === 'readonly') parentSymbol.isReadonly = true;
+                if (kind === 'async') parentSymbol.isAsync = true;
+            }
+        }
+    };
+
+
+    export const analyze = (sourceFile: SourceFile): SourceFile => {
+        const { ast, language, sourceCode } = sourceFile;
+        if (!ast || !language.parser || !language.loadedLanguage) return sourceFile;
+
+        const directives = sourceCode.match(/^['"](use (?:server|client))['"];/gm);
+        if(directives) {
+            sourceFile.languageDirectives = directives.map(d => d.replace(/['";]/g, ''));
+        }
+        if (sourceCode.includes('AUTO-GENERATED') || sourceCode.includes('eslint-disable')) {
+            sourceFile.isGenerated = true;
+        }
+
+        const mainQuery = language.queries?.main ?? '';
+        if (!mainQuery) return sourceFile;
+
+        const query = new Query(language.loadedLanguage, mainQuery);
+        const captures = query.captures(ast.rootNode);
+
+        const symbols: CodeSymbol[] = [];
+        const relationships: Relationship[] = [];
+
+        for (const capture of captures) {
+            processCapture(capture, sourceFile, symbols, relationships);
+        }
+        
+        for (const rel of relationships) {
+            const parentSymbol = findParentSymbol(rel.range, symbols);
+            if (parentSymbol) {
+                parentSymbol.dependencies.push(rel);
+            }
+        }
+        
+        const addFunc = symbols.find(s => s.name === 'add');
+        if (addFunc?.dependencies.length === 0) addFunc.isPure = true;
+
+        sourceFile.symbols = symbols;
+        return sourceFile;
+    };
+
+
+    const isRangeWithin = (inner: Range, outer: Range): boolean => {
+        return (
+            (inner.start.line > outer.start.line || (inner.start.line === outer.start.line && inner.start.column >= outer.start.column)) &&
+            (inner.end.line < outer.end.line || (inner.end.line === outer.end.line && inner.end.column <= outer.end.column))
+        );
+    };
+
+
+    const findParentSymbol = (range: Range, symbols: CodeSymbol[]): CodeSymbol |
+    null => {
+        return symbols
+            .filter(s => isRangeWithin(range, s.scopeRange))
+            .sort((a, b) => (a.scopeRange.end.line - a.scopeRange.start.line) - (b.scopeRange.end.line - b.scopeRange.start.line))
+            [0] || null;
+    };
+  src/formatter.ts: >-
+    import type { CodeSymbol, SourceFile } from './types';
+
+    import { topologicalSort } from './utils/graph';
+
+
+    const ICONS: Record<string, string> = {
+        class: '◇', interface: '{}', function: '~', method: '~',
+        variable: '@', property: '@', enum: '☰', enum_member: '@',
+        type_alias: '=:', react_component: '◇', jsx_element: '⛶',
+        css_class: '¶', css_id: '¶', css_tag: '¶', css_at_rule: '¶',
+        go_package: '◇',
+        rust_struct: '◇', rust_trait: '{}', rust_impl: '+',
+        error: '[error]', default: '?',
+    };
+
+
+    const formatSymbolId = (symbol: CodeSymbol) =>
+    `(${symbol.fileId}.${symbol.id.split(':')[0]})`;
+
+
+    const formatSymbol = (symbol: CodeSymbol, allFiles: SourceFile[]): string[]
+    => {
+        const icon = ICONS[symbol.kind] || ICONS.default;
+        const prefix = symbol.isExported ? '+' : '-';
+        let name = symbol.name === '<anonymous>' ? '' : ` ${symbol.name}`;
+        if (symbol.kind === 'variable' && name.trim() === 'default') name = '';
+
+        const mods = [
+            symbol.isAbstract && 'abstract',
+            symbol.isStatic && 'static',
+        ].filter(Boolean).join(' ');
+        const modStr = mods ? ` [${mods}]` : '';
+
+        const suffix = [
+            symbol.isAsync && '...',
+            symbol.isPure && 'o',
+        ].filter(Boolean).join(' ');
+
+        const line = `  ${prefix} ${icon} ${formatSymbolId(symbol)}${name}${modStr}${suffix}`;
+        const result = [line];
+
+        const outgoing = new Map<number, Set<string>>();
+        const unresolvedDeps: string[] = [];
+        symbol.dependencies.forEach(dep => {
+            if (dep.resolvedFileId !== undefined && dep.resolvedFileId !== symbol.fileId) {
+                if (!outgoing.has(dep.resolvedFileId)) outgoing.set(dep.resolvedFileId, new Set());
+                if (dep.resolvedSymbolId) {
+                    const targetSymbol = allFiles.find(f => f.id === dep.resolvedFileId)?.symbols.find(s => s.id === dep.resolvedSymbolId);
+                    if (targetSymbol) {
+                        let text = formatSymbolId(targetSymbol);
+                        if (dep.kind === 'goroutine') {
+                            text += ' [goroutine]';
+                        }
+                        outgoing.get(dep.resolvedFileId)!.add(text);
+                    }
+                }
+            } else if (dep.resolvedFileId === undefined) {
+                if (dep.kind === 'macro') {
+                    unresolvedDeps.push(`${dep.targetName} [macro]`);
+                }
+            }
+        });
+
+        const outgoingParts: string[] = [];
+        if (outgoing.size > 0) {
+            const resolvedParts = Array.from(outgoing.entries()).map(([fileId, symbolIds]) => {
+                return symbolIds.size > 0 ? `${Array.from(symbolIds).join(', ')}` : `(${fileId}.0)`;
+            });
+            outgoingParts.push(...resolvedParts);
+        }
+        outgoingParts.push(...unresolvedDeps);
+
+        if (outgoingParts.length > 0) {
+            result.push(`    -> ${outgoingParts.join(', ')}`);
+        }
+        
+        const incoming = new Map<number, Set<string>>();
+        allFiles.forEach(file => {
+            file.symbols.forEach(s => {
+                s.dependencies.forEach(d => {
+                    if (d.resolvedFileId === symbol.fileId && d.resolvedSymbolId === symbol.id) {
+                        if(!incoming.has(file.id)) incoming.set(file.id, new Set());
+                        incoming.get(file.id)!.add(formatSymbolId(s));
+                    }
+                });
+            });
+        });
+
+        if (incoming.size > 0) {
+            const parts = Array.from(incoming.entries()).map(([_fileId, symbolIds]) => Array.from(symbolIds).join(', '));
+            result.push(`    <- ${parts.join(', ')}`);
+        }
+
+        return result;
+    };
+
+
+
+    const formatFile = (file: SourceFile, allFiles: SourceFile[]): string => {
+        if (file.parseError) return `§ (${file.id}) ${file.relativePath} [error]`;
+        if (!file.sourceCode.trim()) return `§ (${file.id}) ${file.relativePath}`;
+
+        const directives = [
+            file.isGenerated && 'generated',
+            ...(file.languageDirectives || [])
+        ].filter(Boolean);
+        const directiveStr = directives.length > 0 ? ` [${directives.join(' ')}]` : '';
+        const header = `§ (${file.id}) ${file.relativePath}${directiveStr}`;
+
+        const symbolLines = file.symbols.flatMap(s => formatSymbol(s, allFiles));
+
+        return [header, ...symbolLines].join('\n');
+    };
+
+
+    export const formatScn = (analyzedFiles: SourceFile[]): string => {
+        const sortedFiles = topologicalSort(analyzedFiles);
+        return sortedFiles.map(file => formatFile(file, analyzedFiles)).join('\n\n');
+    };
+approved: true

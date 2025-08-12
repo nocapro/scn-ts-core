@@ -5,24 +5,34 @@ export const rustQueries = `
 (trait_item
   name: (type_identifier) @symbol.rust_trait.def) @scope.rust_trait.def
   
+(impl_item) @symbol.rust_impl.def @scope.rust_impl.def
+
 (impl_item
   trait: (type_identifier) @rel.implements
   type: (type_identifier) @rel.references
-) @symbol.rust_impl.def @scope.rust_impl.def
+)
 
 (attribute_item
-  (attribute (token_tree (identifier) @rel.macro)))
+  (attribute . (token_tree (identifier) @rel.macro)))
 
 (function_item
   name: (identifier) @symbol.function.def) @scope.function.def
 
-(parameter
-  type: (_ (type_identifier) @rel.references)
-)
+(impl_item
+  body: (declaration_list
+    (function_item
+      name: (identifier) @symbol.method.def) @scope.method.def))
+
+; For parameters like '&impl Trait'
+(parameter type: (reference_type (_ (type_identifier) @rel.references)))
+; For simple trait parameters
+(parameter type: (type_identifier) @rel.references)
 
 (call_expression
   function: (field_expression
     field: (field_identifier) @rel.call))
 
-(visibility_modifier) @mod.export
+((struct_item (visibility_modifier) @mod.export))
+((trait_item (visibility_modifier) @mod.export))
+((function_item (visibility_modifier) @mod.export))
 `;

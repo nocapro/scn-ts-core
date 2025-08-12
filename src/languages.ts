@@ -1,6 +1,6 @@
 import type { LanguageConfig } from './types';
 import path from 'node:path';
-import { typescriptQueries } from './queries/typescript';
+import { typescriptQueries, typescriptReactQueries } from './queries/typescript';
 import { cssQueries } from './queries/css';
 import { goQueries } from './queries/go';
 import { rustQueries } from './queries/rust';
@@ -19,7 +19,7 @@ export const languages: LanguageConfig[] = [
         name: 'TypeScriptReact',
         extensions: ['.tsx'],
         wasmPath: 'tree-sitter-tsx.wasm',
-        queries: { main: typescriptQueries },
+        queries: { main: typescriptReactQueries },
     },
     {
         id: 'javascript',

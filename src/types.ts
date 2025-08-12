@@ -80,6 +80,7 @@ export interface CodeSymbol {
 
 export type RelationshipKind =
   | 'import'
+  | 'dynamic_import'
   | 'export'
   | 'call'
   | 'extends'

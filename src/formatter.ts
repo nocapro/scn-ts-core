@@ -47,6 +47,10 @@ const formatSymbol = (symbol: CodeSymbol, allFiles: SourceFile[]): string[] => {
                     }
                     outgoing.get(dep.resolvedFileId)!.add(text);
                 }
+            } else {
+                let text = `(${dep.resolvedFileId}.0)`;
+                if (dep.kind === 'dynamic_import') text += ' [dynamic]';
+                outgoing.get(dep.resolvedFileId)!.add(text);
             }
         } else if (dep.resolvedFileId === undefined) {
             if (dep.kind === 'macro') {

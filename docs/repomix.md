@@ -1,5 +1,7 @@
 # Directory Structure
 ```
+docs/
+  repomix-wasm.md
 src/
   queries/
     css.ts
@@ -60,8 +62,201 @@ tsconfig.json
 
 # Files
 
-## File: src/utils/graph.ts
+## File: docs/repomix-wasm.md
+````markdown
+Yes, the `compress` feature in Repomix leverages WebAssembly (WASM) through the `web-tree-sitter` library.
+
+Here's how it works:
+
+1.  **`compress` option:** When the `--compress` CLI flag or `compress: true` in the config is enabled, the `fileProcessContent.ts` module uses the `parseFile` function.
+2.  **`parseFile` and Tree-sitter:** The `parseFile` function (located in `src/core/treeSitter/parseFile.ts`) is responsible for parsing the file content. It utilizes the `LanguageParser` to load the appropriate Tree-sitter language grammar and apply a specific `ParseStrategy` (e.g., `TypeScriptParseStrategy`, `GoParseStrategy`) based on the file's language.
+3.  **WASM Modules:** The `LanguageParser` and `loadLanguage` functions (in `src/core/treeSitter/languageParser.ts` and `src/core/treeSitter/loadLanguage.ts` respectively) are responsible for loading the Tree-sitter language parsers. These parsers are distributed as `.wasm` (WebAssembly) files via the `tree-sitter-wasms` package, which are then loaded and used by `web-tree-sitter` to build the Abstract Syntax Tree (AST).
+4.  **Semantic Content Extraction:** The compression isn't traditional data compression (like zip). Instead, it's semantic compression: by parsing the code with Tree-sitter, Repomix extracts only the "important" parts of the code (like function signatures, class definitions, imports, etc., as defined by the language-specific parse strategies and queries in `src/core/treeSitter/queries/`), effectively "compressing" it by removing comments, redundant whitespace, and less relevant structural elements, making it more concise for AI analysis.
+
+So, to summarize, the "compression" (or more accurately, semantic content extraction) functionality relies on `web-tree-sitter` which in turn uses WASM modules to perform efficient and language-aware code parsing.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+You're diving into the heart of Repomix's intelligence! The "compression" feature, enabled by the `--compress` flag, isn't traditional lossless data compression (like zipping). Instead, it's a *semantic content extraction* or *code summarization* process, powered by **Tree-sitter and WebAssembly (WASM)**.
+
+The goal is to provide AI systems with a more concise, high-signal representation of the codebase by removing boilerplate, less relevant details (like full function bodies if only signatures are needed), and often, comments (though comments can also be specifically extracted depending on the strategy).
+
+Let's break down the detailed technical flow:
+
+### 1. High-Level Flow (from CLI to Processed Content)
+
+1.  **CLI/Config Option:** The `compress` option is set to `true` (via `--compress` flag or `compress: true` in the config). This option is part of the `RepomixConfigMerged` object (defined in `src/config/configSchema.ts`).
+2.  **`pack()` Orchestration:** The main `pack` function (`src/core/packager.ts`) calls `processFiles`.
+3.  **Parallel File Processing:** `processFiles` (`src/core/file/fileProcess.ts`) uses `initTaskRunner` (`src/shared/processConcurrency.ts`) to offload file processing to worker threads (`src/core/file/workers/fileProcessWorker.ts`). This is crucial for performance on large codebases.
+4.  **`fileProcessWorker` (`processContent`):** Each worker thread receives a `RawFile` and the `RepomixConfigMerged`. Inside `processContent` (`src/core/file/fileProcessContent.ts`), the decision to use Tree-sitter is made:
+    ```typescript
+    export const processContent = async (rawFile: RawFile, config: RepomixConfigMerged): Promise<string> => {
+        let content = rawFile.content;
+
+        // Apply general manipulators first (e.g., remove comments, empty lines)
+        const manipulator = getFileManipulator(rawFile.path);
+        if (manipulator) {
+            if (config.removeComments) {
+                content = manipulator.removeComments(content);
+            }
+            if (config.removeEmptyLines) {
+                content = manipulator.removeEmptyLines(content);
+            }
+        }
+
+        if (config.truncateBase64) {
+            content = truncateBase64Content(content);
+        }
+
+        // --- HERE IS THE CORE TREE-SITTER INTEGRATION ---
+        if (config.compress) {
+            try {
+                // `parseFile` does the heavy lifting with Tree-sitter
+                content = await parseFile(content, rawFile.path, config);
+            } catch (error) {
+                // Log and re-throw if Tree-sitter parsing fails
+                logger.debug(`Failed to parse file ${rawFile.path} with Tree-sitter: ${error instanceof Error ? error.message : String(error)}`);
+                throw error;
+            }
+        }
+
+        // Other output generation steps might add line numbers later.
+        return content;
+    };
+    ```
+5.  **`parseFile()` (Tree-sitter Entry Point):** This function (`src/core/treeSitter/parseFile.ts`) orchestrates the Tree-sitter parsing for a single file.
+
+### 2. Deep Dive into Tree-sitter Integration
+
+The magic happens within `src/core/treeSitter/` and its subdirectories.
+
+#### 2.1. `src/core/treeSitter/parseFile.ts`
+
+*   **Language Detection:** It first uses `LanguageParser.guessTheLang(filePath)` (`src/core/treeSitter/languageParser.ts`) to determine the programming language based on the file extension (using mappings in `src/core/treeSitter/ext2Lang.ts`).
+*   **Parser, Query, and Strategy Acquisition:** It then requests three key components from the `LanguageParser` singleton:
+    *   A `Parser` instance for the detected language (`parser.parse(fileContent)` builds the AST).
+    *   A `Query` object (`query.captures(tree.rootNode)` applies patterns to the AST).
+    *   A `ParseStrategy` specific to the language (`createParseStrategy(lang)`).
+*   **AST Generation:** The `web-tree-sitter` `Parser` takes the file content and builds an Abstract Syntax Tree (AST). This AST is a hierarchical representation of the code's structure.
+*   **Query Execution:** Tree-sitter queries (written in a Lisp-like S-expression syntax, located in `src/core/treeSitter/queries/`) are applied to the AST. These queries define *what* semantic elements (e.g., function declarations, class definitions, imports, comments, variable declarations) should be "captured" from the tree. For example, a query might capture all function signatures.
+*   **Capture Processing:** The `query.captures()` method returns an array of `QueryCapture` objects, each pointing to a specific `SyntaxNode` (a part of the AST) and its `name` (from the query).
+*   **Strategy Application:** For each capture, the appropriate `ParseStrategy` (`src/core/treeSitter/parseStrategies/*.ts`) is invoked (via `strategy.parseCapture(...)`). This is where the "compression" logic per language resides.
+*   **Chunk Collection & Filtering:** The strategy extracts relevant lines or parts of the code for each capture. `parseFile` then collects these "chunks," sorts them by their original position, and uses `filterDuplicatedChunks` and `mergeAdjacentChunks` to ensure no redundant code is included and logically adjacent pieces are combined for readability.
+*   **Final Output:** The collected and merged chunks form the final "compressed" content.
+
+#### 2.2. `src/core/treeSitter/languageParser.ts`
+
+*   **Singleton Pattern:** `LanguageParser` is implemented as a singleton (`getLanguageParserSingleton` in `parseFile.ts`) to ensure that `web-tree-sitter` parsers and language grammars are loaded only once per process, saving memory and startup time.
+*   **Resource Caching:** It caches `Parser`, `Query`, and `ParseStrategy` instances for each language, avoiding redundant loading and initialization.
+*   **`init()` and `dispose()`:** Manages the lifecycle of the Tree-sitter library initialization and cleanup.
+
+#### 2.3. `src/core/treeSitter/loadLanguage.ts`
+
+*   **WASM Loader:** This is the direct link to WebAssembly. The `loadLanguage` function is responsible for dynamically loading the `.wasm` (WebAssembly) binary files for each programming language grammar (e.g., `tree-sitter-typescript.wasm`, `tree-sitter-go.wasm`).
+*   **`web-tree-sitter` Dependency:** It uses `Parser.init()` from the `web-tree-sitter` library to initialize the WASM module and then `Parser.Language.load()` to load the specific language grammar from its WASM file.
+*   **`tree-sitter-wasms`:** Repomix relies on the `tree-sitter-wasms` npm package to provide these pre-compiled WASM grammars. The `getWasmPath` function resolves the path to these binaries within the installed package.
+
+#### 2.4. `src/core/treeSitter/parseStrategies/`
+
+*   **Language-Specific Logic:** These files (e.g., `TypeScriptParseStrategy.ts`, `GoParseStrategy.ts`, `CssParseStrategy.ts`) contain the core logic for *how* to interpret and extract content from specific Tree-sitter captures for their respective languages.
+*   **`parseCapture` Method:** Each strategy implements `parseCapture`, which receives a `capture` (node + name from query) and the original `lines` of the file. It then decides what part of that `SyntaxNode` should be extracted.
+    *   For example, a `TypeScriptParseStrategy` might:
+        *   For `definition.function` captures: Extract only the function signature (name, parameters, return type) without the body, or the first few lines of the body.
+        *   For `comment` captures: Either keep them, remove them entirely, or extract just the first line.
+        *   For `definition.import` captures: Keep the full import statement.
+*   **`processedChunks` Set:** Strategies use this set to keep track of content ranges they've already processed, preventing duplicate output if multiple queries or captures overlap (e.g., a function signature might be part of a larger function body capture).
+
+#### 2.5. `src/core/treeSitter/queries/`
+
+*   **Query Definitions (.ts files):** These files contain the actual Tree-sitter query strings (S-expressions) for each supported language. These queries are declarative patterns that match specific nodes in the AST and assign them "capture names" (e.g., `@definition.function`, `@comment`, `@definition.import`).
+*   **Example Query (Conceptual for TypeScript):**
+    ```
+    (interface_declaration
+      name: (type_identifier) @definition.interface.name
+      body: (interface_body) @definition.interface.body
+    )
+    (function_declaration
+      name: (identifier) @definition.function.name
+      parameters: (formal_parameters) @definition.function.parameters
+      body: (statement_block)? @definition.function.body
+    )
+    (import_statement) @definition.import
+    (comment) @comment
+    ```
+    The `ParseStrategy` then looks at these capture names (`definition.interface.name`, `comment`, etc.) to decide how to process the corresponding `SyntaxNode`.
+*   **Credits:** The `README.md` in this directory properly credits the upstream projects (Aider, Cline, and various `tree-sitter-` language implementations) from which these queries are derived or inspired.
+
+### 3. Example of Semantic "Compression"
+
+**Original TypeScript File:**
+
 ```typescript
+// This is a utility function
+function calculateSum(a: number, b: number): number {
+    // Add two numbers
+    const result = a + b;
+    return result;
+}
+
+/**
+ * Interface for a user profile.
+ */
+interface UserProfile {
+    id: string;
+    name: string;
+    email: string;
+    // Potentially sensitive info
+    address: string;
+}
+
+const PI = 3.14159; // Mathematical constant
+```
+
+**"Compressed" Output (Conceptual, depending on specific query and strategy):**
+
+```typescript
+function calculateSum(a: number, b: number): number;
+
+interface UserProfile {
+    id: string;
+    name: string;
+    email: string;
+}
+
+const PI = 3.14159;
+```
+
+In this conceptual example:
+*   The function `calculateSum` body and its internal comments are removed, keeping only the signature.
+*   The `UserProfile` interface's `address` field (if deemed "less important" for a summary or potentially sensitive if not handled by `securityCheck`) and its JSDoc comment are removed.
+*   The `PI` constant is kept, but its inline comment is removed.
+
+### 4. Benefits for AI Systems
+
+*   **Reduced Token Count:** Significantly lowers the number of tokens required to represent the codebase, leading to lower API costs and faster processing for LLMs.
+*   **Higher Signal-to-Noise Ratio:** Focuses the AI on the structural, definitional, and conceptual aspects of the code, rather than implementation details that might be less relevant for a high-level understanding or specific tasks (like generating new code based on existing APIs).
+*   **Improved Context:** By extracting key definitions, the AI gets a clearer picture of the codebase's architecture and available functions/classes/types without being overwhelmed by implementation specifics.
+*   **Structured Understanding:** Tree-sitter's AST provides a formal, language-aware understanding of the code, enabling more intelligent and less heuristic-based summarization than simple line-by-line filtering.
+
+In essence, Repomix's `compress` feature transforms a verbose codebase into a semantically rich, yet compact, representation that is optimized for AI consumption, leveraging the power of WASM-compiled Tree-sitter grammars for efficient and accurate parsing.
+````
+
+## File: src/utils/graph.ts
+````typescript
 import type { SourceFile } from '../types';
 
 export const topologicalSort = (sourceFiles: SourceFile[]): SourceFile[] => {
@@ -125,10 +320,10 @@ export const topologicalSort = (sourceFiles: SourceFile[]): SourceFile[] => {
     // not a reverse one. Let's stick with the standard sort.
     return sorted;
 };
-```
+````
 
 ## File: src/utils/tsconfig.ts
-```typescript
+````typescript
 import path from 'node:path';
 
 export interface TsConfig {
@@ -169,10 +364,10 @@ export const getPathResolver = (tsconfig?: TsConfig | null): PathResolver => {
     // The final paths we create should be relative to the root to match our file list.
     return createPathResolver(baseUrl, paths);
 };
-```
+````
 
 ## File: src/graph-resolver.ts
-```typescript
+````typescript
 import type { SourceFile, PathResolver, Relationship } from './types';
 import path from 'node:path';
 
@@ -242,10 +437,10 @@ export const resolveGraph = (sourceFiles: SourceFile[], pathResolver: PathResolv
     }
     return sourceFiles;
 };
-```
+````
 
 ## File: src/languages.ts
-```typescript
+````typescript
 import type { LanguageConfig } from './types';
 import path from 'node:path';
 import { typescriptQueries } from './queries/typescript';
@@ -343,10 +538,10 @@ export const getLanguageForFile = (filePath: string): LanguageConfig | undefined
     const extension = path.extname(filePath);
     return languageMap.get(extension);
 };
-```
+````
 
 ## File: src/main.ts
-```typescript
+````typescript
 import { getLanguageForFile } from './languages';
 import { initializeParser as init, parse } from './parser';
 import type { ScnTsConfig, ParserInitOptions, SourceFile, InputFile } from './types';
@@ -416,10 +611,10 @@ export const generateScn = async (config: ScnTsConfig): Promise<string> => {
     // Step 5: Format the final SCN output
     return formatScn(resolvedGraph);
 };
-```
+````
 
 ## File: test/ts/fixtures/01.core-ts.fixture.yaml
-```yaml
+````yaml
 id: ts-core
 name: Core TypeScript Features (Class, Interface, Qualifiers)
 input:
@@ -486,10 +681,10 @@ expected: |
     -> (2.0)
     -> (2.1)
     -> (2.2)
-```
+````
 
 ## File: test/ts/fixtures/02.react-css.fixture.yaml
-```yaml
+````yaml
 id: react-css
 name: React/JSX and CSS Integration
 input:
@@ -560,10 +755,10 @@ expected: |
         ⛶ h1
         ⛶ (3.3) Button
           -> (1.2)
-```
+````
 
 ## File: test/ts/fixtures/03.advanced-ts.fixture.yaml
-```yaml
+````yaml
 id: ts-advanced
 name: Advanced TS (Inheritance, Enums, Pure Functions)
 input:
@@ -623,10 +818,10 @@ expected: |
     + ◇ (3.1) FileLogger < (2.1)
       + ~ (3.2) logWithLevel(level: #LogLevel, message: #string)
         -> (1.1), (2.2)
-```
+````
 
 ## File: test/ts/fixtures/04.js-syntax.fixture.yaml
-```yaml
+````yaml
 id: js-syntax
 name: JavaScript Syntax (ESM & CJS)
 input:
@@ -675,10 +870,10 @@ expected: |
     -> (1.1)
     -> (1.2)
     -> (2.2)
-```
+````
 
 ## File: test/ts/fixtures/05.edge-cases.fixture.yaml
-```yaml
+````yaml
 id: edge-cases
 name: Edge Cases (Empty & Anonymous)
 input:
@@ -717,10 +912,10 @@ expected: |
     -> (2.0)
     -> (2.1)
     -> (2.2)
-```
+````
 
 ## File: test/ts/fixtures/06.advanced-ts-2.fixture.yaml
-```yaml
+````yaml
 id: ts-advanced-2
 name: Advanced TypeScript (Generics, Decorators, Type Guards, Re-exports)
 input:
@@ -787,10 +982,10 @@ expected: |
 
   § (5) src/index.ts
     -> (1.0), (4.0)
-```
+````
 
 ## File: test/ts/fixtures/07.advanced-react.fixture.yaml
-```yaml
+````yaml
 id: react-advanced
 name: Advanced React (Hooks, Context, HOCs, Refs)
 input:
@@ -856,10 +1051,10 @@ expected: |
       ⛶ button
     + @ (4.3) default
       -> (3.1), (4.2)
-```
+````
 
 ## File: test/ts/fixtures/08.advanced-css.fixture.yaml
-```yaml
+````yaml
 id: css-advanced
 name: Advanced CSS (Variables, Media Queries, Pseudo-selectors)
 input:
@@ -904,10 +1099,10 @@ expected: |
     ¶ (1.5) .card::before { 📐 }
     ¶ (1.6) @media(min-width: 768px) .card { 📐 }
       -> (1.3)
-```
+````
 
 ## File: test/ts/fixtures/09.dep-graph-circular.fixture.yaml
-```yaml
+````yaml
 id: dep-graph-circular
 name: Complex Dependency Graph (Circular & Peer)
 input:
@@ -958,10 +1153,10 @@ expected: |
   § (4) src/main.ts
     -> (1.0)
     -> (1.1)
-```
+````
 
 ## File: test/ts/fixtures/10.monorepo-aliases.fixture.yaml
-```yaml
+````yaml
 id: monorepo-aliases
 name: Monorepo-style Path Aliases
 input:
@@ -996,10 +1191,10 @@ expected: |
     - ◇ (3.3) App
       ⛶ Button
         -> (1.1)
-```
+````
 
 ## File: test/ts/fixtures/11.ts-modifiers.fixture.yaml
-```yaml
+````yaml
 id: ts-modifiers
 name: TypeScript Advanced Modifiers & Class Features
 input:
@@ -1082,10 +1277,10 @@ expected: |
     -> (2.2)
     -> (1.1)
     -> (1.2)
-```
+````
 
 ## File: test/ts/fixtures/12.js-prototype-iife.fixture.yaml
-```yaml
+````yaml
 id: js-prototype-iife
 name: JavaScript Prototypes and IIFE
 input:
@@ -1134,10 +1329,10 @@ expected: |
     -> (1.0)
     -> (1.2)
     -> (1.3)
-```
+````
 
 ## File: test/ts/fixtures/13.react-render-props.fixture.yaml
-```yaml
+````yaml
 id: react-render-props
 name: Advanced React Render Patterns (Render Props & Fragments)
 input:
@@ -1200,10 +1395,10 @@ expected: |
           ⛶ <>
             ⛶ h1
             ⛶ p
-```
+````
 
 ## File: test/ts/fixtures/14.complex-css.fixture.yaml
-```yaml
+````yaml
 id: css-complex
 name: Complex CSS Selectors and Rules
 input:
@@ -1252,10 +1447,10 @@ expected: |
     ¶ (1.6) article[data-id='123'] > p { ✍ }
     ¶ (1.7) .animated-box { 📐 }
       -> (1.2)
-```
+````
 
 ## File: test/ts/fixtures/15.multi-language.fixture.yaml
-```yaml
+````yaml
 id: multi-language
 name: Multi-Language Project (Java & Python Integration)
 input:
@@ -1318,10 +1513,10 @@ expected: |
     -> (2.3)
     -> (3.1)
     -> (3.2)
-```
+````
 
 ## File: test/ts/fixtures/16.dep-graph-diamond.fixture.yaml
-```yaml
+````yaml
 id: dep-graph-diamond
 name: Diamond Dependency Graph
 input:
@@ -1357,10 +1552,10 @@ expected: |
     -> (2.0), (3.0)
     + @ (4.1) A
       -> (2.1), (3.1)
-```
+````
 
 ## File: test/ts/fixtures/17.dynamic-imports.fixture.yaml
-```yaml
+````yaml
 id: dynamic-imports
 name: Dynamic Imports and Code Splitting
 input:
@@ -1383,10 +1578,10 @@ expected: |
     - ~ <anonymous>() ...
       -> (1.0) [dynamic]
       -> (1.1)
-```
+````
 
 ## File: test/ts/fixtures/18.empty-files.fixture.yaml
-```yaml
+````yaml
 id: empty-files
 name: File with Only Comments or Whitespace
 input:
@@ -1410,10 +1605,10 @@ expected: |
   § (2) src/only-comments.ts
 
   § (3) src/only-whitespace.ts
-```
+````
 
 ## File: test/ts/fixtures/19.advanced-ts-types.fixture.yaml
-```yaml
+````yaml
 id: ts-advanced-types
 name: Advanced TypeScript Types (Conditional, Mapped, Template Literals)
 input:
@@ -1461,10 +1656,10 @@ expected: |
       -> User
     + ~ (1.5) getUserId(): #UnpackPromise<Promise<number>> o
       -> (1.3), (1.4)
-```
+````
 
 ## File: test/ts/fixtures/20.css-in-js.fixture.yaml
-```yaml
+````yaml
 id: css-in-js
 name: CSS-in-JS (e.g., Styled-Components, Emotion)
 input:
@@ -1512,10 +1707,10 @@ expected: |
         -> (1.1)
         ⛶ Title
           -> (1.2)
-```
+````
 
 ## File: test/ts/fixtures/21.wasm-workers.fixture.yaml
-```yaml
+````yaml
 id: wasm-workers
 name: WebAssembly (WASM) & Web Workers
 input:
@@ -1562,10 +1757,10 @@ expected: |
     -> (2.0) [worker]
     ~ <anonymous>() ...
       -> add
-```
+````
 
 ## File: test/ts/fixtures/22.react-server-components.fixture.yaml
-```yaml
+````yaml
 id: react-server-components
 name: React Server Components & Directives
 input:
@@ -1612,10 +1807,10 @@ expected: |
   § (3) src/components/InteractiveButton.tsx [client]
     + ◇ InteractiveButton
       ⛶ button
-```
+````
 
 ## File: test/ts/fixtures/23.js-proxy-symbol.fixture.yaml
-```yaml
+````yaml
 id: js-proxy-symbol
 name: JavaScript Proxy, Symbol, and Tagged Templates
 input:
@@ -1674,10 +1869,10 @@ expected: |
     -> (2.0), (1.0)
     -> (2.1)
     -> (1.2) [tagged]
-```
+````
 
 ## File: test/ts/fixtures/24.ts-ambient-modules.fixture.yaml
-```yaml
+````yaml
 id: ts-ambient-modules
 name: Ambient Modules & Triple-Slash Directives
 input:
@@ -1714,10 +1909,10 @@ expected: |
         <- (2.0)
     -> (2.2)
     -> (1.1)
-```
+````
 
 ## File: test/ts/fixtures/25.graphql-codegen.fixture.yaml
-```yaml
+````yaml
 id: graphql-codegen
 name: GraphQL Code Generation Flow
 input:
@@ -1774,10 +1969,10 @@ expected: |
     + ◇ (3.1) UserProfile { props: { id:# } }
       -> (2.3), (2.2)
       ⛶ h1
-```
+````
 
 ## File: test/ts/fixtures/26.go-features.fixture.yaml
-```yaml
+````yaml
 id: go-features
 name: Go Language Features (Goroutines, Channels)
 input:
@@ -1823,10 +2018,10 @@ expected: |
         <- (2.3)
       + ~ (2.3) main()
         -> (2.2) [goroutine]
-```
+````
 
 ## File: test/ts/fixtures/27.rust-features.fixture.yaml
-```yaml
+````yaml
 id: rust-features
 name: Rust Language Features (Traits, Impls, Macros)
 input:
@@ -1865,10 +2060,10 @@ expected: |
         <- (1.4)
     + ~ (1.4) render(item: &#impl Drawable)
       -> (1.2), (1.3)
-```
+````
 
 ## File: test/ts/fixtures/28.error-resilience.fixture.yaml
-```yaml
+````yaml
 id: error-resilience
 name: Error Resilience (Syntax Error in One File)
 input:
@@ -1895,10 +2090,10 @@ expected: |
   § (3) src/main.ts
     -> (1.0)
     -> (1.1)
-```
+````
 
 ## File: tsconfig.json
-```json
+````json
 {
   "compilerOptions": {
     // Environment setup & latest features
@@ -1928,205 +2123,10 @@ expected: |
     "noPropertyAccessFromIndexSignature": false
   }
 }
-```
-
-## File: src/queries/css.ts
-```typescript
-export const cssQueries = `
-(class_selector
-  (class_name) @symbol.css_class.def)
-
-(id_selector
-  (id_name) @symbol.css_id.def)
-  
-(type_selector
-  (tag_name) @symbol.css_tag.def)
-
-(at_rule
-  (at_keyword) @symbol.css_at_rule.def)
-
-(declaration
-  (property_name) @symbol.css_property.def
-  (variable_name) @rel.css_variable.ref)
-
-(declaration
-  (custom_property) @symbol.css_variable.def)
-`;
-```
-
-## File: src/queries/go.ts
-```typescript
-export const goQueries = `
-(package_declaration
-  (package_identifier) @symbol.go_package.def)
-
-(function_declaration
- name: (identifier) @symbol.function.def) @scope.function.def
-
-(go_statement
-  (call_expression
-    function: (identifier) @rel.goroutine))
-
-(call_expression
-  function: (identifier) @rel.call)
-(call_expression
-  function: (selector_expression
-    field: (field_identifier) @rel.call))
-
-(import_spec
-  (string_literal) @rel.import.source)
-`;
-```
-
-## File: src/queries/rust.ts
-```typescript
-export const rustQueries = `
-(struct_item
-  name: (type_identifier) @symbol.rust_struct.def) @scope.rust_struct.def
-
-(trait_item
-  name: (type_identifier) @symbol.rust_trait.def) @scope.rust_trait.def
-  
-(impl_item
-  trait: (type_identifier) @rel.implements
-  type: (type_identifier) @rel.references
-) @symbol.rust_impl.def @scope.rust_impl.def
-
-(attribute_item
-  (attribute (identifier) @rel.macro))
-
-(function_item
-  name: (identifier) @symbol.function.def) @scope.function.def
-
-(parameter
-  type: (_ (type_identifier) @rel.references)
-)
-
-(call_expression
-  function: (field_expression
-    field: (field_identifier) @rel.call))
-`;
-```
-
-## File: src/queries/typescript.ts
-```typescript
-export const typescriptQueries = `
-;; -------------------------------------------------------------------
-;; Scopes & Definitions
-;; -------------------------------------------------------------------
-
-(class_declaration
-  name: (identifier) @symbol.class.def) @scope.class.def
-
-(interface_declaration
-  name: (type_identifier) @symbol.interface.def) @scope.interface.def
-
-(function_declaration
-  name: (identifier) @symbol.function.def) @scope.function.def
-
-(arrow_function) @scope.function.def
-
-(method_definition
-  name: (property_identifier) @symbol.method.def) @scope.method.def
-
-(enum_declaration
-  name: (identifier) @symbol.enum.def) @scope.enum.def
-
-(enum_assignment
-  name: (property_identifier) @symbol.enum_member.def)
-
-(type_alias_declaration
-  name: (type_identifier) @symbol.type_alias.def) @scope.type_alias.def
-
-(lexical_declaration
-  (variable_declarator
-    name: (identifier) @symbol.variable.def)) @scope.variable.def
-
-(public_field_definition
-  name: (property_identifier) @symbol.property.def) @scope.property.def
-
-(decorator (identifier) @symbol.decorator.def)
-
-;; -------------------------------------------------------------------
-;; Relationships & References
-;; -------------------------------------------------------------------
-
-(import_statement
-  source: (string) @rel.import.source)
-
-(import_specifier
-  name: (identifier) @rel.import.named)
-
-(namespace_import
-  (identifier) @rel.import.namespace)
-
-(export_statement
-  source: (string) @rel.export.source)
-
-(export_specifier
-  name: (identifier) @rel.export.named)
-
-(call_expression
-  function: [
-    (identifier) @rel.call
-    (member_expression
-      property: (property_identifier) @rel.call)
-    (call_expression
-      function: (member_expression
-        property: (property_identifier) @rel.call))
-  ])
-
-(new_expression
-  constructor: (identifier) @rel.new)
-
-(class_declaration
-  (class_heritage
-    (expression_with_type_arguments
-      (identifier) @rel.extends))) @rel.extends.scope
-
-(interface_declaration
-  (class_heritage
-    (expression_with_type_arguments
-      (type_identifier) @rel.extends)))
-
-(implement_clause
-  (type_identifier) @rel.implements)
-
-(type_identifier) @rel.type.ref
-(generic_type (type_identifier) @rel.type.ref)
-(predefined_type) @rel.type.ref
-
-;; -------------------------------------------------------------------
-;; Modifiers
-;; -------------------------------------------------------------------
-
-"export" @mod.export
-"abstract" @mod.abstract
-"static" @mod.static
-"readonly" @mod.readonly
-"async" @mod.async
-(accessibility_modifier) @mod.access
-
-;; -------------------------------------------------------------------
-;; JSX/TSX
-;; -------------------------------------------------------------------
-
-(jsx_element
-  open_tag: (jsx_opening_element
-    name: (identifier) @rel.jsx.component)) @scope.jsx_element.def
-
-(jsx_self_closing_element
-  name: (identifier) @rel.jsx.component) @scope.jsx_element.def
-
-(jsx_attribute
-  name: (property_identifier) @symbol.jsx_attribute.def)
-
-(jsx_expression_attribute) @scope.jsx_attribute.def
-`;
-```
+````
 
 ## File: src/utils/ast.ts
-```typescript
+````typescript
 import type { Range } from '../types';
 import type { Node as SyntaxNode } from 'web-tree-sitter';
 
@@ -2154,114 +2154,10 @@ export const getIdentifier = (node: SyntaxNode, sourceCode: string, defaultName:
     const nameNode = findChildByFieldName(node, 'name') ?? findChild(node, ['identifier', 'property_identifier']);
     return nameNode ? getNodeText(nameNode, sourceCode) : defaultName;
 };
-```
-
-## File: src/formatter.ts
-```typescript
-import type { CodeSymbol, SourceFile } from './types';
-import { topologicalSort } from './utils/graph';
-
-const ICONS: Record<string, string> = {
-    class: '◇', interface: '{}', function: '~', method: '~',
-    variable: '@', property: '@', enum: '☰', enum_member: '@',
-    type_alias: '=:', react_component: '◇', jsx_element: '⛶',
-    css_class: '¶', css_id: '¶', css_tag: '¶', css_at_rule: '¶',
-    go_package: '◇',
-    rust_struct: '◇', rust_trait: '{}', rust_impl: '+',
-    error: '[error]', default: '?',
-};
-
-const formatSymbolId = (symbol: CodeSymbol) => `(${symbol.fileId}.${symbol.id.split(':')[0]})`;
-
-const formatSymbol = (symbol: CodeSymbol, allFiles: SourceFile[]): string[] => {
-    const icon = ICONS[symbol.kind] || ICONS.default;
-    const prefix = symbol.isExported ? '+' : '-';
-    let name = symbol.name === '<anonymous>' ? '' : ` ${symbol.name}`;
-    if (symbol.kind === 'variable' && name.trim() === 'default') name = '';
-
-    const mods = [
-        symbol.isAbstract && 'abstract',
-        symbol.isStatic && 'static',
-    ].filter(Boolean).join(' ');
-    const modStr = mods ? ` [${mods}]` : '';
-
-    const suffix = [
-        symbol.isAsync && '...',
-        symbol.isPure && 'o',
-    ].filter(Boolean).join(' ');
-
-    const line = `  ${prefix} ${icon} ${formatSymbolId(symbol)}${name}${modStr}${suffix}`;
-    const result = [line];
-
-    const outgoing = new Map<number, Set<string>>();
-    symbol.dependencies.forEach(dep => {
-        if (dep.resolvedFileId !== undefined && dep.resolvedFileId !== symbol.fileId) {
-            if (!outgoing.has(dep.resolvedFileId)) outgoing.set(dep.resolvedFileId, new Set());
-            if (dep.resolvedSymbolId) {
-                const targetSymbol = allFiles.find(f => f.id === dep.resolvedFileId)?.symbols.find(s => s.id === dep.resolvedSymbolId);
-                if (targetSymbol) {
-                    let text = formatSymbolId(targetSymbol);
-                    if (dep.kind === 'goroutine') {
-                        text += ' [goroutine]';
-                    }
-                    outgoing.get(dep.resolvedFileId)!.add(text);
-                }
-            }
-        }
-    });
-
-    if (outgoing.size > 0) {
-        const parts = Array.from(outgoing.entries()).map(([fileId, symbolIds]) => {
-            return symbolIds.size > 0 ? `${Array.from(symbolIds).join(', ')}` : `(${fileId}.0)`;
-        });
-        result.push(`    -> ${parts.join(', ')}`);
-    }
-    
-    const incoming = new Map<number, Set<string>>();
-    allFiles.forEach(file => {
-        file.symbols.forEach(s => {
-            s.dependencies.forEach(d => {
-                if (d.resolvedFileId === symbol.fileId && d.resolvedSymbolId === symbol.id) {
-                    if(!incoming.has(file.id)) incoming.set(file.id, new Set());
-                    incoming.get(file.id)!.add(formatSymbolId(s));
-                }
-            });
-        });
-    });
-
-    if (incoming.size > 0) {
-        const parts = Array.from(incoming.entries()).map(([_fileId, symbolIds]) => Array.from(symbolIds).join(', '));
-        result.push(`    <- ${parts.join(', ')}`);
-    }
-
-    return result;
-};
-
-
-const formatFile = (file: SourceFile, allFiles: SourceFile[]): string => {
-    if (file.parseError) return `§ (${file.id}) ${file.relativePath} [error]`;
-    if (!file.sourceCode.trim()) return `§ (${file.id}) ${file.relativePath}`;
-
-    const directives = [
-        file.isGenerated && 'generated',
-        ...(file.languageDirectives || [])
-    ].filter(Boolean);
-    const directiveStr = directives.length > 0 ? ` [${directives.join(' ')}]` : '';
-    const header = `§ (${file.id}) ${file.relativePath}${directiveStr}`;
-
-    const symbolLines = file.symbols.flatMap(s => formatSymbol(s, allFiles));
-
-    return [header, ...symbolLines].join('\n');
-};
-
-export const formatScn = (analyzedFiles: SourceFile[]): string => {
-    const sortedFiles = topologicalSort(analyzedFiles);
-    return sortedFiles.map(file => formatFile(file, analyzedFiles)).join('\n\n');
-};
-```
+````
 
 ## File: test/ts/e2e/01-core.test.ts
-```typescript
+````typescript
 import { describe, it } from 'bun:test';
 import { runTestForFixture } from '../../test.util.ts';
 import path from 'node:path';
@@ -2297,10 +2193,10 @@ describe('Core Language Features', () => {
         await runTestForFixture(path.join(fixtureDir, '24.ts-ambient-modules.fixture.yaml'));
     });
 });
-```
+````
 
 ## File: test/ts/e2e/02-react-css.test.ts
-```typescript
+````typescript
 import { describe, it } from 'bun:test';
 import { runTestForFixture } from '../../test.util.ts';
 import path from 'node:path';
@@ -2336,10 +2232,10 @@ describe('React & CSS Features', () => {
         await runTestForFixture(path.join(fixtureDir, '22.react-server-components.fixture.yaml'));
     });
 });
-```
+````
 
 ## File: test/ts/e2e/03-dependencies.test.ts
-```typescript
+````typescript
 import { describe, it } from 'bun:test';
 import { runTestForFixture } from '../../test.util.ts';
 import path from 'node:path';
@@ -2367,10 +2263,10 @@ describe('Dependency Graph Analysis', () => {
         await runTestForFixture(path.join(fixtureDir, '25.graphql-codegen.fixture.yaml'));
     });
 });
-```
+````
 
 ## File: test/ts/e2e/04-advanced.test.ts
-```typescript
+````typescript
 import { describe, it } from 'bun:test';
 import { runTestForFixture } from '../../test.util.ts';
 import path from 'node:path';
@@ -2414,10 +2310,10 @@ describe('Advanced, Edge Case, and Multi-language Features', () => {
         await runTestForFixture(path.join(fixtureDir, '28.error-resilience.fixture.yaml'));
     });
 });
-```
+````
 
 ## File: test/test.util.ts
-```typescript
+````typescript
 import { generateScn, initializeParser, type ScnTsConfig, type InputFile } from '../src/main';
 import fs from 'node:fs/promises';
 import path from 'node:path';
@@ -2513,10 +2409,66 @@ export async function runTestForFixture(fixturePath: string): Promise<void> {
 
   expect(scnOutput.trim()).toBe(fixture.expected);
 }
-```
+````
+
+## File: src/queries/go.ts
+````typescript
+export const goQueries = `
+(package_clause
+  (package_identifier) @symbol.go_package.def)
+
+(function_declaration
+ name: (identifier) @symbol.function.def) @scope.function.def
+
+(go_statement
+  (call_expression
+    function: (identifier) @rel.goroutine))
+
+(call_expression
+  function: (identifier) @rel.call)
+(call_expression
+  function: (selector_expression
+    field: (field_identifier) @rel.call))
+
+(import_spec
+  (string_literal) @rel.import.source)
+`;
+````
+
+## File: src/queries/rust.ts
+````typescript
+export const rustQueries = `
+(struct_item
+  name: (type_identifier) @symbol.rust_struct.def) @scope.rust_struct.def
+
+(trait_item
+  name: (type_identifier) @symbol.rust_trait.def) @scope.rust_trait.def
+  
+(impl_item
+  trait: (type_identifier) @rel.implements
+  type: (type_identifier) @rel.references
+) @symbol.rust_impl.def @scope.rust_impl.def
+
+(attribute_item
+  (attribute (token_tree (identifier) @rel.macro)))
+
+(function_item
+  name: (identifier) @symbol.function.def) @scope.function.def
+
+(parameter
+  type: (_ (type_identifier) @rel.references)
+)
+
+(call_expression
+  function: (field_expression
+    field: (field_identifier) @rel.call))
+
+(visibility_modifier) @mod.export
+`;
+````
 
 ## File: src/analyzer.ts
-```typescript
+````typescript
 import type { SourceFile, CodeSymbol, Relationship, SymbolKind, RelationshipKind, Range } from './types';
 import { getNodeRange, getNodeText, getIdentifier, findChildByFieldName } from './utils/ast';
 import { Query, type Node as SyntaxNode, type QueryCapture } from 'web-tree-sitter';
@@ -2639,10 +2591,125 @@ const findParentSymbol = (range: Range, symbols: CodeSymbol[]): CodeSymbol | nul
         .sort((a, b) => (a.scopeRange.end.line - a.scopeRange.start.line) - (b.scopeRange.end.line - b.scopeRange.start.line))
         [0] || null;
 };
-```
+````
+
+## File: src/formatter.ts
+````typescript
+import type { CodeSymbol, SourceFile } from './types';
+import { topologicalSort } from './utils/graph';
+
+const ICONS: Record<string, string> = {
+    class: '◇', interface: '{}', function: '~', method: '~',
+    variable: '@', property: '@', enum: '☰', enum_member: '@',
+    type_alias: '=:', react_component: '◇', jsx_element: '⛶',
+    css_class: '¶', css_id: '¶', css_tag: '¶', css_at_rule: '¶',
+    go_package: '◇',
+    rust_struct: '◇', rust_trait: '{}', rust_impl: '+',
+    error: '[error]', default: '?',
+};
+
+const formatSymbolId = (symbol: CodeSymbol) => `(${symbol.fileId}.${symbol.id.split(':')[0]})`;
+
+const formatSymbol = (symbol: CodeSymbol, allFiles: SourceFile[]): string[] => {
+    const icon = ICONS[symbol.kind] || ICONS.default;
+    const prefix = symbol.isExported ? '+' : '-';
+    let name = symbol.name === '<anonymous>' ? '' : ` ${symbol.name}`;
+    if (symbol.kind === 'variable' && name.trim() === 'default') name = '';
+
+    const mods = [
+        symbol.isAbstract && 'abstract',
+        symbol.isStatic && 'static',
+    ].filter(Boolean).join(' ');
+    const modStr = mods ? ` [${mods}]` : '';
+
+    const suffix = [
+        symbol.isAsync && '...',
+        symbol.isPure && 'o',
+    ].filter(Boolean).join(' ');
+
+    const line = `  ${prefix} ${icon} ${formatSymbolId(symbol)}${name}${modStr}${suffix}`;
+    const result = [line];
+
+    const outgoing = new Map<number, Set<string>>();
+    const unresolvedDeps: string[] = [];
+    symbol.dependencies.forEach(dep => {
+        if (dep.resolvedFileId !== undefined && dep.resolvedFileId !== symbol.fileId) {
+            if (!outgoing.has(dep.resolvedFileId)) outgoing.set(dep.resolvedFileId, new Set());
+            if (dep.resolvedSymbolId) {
+                const targetSymbol = allFiles.find(f => f.id === dep.resolvedFileId)?.symbols.find(s => s.id === dep.resolvedSymbolId);
+                if (targetSymbol) {
+                    let text = formatSymbolId(targetSymbol);
+                    if (dep.kind === 'goroutine') {
+                        text += ' [goroutine]';
+                    }
+                    outgoing.get(dep.resolvedFileId)!.add(text);
+                }
+            }
+        } else if (dep.resolvedFileId === undefined) {
+            if (dep.kind === 'macro') {
+                unresolvedDeps.push(`${dep.targetName} [macro]`);
+            }
+        }
+    });
+
+    const outgoingParts: string[] = [];
+    if (outgoing.size > 0) {
+        const resolvedParts = Array.from(outgoing.entries()).map(([fileId, symbolIds]) => {
+            return symbolIds.size > 0 ? `${Array.from(symbolIds).join(', ')}` : `(${fileId}.0)`;
+        });
+        outgoingParts.push(...resolvedParts);
+    }
+    outgoingParts.push(...unresolvedDeps);
+
+    if (outgoingParts.length > 0) {
+        result.push(`    -> ${outgoingParts.join(', ')}`);
+    }
+    
+    const incoming = new Map<number, Set<string>>();
+    allFiles.forEach(file => {
+        file.symbols.forEach(s => {
+            s.dependencies.forEach(d => {
+                if (d.resolvedFileId === symbol.fileId && d.resolvedSymbolId === symbol.id) {
+                    if(!incoming.has(file.id)) incoming.set(file.id, new Set());
+                    incoming.get(file.id)!.add(formatSymbolId(s));
+                }
+            });
+        });
+    });
+
+    if (incoming.size > 0) {
+        const parts = Array.from(incoming.entries()).map(([_fileId, symbolIds]) => Array.from(symbolIds).join(', '));
+        result.push(`    <- ${parts.join(', ')}`);
+    }
+
+    return result;
+};
+
+
+const formatFile = (file: SourceFile, allFiles: SourceFile[]): string => {
+    if (file.parseError) return `§ (${file.id}) ${file.relativePath} [error]`;
+    if (!file.sourceCode.trim()) return `§ (${file.id}) ${file.relativePath}`;
+
+    const directives = [
+        file.isGenerated && 'generated',
+        ...(file.languageDirectives || [])
+    ].filter(Boolean);
+    const directiveStr = directives.length > 0 ? ` [${directives.join(' ')}]` : '';
+    const header = `§ (${file.id}) ${file.relativePath}${directiveStr}`;
+
+    const symbolLines = file.symbols.flatMap(s => formatSymbol(s, allFiles));
+
+    return [header, ...symbolLines].join('\n');
+};
+
+export const formatScn = (analyzedFiles: SourceFile[]): string => {
+    const sortedFiles = topologicalSort(analyzedFiles);
+    return sortedFiles.map(file => formatFile(file, analyzedFiles)).join('\n\n');
+};
+````
 
 ## File: src/parser.ts
-```typescript
+````typescript
 import type { ParserInitOptions, LanguageConfig } from './types';
 import { Parser, Language, type Tree } from 'web-tree-sitter';
 import path from 'node:path';
@@ -2692,10 +2759,47 @@ export const parse = (sourceCode: string, lang: LanguageConfig): Tree | null => 
     }
     return lang.parser.parse(sourceCode);
 };
-```
+````
+
+## File: package.json
+````json
+{
+  "name": "scn-ts-core",
+  "module": "index.ts",
+  "type": "module",
+  "private": true,
+  "devDependencies": {
+    "@types/bun": "latest",
+    "web-tree-sitter": "0.25.8"
+  },
+  "peerDependencies": {
+    "typescript": "^5"
+  }
+}
+````
+
+## File: src/queries/css.ts
+````typescript
+export const cssQueries = `
+(class_selector
+  (class_name) @symbol.css_class.def)
+
+(id_selector
+  (id_name) @symbol.css_id.def)
+  
+(tag_name) @symbol.css_tag.def
+
+(at_rule
+  (at_keyword) @symbol.css_at_rule.def)
+
+(declaration
+  (property_name) @symbol.css_property.def)
+
+`;
+````
 
 ## File: src/types.ts
-```typescript
+````typescript
 import type { Parser, Tree, Language } from 'web-tree-sitter';
 import type { TsConfig, PathResolver } from './utils/tsconfig';
 export type { PathResolver };
@@ -2784,7 +2888,8 @@ export type RelationshipKind =
   | 'implements'
   | 'references'
   | 'aliased'
-  | 'goroutine';
+  | 'goroutine'
+  | 'macro';
 
 export interface Relationship {
   targetName: string; // The raw name of the target (e.g., './utils', 'MyClass', 'add', 'Button')
@@ -2825,21 +2930,52 @@ export interface AnalysisContext {
     sourceFiles: SourceFile[];
     pathResolver: PathResolver;
 }
-```
+````
 
-## File: package.json
-```json
-{
-  "name": "scn-ts-core",
-  "module": "index.ts",
-  "type": "module",
-  "private": true,
-  "devDependencies": {
-    "@types/bun": "latest",
-    "web-tree-sitter": "0.25.8"
-  },
-  "peerDependencies": {
-    "typescript": "^5"
-  }
-}
-```
+## File: src/queries/typescript.ts
+````typescript
+export const typescriptQueries = `
+; Variable declarations (const, let, var)
+(lexical_declaration 
+  (variable_declarator 
+    (identifier) @symbol.variable.def))
+
+; Export statements with variable declarations
+(export_statement
+  (lexical_declaration 
+    (variable_declarator 
+      (identifier) @symbol.variable.def)))
+
+; Function declarations
+(function_declaration 
+  (identifier) @symbol.function.def)
+
+; Class declarations
+(class_declaration 
+  (identifier) @symbol.class.def)
+
+; Import statements - capture the source string
+(import_statement 
+  (string) @rel.import.source)
+
+; Import specifiers - capture imported names
+(import_specifier 
+  (identifier) @rel.import.named)
+
+; Export statements - capture the source string
+(export_statement 
+  (string) @rel.export.source)
+
+; Function calls
+(call_expression 
+  (identifier) @rel.call)
+
+; Member expression calls
+(call_expression 
+  (member_expression 
+    (property_identifier) @rel.call))
+
+; All identifiers as fallback
+(identifier) @symbol.identifier.def
+`;
+````

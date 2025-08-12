@@ -3,6 +3,13 @@ import { getNodeRange, getNodeText, getIdentifier, findChildByFieldName } from '
 import { Query, type Node as SyntaxNode, type QueryCapture } from 'web-tree-sitter';
 
 const getSymbolName = (node: SyntaxNode, sourceCode: string): string => {
+    if (node.type === 'rule_set' || node.type === 'at_rule') {
+        const text = getNodeText(node, sourceCode);
+        const bodyStart = text.indexOf('{');
+        const name = (bodyStart === -1 ? text : text.substring(0, bodyStart)).trim();
+        // for at-rules, the name is the @keyword, so we need the full line.
+        return name.endsWith(';') ? name.slice(0, -1) : name;
+    }
     if (node.type === 'jsx_opening_element' || node.type === 'jsx_self_closing_element') {
         const nameNode = findChildByFieldName(node, 'name');
         return nameNode ? getNodeText(nameNode, sourceCode) : '<fragment>';
@@ -51,7 +58,10 @@ const processCapture = (
         symbols.push(symbol);
     } else if (cat === 'rel') {
         const rel: Relationship = {
-            kind: kind as RelationshipKind,
+            // special case for dynamic import from TS query
+            kind: captureName.startsWith('rel.dynamic_import') 
+                ? 'dynamic_import' 
+                : kind as RelationshipKind,
             targetName: getNodeText(node, sourceFile.sourceCode).replace(/['"`]/g, ''),
             range: getNodeRange(node),
         };

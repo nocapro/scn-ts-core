@@ -27,6 +27,7 @@
     "package.json",
     "src",
     "tsconfig.json",
+    "docs/repomix-wasm.md",
     "node_modules/web-tree-sitter/src/index.ts"
   ],
   "ignore": {

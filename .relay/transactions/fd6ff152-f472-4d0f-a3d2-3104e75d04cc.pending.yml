@@ -1,0 +1,627 @@
+uuid: fd6ff152-f472-4d0f-a3d2-3104e75d04cc
+projectId: scn-ts-core
+createdAt: '2025-08-12T05:48:41.074Z'
+gitCommitMsg: 'fix(parser): correct tree-sitter queries for all languages'
+promptSummary: >-
+  User's tests are failing massively due to multiple Tree-sitter query errors.
+  The most prominent error is 'Bad node name jsx_element' because TSX queries
+  were being used on non-TSX files. Other errors include bad node names and
+  pattern structures in Go, Rust, and CSS queries. The fix involves splitting
+  TS/TSX queries, and correcting the syntax in all other faulty query files.
+reasoning:
+  - >-
+    This is anton. I've analyzed the test failures and it's clear my previous
+    changes, while well-intentioned, contained syntax errors for multiple
+    Tree-sitter grammars. The most significant issue was using JSX-specific
+    queries (`jsx_element`) for all TypeScript/JavaScript files, which caused
+    widespread failures as the standard TypeScript parser doesn't understand
+    JSX.
+  - 'Here''s my plan to fix this:'
+  - >-
+    1.  **Split TypeScript/TSX Queries:** I will create a base set of queries
+    for standard TypeScript/JavaScript and a separate, extended set for TSX that
+    includes JSX-specific patterns. The `languages.ts` configuration will be
+    updated to use the appropriate query set for each file type. This will
+    resolve the `Bad node name 'jsx_element'` and `heritage_clause` errors.
+  - >-
+    2.  **Correct CSS Queries:** The CSS parser uses `custom_property_name` for
+    CSS variables, not `variable_name`. It also has a specific `var_function`
+    node for `var()` calls. I will update `src/queries/css.ts` accordingly.
+  - >-
+    3.  **Correct Go Query:** The Go query had a structural error (`name:` field
+    in `package_clause`). I will fix this syntax error in `src/queries/go.ts`.
+  - >-
+    4.  **Correct Rust Query:** The Rust query used a node name
+    (`impl_trait_type`) that seems to be from a different grammar version than
+    what's being used. I will replace this with a more resilient pattern to
+    correctly identify trait references in parameters without causing a crash.
+  - I will now apply these targeted fixes.
+  - '### 1. Fix TypeScript and Language Configuration'
+  - >-
+    I'll start by splitting the TypeScript queries and updating the language
+    configuration to use the correct queries for TSX files.
+  - '### 2. Fix Other Language Queries'
+  - >-
+    Next, I'll correct the queries for CSS, Go, and Rust to fix the remaining
+    parsing errors.
+  - >-
+    These changes correct all identified query syntax errors and logic flaws.
+    Splitting the TypeScript/TSX queries is the most critical fix and will
+    resolve the majority of the test failures. The other fixes are surgical
+    corrections to their respective language parsers. The tests should now pass.
+operations:
+  - type: write
+    path: src/queries/typescript.ts
+    content: |-
+      const tsBaseQueries = `
+      ; =============================================
+      ; Definitions
+      ; =============================================
+
+      (function_declaration
+        name: (identifier) @symbol.function.def) @scope.function.def
+
+      (arrow_function) @scope.function.def
+
+      (method_definition
+        name: (property_identifier) @symbol.method.def) @scope.function.def
+
+      (class_declaration
+        name: (type_identifier) @symbol.class.def) @scope.class.def
+
+      (interface_declaration
+        name: (type_identifier) @symbol.interface.def) @scope.interface.def
+
+      (enum_declaration
+        name: (identifier) @symbol.enum.def) @scope.enum.def
+
+      (type_alias_declaration
+        name: (type_identifier) @symbol.type_alias.def) @scope.type_alias.def
+
+      ; 'export const MyVar = ...' or 'const MyVar = ...'
+      (variable_declarator
+        name: (identifier) @symbol.variable.def) @scope.variable.def
+
+      ; =============================================
+      ; Relationships
+      ; =============================================
+
+      ; Imports: 'import { A, B } from './foo''
+      (import_statement
+        source: (string) @rel.import.source)
+
+      ; require calls: 'const foo = require('./foo')'
+      (call_expression
+        function: (identifier) @_fn
+        arguments: (arguments (string) @rel.import.source)
+        (#eq? @_fn "require")
+      )
+
+      ; Dynamic imports: 'import('./foo')'
+      (call_expression
+        function: (import)
+        arguments: (arguments (string) @rel.dynamic_import.source))
+
+      ; 'export { A, B } from './foo''
+      (export_statement
+        source: (string) @rel.export.source)
+
+      ; Class extension: 'class A extends B'
+      (class_declaration
+        (class_heritage (expression) @rel.extends))
+
+      ; Interface extension: 'interface A extends B'
+      (interface_declaration
+        (extends_clause (expression) @rel.extends))
+
+      ; 'implements' clause
+      (class_declaration
+        (class_heritage (implements_clause (type_identifier) @rel.implements)))
+
+      ; Function/method calls
+      (call_expression
+        function: (identifier) @rel.call)
+      (call_expression
+        function: (member_expression
+          property: (property_identifier) @rel.call))
+
+      ; Decorators
+      (decorator
+        (identifier) @rel.decorator)
+      (decorator
+        (call_expression
+          function: (identifier) @rel.decorator))
+          
+      ; New expression 'new MyClass()'
+      (new_expression
+        constructor: (identifier) @rel.call)
+      (new_expression
+        constructor: (member_expression
+          property: (property_identifier) @rel.call))
+
+      ; Type annotations
+      (type_annotation
+        (type_identifier) @rel.references)
+      (generic_type
+        (type_identifier) @rel.references)
+
+      ; =============================================
+      ; Modifiers
+      ; =============================================
+      ((export_statement) @mod.export)
+      ((method_definition
+        "static" @mod.static))
+      ((method_definition
+        "abstract" @mod.abstract))
+      ((public_field_definition
+        "readonly" @mod.readonly))
+      ((method_definition
+        "async" @mod.async))
+      ((function_declaration
+        "async" @mod.async))
+      ((arrow_function
+        "async" @mod.async))
+      `;
+
+      const tsxExtraQueries = `
+      ; 'const MyReactComponent = () => <div />'
+      (variable_declarator
+        name: (identifier) @symbol.react_component.def
+        value: (arrow_function
+          body: [
+            (jsx_element)
+            (jsx_self_closing_element)
+          ]
+        )
+      ) @scope.react_component.def
+      (variable_declarator
+        name: (identifier) @symbol.react_component.def
+        value: (arrow_function
+          body: (parenthesized_expression [
+            (jsx_element)
+            (jsx_self_closing_element)
+          ])
+        )
+      ) @scope.react_component.def
+
+      (jsx_opening_element
+        name: (_) @symbol.jsx_element.def) @scope.jsx_element.def
+
+      (jsx_self_closing_element
+        name: (_) @symbol.jsx_element.def) @scope.jsx_element.def
+
+      ; JSX element usage
+      (jsx_opening_element
+        name: (identifier) @rel.call)
+      (jsx_self_closing_element
+        name: (identifier) @rel.call)
+      `;
+
+      export const typescriptQueries = tsBaseQueries;
+      export const typescriptReactQueries = tsBaseQueries + tsxExtraQueries;
+    patchStrategy: replace
+  - type: write
+    path: src/languages.ts
+    content: >-
+      <<<<<<< SEARCH
+
+      import { typescriptQueries } from './queries/typescript';
+
+      =======
+
+      import { typescriptQueries, typescriptReactQueries } from
+      './queries/typescript';
+
+      >>>>>>> REPLACE
+
+      <<<<<<< SEARCH
+          {
+              id: 'tsx',
+              name: 'TypeScriptReact',
+              extensions: ['.tsx'],
+              wasmPath: 'tree-sitter-tsx.wasm',
+              queries: { main: typescriptQueries },
+          },
+      =======
+          {
+              id: 'tsx',
+              name: 'TypeScriptReact',
+              extensions: ['.tsx'],
+              wasmPath: 'tree-sitter-tsx.wasm',
+              queries: { main: typescriptReactQueries },
+          },
+      >>>>>>> REPLACE
+    patchStrategy: multi-search-replace
+  - type: write
+    path: src/queries/css.ts
+    content: |-
+      export const cssQueries = `
+      (rule_set) @symbol.css_class.def @scope.css_class.def
+      (at_rule) @symbol.css_at_rule.def @scope.css_at_rule.def
+      (declaration (custom_property_name) @symbol.css_variable.def)
+      (var_function (custom_property_name) @rel.references)
+      `;
+    patchStrategy: replace
+  - type: write
+    path: src/queries/go.ts
+    content: |-
+      export const goQueries = `
+      (package_clause
+        (package_identifier) @symbol.go_package.def) @scope.go_package.def
+
+      (function_declaration
+       name: (identifier) @symbol.function.def) @scope.function.def
+
+      (go_statement
+        (call_expression
+          function: (_) @rel.goroutine))
+
+      (call_expression
+        function: (_) @rel.call)
+
+      (import_spec
+        path: (interpreted_string_literal) @rel.import.source)
+      `;
+    patchStrategy: replace
+  - type: write
+    path: src/queries/rust.ts
+    content: |-
+      export const rustQueries = `
+      (struct_item
+        name: (type_identifier) @symbol.rust_struct.def) @scope.rust_struct.def
+
+      (trait_item
+        name: (type_identifier) @symbol.rust_trait.def) @scope.rust_trait.def
+        
+      (impl_item) @symbol.rust_impl.def @scope.rust_impl.def
+
+      (impl_item
+        trait: (type_identifier) @rel.implements
+        type: (type_identifier) @rel.references
+      )
+
+      (attribute_item
+        (attribute . (token_tree (identifier) @rel.macro)))
+
+      (function_item
+        name: (identifier) @symbol.function.def) @scope.function.def
+
+      (impl_item
+        body: (declaration_list
+          (function_item
+            name: (identifier) @symbol.method.def) @scope.method.def))
+
+      ; For parameters like '&impl Trait'
+      (parameter type: (reference_type (_ (type_identifier) @rel.references)))
+      ; For simple trait parameters
+      (parameter type: (type_identifier) @rel.references)
+
+      (call_expression
+        function: (field_expression
+          field: (field_identifier) @rel.call))
+
+      ((struct_item (visibility_modifier) @mod.export))
+      ((trait_item (visibility_modifier) @mod.export))
+      ((function_item (visibility_modifier) @mod.export))
+      `;
+    patchStrategy: replace
+snapshot:
+  src/queries/typescript.ts: |-
+    export const typescriptQueries = `
+    ; =============================================
+    ; Definitions
+    ; =============================================
+
+    (function_declaration
+      name: (identifier) @symbol.function.def) @scope.function.def
+
+    (arrow_function) @scope.function.def
+
+    (method_definition
+      name: (property_identifier) @symbol.method.def) @scope.function.def
+
+    (class_declaration
+      name: (type_identifier) @symbol.class.def) @scope.class.def
+
+    (interface_declaration
+      name: (type_identifier) @symbol.interface.def) @scope.interface.def
+
+    (enum_declaration
+      name: (identifier) @symbol.enum.def) @scope.enum.def
+
+    (type_alias_declaration
+      name: (type_identifier) @symbol.type_alias.def) @scope.type_alias.def
+
+    ; 'export const MyVar = ...' or 'const MyVar = ...'
+    (variable_declarator
+      name: (identifier) @symbol.variable.def) @scope.variable.def
+
+    ; 'const MyReactComponent = () => <div />'
+    (variable_declarator
+      name: (identifier) @symbol.react_component.def
+      value: (arrow_function
+        body: (jsx_element)
+      )
+    ) @scope.react_component.def
+    (variable_declarator
+      name: (identifier) @symbol.react_component.def
+      value: (arrow_function
+        body: (parenthesized_expression (jsx_element))
+      )
+    ) @scope.react_component.def
+
+    (jsx_opening_element
+      name: (_) @symbol.jsx_element.def) @scope.jsx_element.def
+
+    (jsx_self_closing_element
+      name: (_) @symbol.jsx_element.def) @scope.jsx_element.def
+
+
+    ; =============================================
+    ; Relationships
+    ; =============================================
+
+    ; Imports: 'import { A, B } from './foo''
+    (import_statement
+      source: (string) @rel.import.source)
+
+    ; require calls: 'const foo = require('./foo')'
+    (call_expression
+      function: (identifier) @_fn
+      arguments: (arguments (string) @rel.import.source)
+      (#eq? @_fn "require")
+    )
+
+    ; Dynamic imports: 'import('./foo')'
+    (call_expression
+      function: (import)
+      arguments: (arguments (string) @rel.dynamic_import.source))
+
+    ; 'export { A, B } from './foo''
+    (export_statement
+      source: (string) @rel.export.source)
+
+    ; Class extension: 'class A extends B'
+    (class_declaration
+      (heritage_clause
+        (expression) @rel.extends))
+
+    ; Interface extension: 'interface A extends B'
+    (interface_declaration
+      (heritage_clause
+        (expression) @rel.extends))
+
+    ; 'implements' clause
+    (class_declaration
+      (heritage_clause
+        (expression) @rel.implements))
+
+    ; Function/method calls
+    (call_expression
+      function: (identifier) @rel.call)
+    (call_expression
+      function: (member_expression
+        property: (property_identifier) @rel.call))
+
+    ; Decorators
+    (decorator
+      (identifier) @rel.decorator)
+    (decorator
+      (call_expression
+        function: (identifier) @rel.decorator))
+        
+    ; New expression 'new MyClass()'
+    (new_expression
+      constructor: (identifier) @rel.call)
+    (new_expression
+      constructor: (member_expression
+        property: (property_identifier) @rel.call))
+
+    ; Type annotations
+    (type_annotation
+      (type_identifier) @rel.references)
+    (generic_type
+      (type_identifier) @rel.references)
+
+    ; JSX element usage
+    (jsx_opening_element
+      name: (identifier) @rel.call)
+    (jsx_self_closing_element
+      name: (identifier) @rel.call)
+
+    ; =============================================
+    ; Modifiers
+    ; =============================================
+    ((export_statement) @mod.export)
+    ((method_definition
+      "static" @mod.static))
+    ((method_definition
+      "abstract" @mod.abstract))
+    ((public_field_definition
+      "readonly" @mod.readonly))
+    ((method_definition
+      "async" @mod.async))
+    ((function_declaration
+      "async" @mod.async))
+    ((arrow_function
+      "async" @mod.async))
+    `;
+  src/languages.ts: >-
+    import type { LanguageConfig } from './types';
+
+    import path from 'node:path';
+
+    import { typescriptQueries } from './queries/typescript';
+
+    import { cssQueries } from './queries/css';
+
+    import { goQueries } from './queries/go';
+
+    import { rustQueries } from './queries/rust';
+
+
+    // Based on test/wasm and test/fixtures
+
+    export const languages: LanguageConfig[] = [
+        {
+            id: 'typescript',
+            name: 'TypeScript',
+            extensions: ['.ts', '.mts', '.cts'],
+            wasmPath: 'tree-sitter-typescript.wasm',
+            queries: { main: typescriptQueries },
+        },
+        {
+            id: 'tsx',
+            name: 'TypeScriptReact',
+            extensions: ['.tsx'],
+            wasmPath: 'tree-sitter-tsx.wasm',
+            queries: { main: typescriptQueries },
+        },
+        {
+            id: 'javascript',
+            name: 'JavaScript',
+            extensions: ['.js', '.mjs', '.cjs'],
+            wasmPath: 'tree-sitter-typescript.wasm',
+            queries: { main: typescriptQueries },
+        },
+        {
+            id: 'css',
+            name: 'CSS',
+            extensions: ['.css'],
+            wasmPath: 'tree-sitter-css.wasm',
+            queries: { main: cssQueries },
+        },
+        {
+            id: 'go',
+            name: 'Go',
+            extensions: ['.go'],
+            wasmPath: 'tree-sitter-go.wasm',
+            queries: { main: goQueries },
+        },
+        {
+            id: 'java',
+            name: 'Java',
+            extensions: ['.java'],
+            wasmPath: 'tree-sitter-java.wasm',
+            queries: {},
+        },
+        {
+            id: 'python',
+            name: 'Python',
+            extensions: ['.py'],
+            wasmPath: 'tree-sitter-python.wasm',
+            queries: {},
+        },
+        {
+            id: 'rust',
+            name: 'Rust',
+            extensions: ['.rs'],
+            wasmPath: 'tree-sitter-rust.wasm',
+            queries: { main: rustQueries },
+        },
+        {
+            id: 'c',
+            name: 'C',
+            extensions: ['.c'],
+            wasmPath: 'tree-sitter-c.wasm',
+            queries: {},
+        },
+        {
+            id: 'graphql',
+            name: 'GraphQL',
+            extensions: ['.graphql', '.gql'],
+            wasmPath: '', // No wasm file provided in the list
+            queries: {},
+        },
+    ];
+
+
+    const createLanguageMap = (): Map<string, LanguageConfig> => {
+        const map = new Map<string, LanguageConfig>();
+        languages.forEach(lang => {
+            lang.extensions.forEach(ext => {
+                map.set(ext, lang);
+            });
+        });
+        return map;
+    };
+
+
+    const languageMap = createLanguageMap();
+
+
+    export const getLanguageForFile = (filePath: string): LanguageConfig |
+    undefined => {
+        const extension = path.extname(filePath);
+        return languageMap.get(extension);
+    };
+  src/queries/css.ts: >-
+    export const cssQueries = `
+
+    (rule_set) @symbol.css_class.def @scope.css_class.def
+
+    (at_rule) @symbol.css_at_rule.def @scope.css_at_rule.def
+
+    (declaration (variable_name) @symbol.css_variable.def)
+
+    (call_expression (identifier) @_fn (arguments (variable_name)
+    @rel.references) (#eq? @_fn "var"))
+
+    `;
+  src/queries/go.ts: |-
+    export const goQueries = `
+    (package_clause
+      name: (package_identifier) @symbol.go_package.def) @scope.go_package.def
+
+    (function_declaration
+     name: (identifier) @symbol.function.def) @scope.function.def
+
+    (go_statement
+      (call_expression
+        function: (_) @rel.goroutine))
+
+    (call_expression
+      function: (_) @rel.call)
+
+    (import_spec
+      path: (interpreted_string_literal) @rel.import.source)
+    `;
+  src/queries/rust.ts: |-
+    export const rustQueries = `
+    (struct_item
+      name: (type_identifier) @symbol.rust_struct.def) @scope.rust_struct.def
+
+    (trait_item
+      name: (type_identifier) @symbol.rust_trait.def) @scope.rust_trait.def
+      
+    (impl_item) @symbol.rust_impl.def @scope.rust_impl.def
+
+    (impl_item
+      trait: (type_identifier) @rel.implements
+      type: (type_identifier) @rel.references
+    )
+
+    (attribute_item
+      (attribute . (token_tree (identifier) @rel.macro)))
+
+    (function_item
+      name: (identifier) @symbol.function.def) @scope.function.def
+
+    (impl_item
+      body: (declaration_list
+        (function_item
+          name: (identifier) @symbol.method.def) @scope.method.def))
+
+    (parameter
+      type: (impl_trait_type (type_identifier) @rel.references)
+    )
+
+    (call_expression
+      function: (field_expression
+        field: (field_identifier) @rel.call))
+
+    ((struct_item (visibility_modifier) @mod.export))
+    ((trait_item (visibility_modifier) @mod.export))
+    ((function_item (visibility_modifier) @mod.export))
+    `;
+approved: false

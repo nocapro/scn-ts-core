@@ -5,7 +5,7 @@
       "name": "scn-ts-core",
       "devDependencies": {
         "@types/bun": "latest",
-        "web-tree-sitter": "0.25.8",
+        "web-tree-sitter": "^0.25.8",
       },
       "peerDependencies": {
         "typescript": "^5",

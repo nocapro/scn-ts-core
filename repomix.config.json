@@ -25,9 +25,11 @@
   "include": [
     "test",
     "package.json",
-    "src",
+    // "src",
+    "src/queries/typescript.ts",
+    "src/analyzer.ts",
     "tsconfig.json",
-    "docs/repomix-wasm.md",
+    // "docs/repomix-wasm.md",
     "node_modules/web-tree-sitter/src/index.ts"
   ],
   "ignore": {

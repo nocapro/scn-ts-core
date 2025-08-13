@@ -25,10 +25,17 @@ const formatSymbol = (symbol: CodeSymbol, allFiles: SourceFile[]): string[] => {
     ].filter(Boolean).join(' ');
     const modStr = mods ? ` [${mods}]` : '';
 
-    const suffix = [
-        symbol.isAsync && '...',
-        symbol.isPure && 'o',
-    ].filter(Boolean).join(' ');
+    const suffixParts: string[] = [];
+    if (symbol.signature) name += symbol.name === '<anonymous>' ? symbol.signature : `${symbol.signature}`;
+    if (symbol.typeAnnotation) name += `: ${symbol.typeAnnotation}`;
+    if (symbol.typeAliasValue) name += ` ${symbol.typeAliasValue}`;
+    // Merge async + throws into a single token '...!'
+    const asyncToken = symbol.isAsync ? '...' : '';
+    const throwsToken = symbol.throws ? '!' : '';
+    const asyncThrows = (asyncToken + throwsToken) || '';
+    if (asyncThrows) suffixParts.push(asyncThrows);
+    if (symbol.isPure) suffixParts.push('o');
+    const suffix = suffixParts.join(' ');
 
     const line = `  ${prefix} ${icon} ${formatSymbolId(symbol)}${name}${modStr}${suffix}`;
     const result = [line];
@@ -104,9 +111,35 @@ const formatFile = (file: SourceFile, allFiles: SourceFile[]): string => {
     const directiveStr = directives.length > 0 ? ` [${directives.join(' ')}]` : '';
     const header = `§ (${file.id}) ${file.relativePath}${directiveStr}`;
 
-    const symbolLines = file.symbols.flatMap(s => formatSymbol(s, allFiles));
+    const headerLines: string[] = [header];
 
-    return [header, ...symbolLines].join('\n');
+    // File-level outgoing/incoming dependencies
+    const outgoing: string[] = [];
+    if (file.fileRelationships) {
+        const outgoingFiles = new Set<number>();
+        file.fileRelationships.forEach(rel => {
+            if (rel.resolvedFileId && rel.resolvedFileId !== file.id) {
+                let text = `(${rel.resolvedFileId}.0)`;
+                if (rel.kind === 'dynamic_import') text += ' [dynamic]';
+                outgoingFiles.add(rel.resolvedFileId);
+                outgoing.push(text);
+            }
+        });
+        if (outgoing.length > 0) headerLines.push(`  -> ${Array.from(new Set(outgoing)).join(', ')}`);
+    }
+
+    // Incoming: any other file that has a file-level relationship pointing here
+    const incoming: string[] = [];
+    allFiles.forEach(other => {
+        if (other.id === file.id) return;
+        other.fileRelationships?.forEach(rel => {
+            if (rel.resolvedFileId === file.id) incoming.push(`(${other.id}.0)`);
+        });
+    });
+    if (incoming.length > 0) headerLines.push(`  <- ${Array.from(new Set(incoming)).join(', ')}`);
+
+    const symbolLines = file.symbols.flatMap(s => formatSymbol(s, allFiles));
+    return [...headerLines, ...symbolLines].join('\n');
 };
 
 export const formatScn = (analyzedFiles: SourceFile[]): string => {

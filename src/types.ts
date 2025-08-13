@@ -69,11 +69,17 @@ export interface CodeSymbol {
   isReadonly?: boolean;
   isAsync?: boolean;
   isPure?: boolean; // for 'o'
+  throws?: boolean; // for '!'
   isGenerated?: boolean;
   languageDirectives?: string[]; // e.g. 'use server'
   superClass?: string;
   implementedInterfaces?: string[];
   scopeRange: Range; // The range of the entire scope (e.g., function body) for relationship association
+  accessibility?: 'public' | 'private' | 'protected';
+  // Type information and signatures
+  signature?: string; // e.g., (a: #number, b: #number): #number
+  typeAnnotation?: string; // e.g., #string for properties/variables
+  typeAliasValue?: string; // e.g., #number|string for type aliases
   // Relationships
   dependencies: Relationship[];
 }
@@ -110,6 +116,8 @@ export interface SourceFile {
   parseError: boolean;
   isGenerated?: boolean;
   languageDirectives?: string[];
+  // File-level relationships (e.g., imports not tied to a specific symbol)
+  fileRelationships?: Relationship[];
 }
 
 /**

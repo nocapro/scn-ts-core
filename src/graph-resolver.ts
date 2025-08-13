@@ -59,6 +59,12 @@ export const resolveGraph = (sourceFiles: SourceFile[], pathResolver: PathResolv
     }
     
     for (const sourceFile of sourceFiles) {
+        // Resolve file-level relationships (e.g., imports that aren't tied to a symbol)
+        if (sourceFile.fileRelationships) {
+            for (const rel of sourceFile.fileRelationships) {
+                resolveRelationship(rel, sourceFile, fileMap, symbolMap, pathResolver, root);
+            }
+        }
         for (const symbol of sourceFile.symbols) {
             for (const rel of symbol.dependencies) {
                 resolveRelationship(rel, sourceFile, fileMap, symbolMap, pathResolver, root);

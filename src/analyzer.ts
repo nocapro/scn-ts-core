@@ -55,6 +55,52 @@ const processCapture = (
             isExported: scopeNode.parent?.type === 'export_statement' || scopeNode.text.startsWith('export '),
             dependencies: [],
         };
+
+        // Derive type information and signatures from surrounding scope text
+        const scopeText = (scopeNode as any).text ?? getNodeText(scopeNode, sourceFile.sourceCode);
+
+        const normalizeType = (t: string): string => {
+            const cleaned = t.trim().replace(/;\s*$/, '');
+            // Remove spaces around union bars
+            return cleaned.replace(/\s*\|\s*/g, '|');
+        };
+
+        // Properties (interface property_signature or class field definitions)
+        if (symbol.kind === 'property') {
+            const match = scopeText.match(/:\s*([^;\n]+)/);
+            if (match) {
+                symbol.typeAnnotation = `#${normalizeType(match[1])}`;
+            }
+        }
+
+        // Type alias value (right-hand side after '=')
+        if (symbol.kind === 'type_alias') {
+            const m = scopeText.match(/=\s*([^;\n]+)/);
+            if (m) {
+                symbol.typeAliasValue = `#${normalizeType(m[1])}`;
+            }
+        }
+
+        // Functions/methods/constructors signatures
+        if (symbol.kind === 'function' || symbol.kind === 'method' || symbol.kind === 'constructor') {
+            const paramsMatch = scopeText.match(/\(([^)]*)\)/);
+            const returnMatch = scopeText.match(/\)\s*:\s*([^\{\n]+)/);
+            const params = paramsMatch ? paramsMatch[1] : '';
+            const paramsWithTypes = params
+                .split(',')
+                .map(p => p.trim())
+                .filter(p => p.length > 0)
+                .map(p => p.replace(/:\s*([^,]+)/, (_s, t) => `: #${normalizeType(t)}`))
+                .join(', ');
+            const returnType = returnMatch ? `: #${normalizeType(returnMatch[1])}` : '';
+            symbol.signature = `(${paramsWithTypes})${returnType}`;
+
+            // Async detection (textual) and throws detection
+            if (/\basync\b/.test(scopeText)) symbol.isAsync = true;
+            const bodyText = getNodeText(scopeNode, sourceFile.sourceCode);
+            if (/\bthrow\b/.test(bodyText)) symbol.throws = true;
+        }
+
         symbols.push(symbol);
     } else if (cat === 'rel') {
         const rel: Relationship = {
@@ -74,6 +120,16 @@ const processCapture = (
             if (kind === 'abstract') parentSymbol.isAbstract = true;
             if (kind === 'readonly') parentSymbol.isReadonly = true;
             if (kind === 'async') parentSymbol.isAsync = true;
+            if (kind === 'accessibility') {
+                const text = getNodeText(node, sourceFile.sourceCode);
+                if (/\bpublic\b/.test(text)) parentSymbol.accessibility = 'public';
+                else if (/\bprivate\b/.test(text)) parentSymbol.accessibility = 'private';
+                else if (/\bprotected\b/.test(text)) parentSymbol.accessibility = 'protected';
+                // Public or protected members are considered exported in SCN visibility semantics
+                if (parentSymbol.accessibility === 'public') parentSymbol.isExported = true;
+                if (parentSymbol.accessibility === 'protected') parentSymbol.isExported = false;
+                if (parentSymbol.accessibility === 'private') parentSymbol.isExported = false;
+            }
         }
     }
 };
@@ -98,6 +154,7 @@ export const analyze = (sourceFile: SourceFile): SourceFile => {
 
     const symbols: CodeSymbol[] = [];
     const relationships: Relationship[] = [];
+    const fileLevelRelationships: Relationship[] = [];
 
     // Phase 1: create symbols
     for (const capture of captures) {
@@ -117,9 +174,16 @@ export const analyze = (sourceFile: SourceFile): SourceFile => {
 
     // Phase 3: collect relationships
     for (const capture of captures) {
-        const [cat] = capture.name.split('.');
+        const [cat, kind] = capture.name.split('.');
         if (cat === 'rel') {
+            const tempBefore: number = relationships.length;
             processCapture(capture, sourceFile, symbols, relationships);
+            const newlyAdded = relationships.slice(tempBefore);
+            for (const rel of newlyAdded) {
+                const parent = findParentSymbol(rel.range, symbols);
+                const isFileLevelImport = kind === 'import' || kind === 'dynamic_import';
+                if (!parent && isFileLevelImport) fileLevelRelationships.push(rel);
+            }
         }
     }
     
@@ -128,6 +192,12 @@ export const analyze = (sourceFile: SourceFile): SourceFile => {
         if (parentSymbol) {
             parentSymbol.dependencies.push(rel);
         }
+    }
+
+    // Attach file-level relationships to a synthetic file symbol if needed in future,
+    // for now store them on the SourceFile to allow resolver to link files.
+    if (fileLevelRelationships.length > 0) {
+        sourceFile.fileRelationships = fileLevelRelationships;
     }
     
     const addFunc = symbols.find(s => s.name === 'add');

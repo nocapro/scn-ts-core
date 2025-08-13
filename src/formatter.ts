@@ -12,12 +12,32 @@ const ICONS: Record<string, string> = {
     error: '[error]', default: '?',
 };
 
-const formatSymbolId = (symbol: CodeSymbol) => `(${symbol.fileId}.${symbol.id.split(':')[0]})`;
+// Compute display index per file based on eligible symbols (exclude properties and constructors)
+const isIdEligible = (symbol: CodeSymbol): boolean => {
+    if (symbol.kind === 'property' || symbol.kind === 'constructor') return false;
+    if (symbol.kind === 'variable') return symbol.isExported || symbol.name === 'module.exports' || symbol.name === 'default';
+    if (symbol.kind === 'method') return symbol.isExported === true;
+    return true;
+};
+
+const getDisplayIndex = (file: SourceFile, symbol: CodeSymbol): number | null => {
+    const ordered = file.symbols
+        .filter(isIdEligible)
+        .sort((a, b) => a.range.start.line - b.range.start.line || a.range.start.column - b.range.start.column);
+    const index = ordered.findIndex(s => s === symbol);
+    return index === -1 ? null : index + 1;
+};
+
+const formatSymbolIdDisplay = (file: SourceFile, symbol: CodeSymbol): string | null => {
+    const idx = getDisplayIndex(file, symbol);
+    if (idx == null) return null;
+    return `(${file.id}.${idx})`;
+};
 
 const formatSymbol = (symbol: CodeSymbol, allFiles: SourceFile[]): string[] => {
     const icon = ICONS[symbol.kind] || ICONS.default;
     const prefix = symbol.isExported ? '+' : '-';
-    let name = symbol.name === '<anonymous>' ? '' : ` ${symbol.name}`;
+    let name = symbol.name === '<anonymous>' ? '' : symbol.name;
     if (symbol.kind === 'variable' && name.trim() === 'default') name = '';
 
     const mods = [
@@ -38,7 +58,15 @@ const formatSymbol = (symbol: CodeSymbol, allFiles: SourceFile[]): string[] => {
     if (symbol.isPure) suffixParts.push('o');
     const suffix = suffixParts.join(' ');
 
-    const line = `  ${prefix} ${icon} ${formatSymbolId(symbol)}${name}${modStr}${suffix}`;
+    // Build ID portion conditionally
+    const file = allFiles.find(f => f.id === symbol.fileId)!;
+    const idPart = formatSymbolIdDisplay(file, symbol);
+    const idText = (symbol.kind === 'property' || symbol.kind === 'constructor') ? '' : (idPart ?? '');
+    const idWithSpace = idText ? `${idText} ` : '';
+    const nameWithSpace = name ? ` ${name}` : '';
+    // Remove double spaces when id is missing
+    const raw = `  ${prefix} ${icon} ${idWithSpace}${nameWithSpace}${modStr}${suffix}`;
+    const line = raw.replace(/\s{2,}/g, ' ').replace(/\s+$/,'');
     const result = [line];
 
     const outgoing = new Map<number, Set<string>>();
@@ -47,9 +75,11 @@ const formatSymbol = (symbol: CodeSymbol, allFiles: SourceFile[]): string[] => {
         if (dep.resolvedFileId !== undefined && dep.resolvedFileId !== symbol.fileId) {
             if (!outgoing.has(dep.resolvedFileId)) outgoing.set(dep.resolvedFileId, new Set());
             if (dep.resolvedSymbolId) {
-                const targetSymbol = allFiles.find(f => f.id === dep.resolvedFileId)?.symbols.find(s => s.id === dep.resolvedSymbolId);
+                const targetFile = allFiles.find(f => f.id === dep.resolvedFileId);
+                const targetSymbol = targetFile?.symbols.find(s => s.id === dep.resolvedSymbolId);
                 if (targetSymbol) {
-                    let text = formatSymbolId(targetSymbol);
+                    const displayId = formatSymbolIdDisplay(targetFile!, targetSymbol);
+                    let text = displayId ?? `(${targetFile!.id}.0)`;
                     if (dep.kind === 'goroutine') {
                         text += ' [goroutine]';
                     }
@@ -86,7 +116,8 @@ const formatSymbol = (symbol: CodeSymbol, allFiles: SourceFile[]): string[] => {
             s.dependencies.forEach(d => {
                 if (d.resolvedFileId === symbol.fileId && d.resolvedSymbolId === symbol.id) {
                     if(!incoming.has(file.id)) incoming.set(file.id, new Set());
-                    incoming.get(file.id)!.add(formatSymbolId(s));
+                    const disp = formatSymbolIdDisplay(file, s);
+                    if (disp) incoming.get(file.id)!.add(disp);
                 }
             });
         });

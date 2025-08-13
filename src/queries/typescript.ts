@@ -15,15 +15,15 @@ export const typescriptQueries = `
 (function_declaration
   name: (identifier) @symbol.function.def) @scope.function.def
 
-; Method definitions
+; Method definitions (capture name and formal parameters as scope)
 (method_definition
-  name: (property_identifier) @symbol.method.def
-  parameters: (formal_parameters) @scope.method.def)
+  (property_identifier) @symbol.method.def
+  (formal_parameters) @scope.method.def)
 
 ; Constructor definitions
 (method_definition
-  name: (property_identifier) @symbol.constructor.def
-  parameters: (formal_parameters) @scope.constructor.def
+  (property_identifier) @symbol.constructor.def
+  (formal_parameters) @scope.constructor.def
   (#eq? @symbol.constructor.def "constructor"))
 
 ; Property signatures in interfaces (should be public by default)

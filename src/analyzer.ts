@@ -41,10 +41,23 @@ const processCapture = (
     const [cat, kind, role] = captureName.split('.');
 
     if (cat === 'symbol' && role === 'def') {
-        const scopeNode = node.parent?.type.endsWith('_declaration') || node.parent?.type === 'method_definition' || node.parent?.type === 'property_signature'
-            ? node.parent
-            : node;
+        const parentType = node.parent?.type || '';
+        const scopeNode = (
+            parentType.endsWith('_declaration') ||
+            parentType === 'method_definition' ||
+            parentType === 'property_signature' ||
+            parentType === 'public_field_definition' ||
+            parentType === 'field_definition'
+        ) ? (node.parent as SyntaxNode) : node;
         const range = getNodeRange(node);
+        const hasExportAncestor = (n: SyntaxNode | null | undefined): boolean => {
+            let cur = n?.parent || null;
+            while (cur) {
+                if (cur.type === 'export_statement') return true;
+                cur = cur.parent;
+            }
+            return false;
+        };
         const symbol: CodeSymbol = {
             id: `${range.start.line + 1}:${range.start.column}`,
             fileId: sourceFile.id,
@@ -52,7 +65,7 @@ const processCapture = (
             kind: kind as SymbolKind,
             range: range,
             scopeRange: getNodeRange(scopeNode),
-            isExported: scopeNode.parent?.type === 'export_statement' || getNodeText(scopeNode, sourceFile.sourceCode).startsWith('export '),
+            isExported: hasExportAncestor(scopeNode) || /^\s*export\b/.test(getNodeText(scopeNode, sourceFile.sourceCode)),
             dependencies: [],
         };
 
@@ -64,6 +77,15 @@ const processCapture = (
             // Remove spaces around union bars
             return cleaned.replace(/\s*\|\s*/g, '|');
         };
+
+        // Accessibility for class members (public/private/protected)
+        if (symbol.kind === 'method' || symbol.kind === 'constructor' || symbol.kind === 'property') {
+            const accMatch = scopeText.match(/^\s*(public|private|protected)\b/);
+            if (accMatch) {
+                const acc = accMatch[1] as 'public' | 'private' | 'protected';
+                symbol.accessibility = acc;
+            }
+        }
 
         // Properties (interface property_signature or class field definitions)
         if (symbol.kind === 'property') {
@@ -203,7 +225,26 @@ export const analyze = (sourceFile: SourceFile): SourceFile => {
     const addFunc = symbols.find(s => s.name === 'add');
     if (addFunc?.dependencies.length === 0) addFunc.isPure = true;
 
-    sourceFile.symbols = symbols;
+    // Remove duplicate constructor-as-method captures
+    const cleaned = symbols.filter(s => !(s.kind === 'method' && s.name === 'constructor'));
+
+    // Order symbols by source position
+    const ordered = cleaned
+        .slice()
+        .sort((a, b) => a.range.start.line - b.range.start.line || a.range.start.column - b.range.start.column);
+
+    // Default visibility for class members: public unless marked otherwise
+    for (const sym of ordered) {
+        if (sym.kind === 'method' || sym.kind === 'constructor' || sym.kind === 'property') {
+            if (sym.accessibility === 'private' || sym.accessibility === 'protected') {
+                sym.isExported = false;
+            } else if (sym.accessibility === 'public' || sym.accessibility === undefined) {
+                sym.isExported = true;
+            }
+        }
+    }
+
+    sourceFile.symbols = ordered;
     return sourceFile;
 };
 

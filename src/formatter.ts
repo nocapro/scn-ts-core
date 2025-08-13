@@ -3,6 +3,7 @@ import { topologicalSort } from './utils/graph';
 
 const ICONS: Record<string, string> = {
     class: '◇', interface: '{}', function: '~', method: '~',
+    constructor: '~',
     variable: '@', property: '@', enum: '☰', enum_member: '@',
     type_alias: '=:', react_component: '◇', jsx_element: '⛶',
     css_class: '¶', css_id: '¶', css_tag: '¶', css_at_rule: '¶',

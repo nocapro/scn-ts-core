@@ -52,12 +52,12 @@ const processCapture = (
             kind: kind as SymbolKind,
             range: range,
             scopeRange: getNodeRange(scopeNode),
-            isExported: scopeNode.parent?.type === 'export_statement' || scopeNode.text.startsWith('export '),
+            isExported: scopeNode.parent?.type === 'export_statement' || getNodeText(scopeNode, sourceFile.sourceCode).startsWith('export '),
             dependencies: [],
         };
 
         // Derive type information and signatures from surrounding scope text
-        const scopeText = (scopeNode as any).text ?? getNodeText(scopeNode, sourceFile.sourceCode);
+        const scopeText = getNodeText(scopeNode, sourceFile.sourceCode);
 
         const normalizeType = (t: string): string => {
             const cleaned = t.trim().replace(/;\s*$/, '');

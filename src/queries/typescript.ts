@@ -17,12 +17,14 @@ export const typescriptQueries = `
 
 ; Method definitions
 (method_definition
-  (property_identifier) @symbol.method.def) @scope.method.def
+  name: (property_identifier) @symbol.method.def
+  parameters: (formal_parameters) @scope.method.def)
 
 ; Constructor definitions
 (method_definition
-  (property_identifier) @symbol.constructor.def
-  (#eq? @symbol.constructor.def "constructor")) @scope.constructor.def
+  name: (property_identifier) @symbol.constructor.def
+  parameters: (formal_parameters) @scope.constructor.def
+  (#eq? @symbol.constructor.def "constructor"))
 
 ; Property signatures in interfaces (should be public by default)
 (property_signature
@@ -31,9 +33,9 @@ export const typescriptQueries = `
 ; Mark interface properties as exported (public)
 (property_signature) @mod.export
 
-; Property definitions in classes  
+; Class field definitions (TypeScript grammar uses public_field_definition)
 (public_field_definition
-  (property_identifier) @symbol.property.def)
+  name: (property_identifier) @symbol.property.def)
 
 ; Variable declarations
 (variable_declarator
@@ -72,6 +74,10 @@ export const typescriptQueries = `
 
 ; Accessibility modifiers
 (accessibility_modifier) @mod.accessibility
+
+; Async functions/methods (text match)
+((function_declaration) @mod.async (#match? @mod.async "^async "))
+((method_definition) @mod.async (#match? @mod.async "^async "))
 `;
 
 export const typescriptReactQueries = `

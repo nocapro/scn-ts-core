@@ -16,7 +16,7 @@ const ICONS: Record<string, string> = {
 const isIdEligible = (symbol: CodeSymbol): boolean => {
     if (symbol.kind === 'property' || symbol.kind === 'constructor') return false;
     if (symbol.kind === 'variable') return symbol.isExported || symbol.name === 'module.exports' || symbol.name === 'default';
-    if (symbol.kind === 'method') return symbol.isExported === true;
+    if (symbol.kind === 'method') return true;
     return true;
 };
 
@@ -63,10 +63,12 @@ const formatSymbol = (symbol: CodeSymbol, allFiles: SourceFile[]): string[] => {
     const idPart = formatSymbolIdDisplay(file, symbol);
     const idText = (symbol.kind === 'property' || symbol.kind === 'constructor') ? '' : (idPart ?? '');
     const idWithSpace = idText ? `${idText} ` : '';
-    const nameWithSpace = name ? ` ${name}` : '';
-    // Remove double spaces when id is missing
-    const raw = `  ${prefix} ${icon} ${idWithSpace}${nameWithSpace}${modStr}${suffix}`;
-    const line = raw.replace(/\s{2,}/g, ' ').replace(/\s+$/,'');
+    const segments: string[] = [prefix, icon];
+    if (idPart) segments.push(idPart);
+    if (name) segments.push(name.trim());
+    if (modStr) segments.push(modStr);
+    if (suffix) segments.push(suffix);
+    const line = `  ${segments.join(' ')}`;
     const result = [line];
 
     const outgoing = new Map<number, Set<string>>();
@@ -114,7 +116,7 @@ const formatSymbol = (symbol: CodeSymbol, allFiles: SourceFile[]): string[] => {
     allFiles.forEach(file => {
         file.symbols.forEach(s => {
             s.dependencies.forEach(d => {
-                if (d.resolvedFileId === symbol.fileId && d.resolvedSymbolId === symbol.id) {
+                if (d.resolvedFileId === symbol.fileId && d.resolvedSymbolId === symbol.id && s !== symbol) {
                     if(!incoming.has(file.id)) incoming.set(file.id, new Set());
                     const disp = formatSymbolIdDisplay(file, s);
                     if (disp) incoming.get(file.id)!.add(disp);

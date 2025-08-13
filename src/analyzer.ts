@@ -41,7 +41,7 @@ const processCapture = (
     const [cat, kind, role] = captureName.split('.');
 
     if (cat === 'symbol' && role === 'def') {
-        const scopeNode = node.parent?.type.endsWith('_declaration') || node.parent?.type === 'method_definition'
+        const scopeNode = node.parent?.type.endsWith('_declaration') || node.parent?.type === 'method_definition' || node.parent?.type === 'property_signature'
             ? node.parent
             : node;
         const range = getNodeRange(node);
@@ -125,8 +125,19 @@ const isRangeWithin = (inner: Range, outer: Range): boolean => {
 };
 
 const findParentSymbol = (range: Range, symbols: CodeSymbol[]): CodeSymbol | null => {
-    return symbols
-        .filter(s => isRangeWithin(range, s.scopeRange))
+    const candidateSymbols = symbols.filter(s => {
+        // Check for exact match first (for property signatures)
+        const isExactMatch = (
+            range.start.line === s.scopeRange.start.line && 
+            range.start.column === s.scopeRange.start.column &&
+            range.end.line === s.scopeRange.end.line && 
+            range.end.column === s.scopeRange.end.column
+        );
+        return isExactMatch || isRangeWithin(range, s.scopeRange);
+    });
+    
+    // Sort by scope size (smallest first) to get the most specific parent
+    return candidateSymbols
         .sort((a, b) => (a.scopeRange.end.line - a.scopeRange.start.line) - (b.scopeRange.end.line - b.scopeRange.start.line))
         [0] || null;
 };

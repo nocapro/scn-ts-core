@@ -26,7 +26,10 @@ export const typescriptQueries = `
 
 ; Property signatures in interfaces (should be public by default)
 (property_signature
-  (property_identifier) @symbol.property.def) @mod.export
+  (property_identifier) @symbol.property.def)
+
+; Mark interface properties as exported (public)
+(property_signature) @mod.export
 
 ; Property definitions in classes  
 (public_field_definition
@@ -38,13 +41,13 @@ export const typescriptQueries = `
 
 ; Import statements
 (import_statement
-  source: (string) @rel.import.source)
+  source: (string) @rel.import)
 
-; Named imports
+; Named imports - these create references to the imported symbols
 (import_specifier
   name: (identifier) @rel.references)
 
-; Type references
+; Type references in type annotations, extends clauses, etc.
 (type_identifier) @rel.references
 
 ; Call expressions

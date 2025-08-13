@@ -23,12 +23,11 @@
     }
   },
   "include": [
-    "test",
+    // "test",
     "package.json",
-    // "src",
-    "src/queries/typescript.ts",
-    "src/analyzer.ts",
+    "src",
     "tsconfig.json",
+    "`",
     // "docs/repomix-wasm.md",
     "node_modules/web-tree-sitter/src/index.ts"
   ],

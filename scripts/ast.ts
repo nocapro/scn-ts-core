@@ -36,13 +36,63 @@ const cjs = require('./cjs_module');
       `.trim()
     },
     {
+      file: 'cjs_exports.js',
+      title: 'CJS module.exports',
+      code: `
+function cjsFunc() { console.log('cjs'); }
+module.exports = {
+  value: 42,
+  run: () => cjsFunc()
+};
+      `.trim()
+    },
+    {
       file: 'tagged.js',
       title: 'Tagged template',
-      code: String.raw`
+      code: `
 function styler(strings, ...values) { return '' }
 const name = 'a';
 document.body.innerHTML = styler\`Hello, \${name}!\`;
       `.trim()
+    },
+    {
+      file: 'abstract_class.ts',
+      title: 'Abstract Class',
+      code: `
+abstract class BaseEntity {
+  readonly id: string;
+  static species: string;
+  protected constructor(id: string) { this.id = id; }
+  abstract getDescription(): string;
+  static getSpeciesName(): string { return this.species; }
+}
+      `.trim()
+    },
+    {
+      file: 'advanced_types.ts',
+      title: 'Advanced Types',
+      code: `
+type EventName = 'click' | 'scroll' | 'mousemove';
+type Style = 'bold' | 'italic';
+type CssClass = \`text-\${Style}\`;
+type HandlerMap = { [K in EventName]: (event: K) => void };
+type UnpackPromise<T> = T extends Promise<infer U> ? U : T;
+interface User { id: number; name: string; }
+const config = { user: { id: 1, name: 'a' } satisfies User };
+      `.trim()
+    },
+    {
+        file: 'proxy.js',
+        title: 'JS Proxy',
+        code: `
+const hiddenProp = Symbol('hidden');
+const user = { name: 'John', [hiddenProp]: 'secret' };
+const userProxy = new Proxy(user, {
+  get(target, prop) {
+    return prop in target ? target[prop] : 'N/A';
+  }
+});
+        `.trim()
     }
   ];
 

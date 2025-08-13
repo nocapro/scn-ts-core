@@ -1,0 +1,282 @@
+uuid: 4f145f8f-c026-4ed8-b9a5-c357778b4a0e
+projectId: scn-ts-core
+createdAt: '2025-08-13T14:43:45.027Z'
+linesAdded: 51
+linesRemoved: 1
+gitCommitMsg: 'refactor: expand ast.ts with samples for failing tests'
+promptSummary: >-
+  The user wants me to fix multiple failing tests. The test output shows
+  discrepancies in generated SCN for various TypeScript and JavaScript features
+  (IIFE, CJS, abstract classes, advanced types, etc.). The user has specifically
+  requested that I start by modifying `scripts/ast.ts` to help debug the IIFE
+  syntax, and then provide the file for them to run. I am expanding the samples
+  in `ast.ts` to cover all failing test cases to get detailed AST dumps, which
+  will be essential for fixing the tree-sitter queries.
+reasoning:
+  - >-
+    My analysis of the test failures points to several issues in symbol and
+    relationship detection across various language features. The most direct
+    instruction is to debug the IIFE syntax issue by first modifying
+    `scripts/ast.ts`. To effectively debug not just IIFE but all other failing
+    scenarios, I will add new code samples to `scripts/ast.ts`. These samples
+    will replicate the core issues from the failing tests, including CommonJS
+    exports, abstract classes, advanced TypeScript types, and JavaScript
+    proxies. This will provide me with the necessary AST structures for all
+    problem areas, which I can then use to correct the tree-sitter queries and
+    analysis logic in subsequent steps.
+  - >-
+    I'm also correcting the `tagged.js` sample which was using `String.raw` in a
+    way that produced an invalid string for the parser, causing it to error out.
+  - >-
+    This is my first step as requested. After you run this and provide the
+    output, I will be able to proceed with fixing the underlying issues.
+operations:
+  - type: write
+    path: scripts/ast.ts
+    content: >-
+      <<<<<<< SEARCH
+        const samples: Array<{file: string, code: string, title: string}> = [
+          {
+            file: 'sample.ts',
+            title: 'TS class/interface snippet',
+            code: `
+      export interface User { id: number; name: string; }
+
+      export type UserId = number | string;
+
+      export class ApiClient { private apiKey: string; constructor(key: string)
+      { this.apiKey = key; } async fetchUser(id: UserId): Promise<User> { return
+      { id: 1, name: 'x' }; } }
+            `.trim()
+          },
+          {
+            file: 'iife.js',
+            title: 'IIFE and prototype',
+            code: `
+      (function(){
+        function Widget(name){ this.name = name }
+        Widget.prototype.render = function(){ return 'x' }
+        function * idGenerator(){ let i=0; while(true) yield i++; }
+        window.Widget = Widget; window.idGenerator = idGenerator;
+      })();
+            `.trim()
+          },
+          {
+            file: 'cjs.js',
+            title: 'CJS require',
+            code: `
+      const cjs = require('./cjs_module');
+            `.trim()
+          },
+          {
+            file: 'tagged.js',
+            title: 'Tagged template',
+            code: String.raw`
+      function styler(strings, ...values) { return '' }
+
+      const name = 'a';
+
+      document.body.innerHTML = styler\`Hello, \${name}!\`;
+            `.trim()
+          }
+        ];
+      =======
+        const samples: Array<{file: string, code: string, title: string}> = [
+          {
+            file: 'sample.ts',
+            title: 'TS class/interface snippet',
+            code: `
+      export interface User { id: number; name: string; }
+
+      export type UserId = number | string;
+
+      export class ApiClient { private apiKey: string; constructor(key: string)
+      { this.apiKey = key; } async fetchUser(id: UserId): Promise<User> { return
+      { id: 1, name: 'x' }; } }
+            `.trim()
+          },
+          {
+            file: 'iife.js',
+            title: 'IIFE and prototype',
+            code: `
+      (function(){
+        function Widget(name){ this.name = name }
+        Widget.prototype.render = function(){ return 'x' }
+        function * idGenerator(){ let i=0; while(true) yield i++; }
+        window.Widget = Widget; window.idGenerator = idGenerator;
+      })();
+            `.trim()
+          },
+          {
+            file: 'cjs.js',
+            title: 'CJS require',
+            code: `
+      const cjs = require('./cjs_module');
+            `.trim()
+          },
+          {
+            file: 'cjs_exports.js',
+            title: 'CJS module.exports',
+            code: `
+      function cjsFunc() { console.log('cjs'); }
+
+      module.exports = {
+        value: 42,
+        run: () => cjsFunc()
+      };
+            `.trim()
+          },
+          {
+            file: 'tagged.js',
+            title: 'Tagged template',
+            code: `
+      function styler(strings, ...values) { return '' }
+
+      const name = 'a';
+
+      document.body.innerHTML = styler\`Hello, \${name}!\`;
+            `.trim()
+          },
+          {
+            file: 'abstract_class.ts',
+            title: 'Abstract Class',
+            code: `
+      abstract class BaseEntity {
+        readonly id: string;
+        static species: string;
+        protected constructor(id: string) { this.id = id; }
+        abstract getDescription(): string;
+        static getSpeciesName(): string { return this.species; }
+      }
+            `.trim()
+          },
+          {
+            file: 'advanced_types.ts',
+            title: 'Advanced Types',
+            code: `
+      type EventName = 'click' | 'scroll' | 'mousemove';
+
+      type Style = 'bold' | 'italic';
+
+      type CssClass = \`text-\${Style}\`;
+
+      type HandlerMap = { [K in EventName]: (event: K) => void };
+
+      type UnpackPromise<T> = T extends Promise<infer U> ? U : T;
+
+      interface User { id: number; name: string; }
+
+      const config = { user: { id: 1, name: 'a' } satisfies User };
+            `.trim()
+          },
+          {
+              file: 'proxy.js',
+              title: 'JS Proxy',
+              code: `
+      const hiddenProp = Symbol('hidden');
+
+      const user = { name: 'John', [hiddenProp]: 'secret' };
+
+      const userProxy = new Proxy(user, {
+        get(target, prop) {
+          return prop in target ? target[prop] : 'N/A';
+        }
+      });
+              `.trim()
+          }
+        ];
+      >>>>>>> REPLACE
+    patchStrategy: multi-search-replace
+snapshot:
+  scripts/ast.ts: >
+    import { initializeParser, parse } from '../src/parser';
+
+    import { getLanguageForFile } from '../src/languages';
+
+    import path from 'node:path';
+
+
+    async function main() {
+      const wasmDir = path.join(process.cwd(), 'test', 'wasm');
+      await initializeParser({ wasmBaseUrl: wasmDir });
+
+      const samples: Array<{file: string, code: string, title: string}> = [
+        {
+          file: 'sample.ts',
+          title: 'TS class/interface snippet',
+          code: `
+    export interface User { id: number; name: string; }
+
+    export type UserId = number | string;
+
+    export class ApiClient { private apiKey: string; constructor(key: string) {
+    this.apiKey = key; } async fetchUser(id: UserId): Promise<User> { return {
+    id: 1, name: 'x' }; } }
+          `.trim()
+        },
+        {
+          file: 'iife.js',
+          title: 'IIFE and prototype',
+          code: `
+    (function(){
+      function Widget(name){ this.name = name }
+      Widget.prototype.render = function(){ return 'x' }
+      function * idGenerator(){ let i=0; while(true) yield i++; }
+      window.Widget = Widget; window.idGenerator = idGenerator;
+    })();
+          `.trim()
+        },
+        {
+          file: 'cjs.js',
+          title: 'CJS require',
+          code: `
+    const cjs = require('./cjs_module');
+          `.trim()
+        },
+        {
+          file: 'tagged.js',
+          title: 'Tagged template',
+          code: String.raw`
+    function styler(strings, ...values) { return '' }
+
+    const name = 'a';
+
+    document.body.innerHTML = styler\`Hello, \${name}!\`;
+          `.trim()
+        }
+      ];
+
+      for (const sample of samples) {
+        const lang = getLanguageForFile(sample.file)!;
+        const tree = parse(sample.code, lang)!;
+        console.log(`\n===== ${sample.title} (${sample.file}) =====`);
+        printAST(tree.rootNode);
+      }
+    }
+
+
+    function printAST(node: any, depth = 0) {
+      const indent = '  '.repeat(depth);
+      const isNamed = typeof node.isNamed === 'function' ? node.isNamed() : true;
+      console.log(`${indent}${node.type}${isNamed ? '' : ' [anon]'} [${node.startPosition.row}:${node.startPosition.column}-${node.endPosition.row}:${node.endPosition.column}]`);
+
+      const fieldNames: string[] = node.fieldNames || [];
+      for (const fieldName of fieldNames) {
+        const child = node.childForFieldName(fieldName);
+        if (child) {
+          console.log(`${indent}  ${fieldName}:`);
+          printAST(child, depth + 2);
+        }
+      }
+
+      for (let i = 0; i < node.childCount; i++) {
+        const child = node.child(i);
+        if (!fieldNames.some(fn => node.childForFieldName(fn) === child)) {
+          printAST(child, depth + 1);
+        }
+      }
+    }
+
+
+    main().catch(e => { console.error(e); process.exit(1); });
+approved: true

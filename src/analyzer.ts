@@ -99,8 +99,28 @@ export const analyze = (sourceFile: SourceFile): SourceFile => {
     const symbols: CodeSymbol[] = [];
     const relationships: Relationship[] = [];
 
+    // Phase 1: create symbols
     for (const capture of captures) {
-        processCapture(capture, sourceFile, symbols, relationships);
+        const [cat, kind, role] = capture.name.split('.');
+        if (cat === 'symbol' && role === 'def') {
+            processCapture(capture, sourceFile, symbols, relationships);
+        }
+    }
+
+    // Phase 2: apply modifiers (e.g., mark interface properties as exported/public)
+    for (const capture of captures) {
+        const [cat] = capture.name.split('.');
+        if (cat === 'mod') {
+            processCapture(capture, sourceFile, symbols, relationships);
+        }
+    }
+
+    // Phase 3: collect relationships
+    for (const capture of captures) {
+        const [cat] = capture.name.split('.');
+        if (cat === 'rel') {
+            processCapture(capture, sourceFile, symbols, relationships);
+        }
     }
     
     for (const rel of relationships) {

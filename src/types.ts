@@ -70,6 +70,7 @@ export interface CodeSymbol {
   isAsync?: boolean;
   isPure?: boolean; // for 'o'
   throws?: boolean; // for '!'
+  labels?: string[]; // extra display labels like [symbol], [proxy]
   isGenerated?: boolean;
   languageDirectives?: string[]; // e.g. 'use server'
   superClass?: string;
@@ -87,6 +88,8 @@ export interface CodeSymbol {
 export type RelationshipKind =
   | 'import'
   | 'dynamic_import'
+  | 'reference'
+  | 'tagged'
   | 'export'
   | 'call'
   | 'extends'

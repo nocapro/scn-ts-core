@@ -89,10 +89,14 @@ const processCapture = (
 
         // Properties (interface property_signature or class field definitions)
         if (symbol.kind === 'property') {
+            // interface/class fields
             const match = scopeText.match(/:\s*([^;\n]+)/);
             if (match) {
                 symbol.typeAnnotation = `#${normalizeType(match[1])}`;
             }
+            // detect readonly/static from text
+            if (/\breadonly\b/.test(scopeText)) symbol.isReadonly = true;
+            if (/^\s*static\b/.test(scopeText)) symbol.isStatic = true;
         }
 
         // Type alias value (right-hand side after '=')
@@ -121,6 +125,10 @@ const processCapture = (
             if (/\basync\b/.test(scopeText)) symbol.isAsync = true;
             const bodyText = getNodeText(scopeNode, sourceFile.sourceCode);
             if (/\bthrow\b/.test(bodyText)) symbol.throws = true;
+            // static method
+            if (/^\s*static\b/.test(scopeText)) symbol.isStatic = true;
+            // abstract method (no body and abstract keyword)
+            if (/\babstract\b/.test(scopeText)) symbol.isAbstract = true;
         }
 
         symbols.push(symbol);
@@ -203,8 +211,8 @@ export const analyze = (sourceFile: SourceFile): SourceFile => {
             const newlyAdded = relationships.slice(tempBefore);
             for (const rel of newlyAdded) {
                 const parent = findParentSymbol(rel.range, symbols);
-                const isFileLevelImport = kind === 'import' || kind === 'dynamic_import';
-                if (!parent && isFileLevelImport) fileLevelRelationships.push(rel);
+                const isFileLevel = kind === 'import' || kind === 'dynamic_import' || kind === 'call' || kind === 'references';
+                if (!parent && isFileLevel) fileLevelRelationships.push(rel);
             }
         }
     }
@@ -240,6 +248,18 @@ export const analyze = (sourceFile: SourceFile): SourceFile => {
                 sym.isExported = false;
             } else if (sym.accessibility === 'public' || sym.accessibility === undefined) {
                 sym.isExported = true;
+            }
+        }
+    }
+
+    // Heuristics for JS special constructs in fixtures
+    // Symbol(...) assignment: mark variable with [symbol]
+    for (const sym of ordered) {
+        if (sym.kind === 'variable') {
+            const text = getNodeText(ast.rootNode, sourceCode);
+            const namePattern = new RegExp(`\\b${sym.name}\\s*=\\s*Symbol\\s*\\(`);
+            if (namePattern.test(text)) {
+                sym.labels = [...(sym.labels || []), 'symbol'];
             }
         }
     }

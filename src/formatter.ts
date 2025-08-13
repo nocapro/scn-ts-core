@@ -56,6 +56,7 @@ const formatSymbol = (symbol: CodeSymbol, allFiles: SourceFile[]): string[] => {
     const asyncThrows = (asyncToken + throwsToken) || '';
     if (asyncThrows) suffixParts.push(asyncThrows);
     if (symbol.isPure) suffixParts.push('o');
+    if (symbol.labels && symbol.labels.length > 0) suffixParts.push(...symbol.labels.map(l => `[${l}]`));
     const suffix = suffixParts.join(' ');
 
     // Build ID portion conditionally
@@ -101,9 +102,12 @@ const formatSymbol = (symbol: CodeSymbol, allFiles: SourceFile[]): string[] => {
 
     const outgoingParts: string[] = [];
     if (outgoing.size > 0) {
-        const resolvedParts = Array.from(outgoing.entries()).map(([fileId, symbolIds]) => {
-            return symbolIds.size > 0 ? `${Array.from(symbolIds).join(', ')}` : `(${fileId}.0)`;
-        });
+        const resolvedParts = Array.from(outgoing.entries())
+            .sort((a, b) => a[0] - b[0])
+            .map(([fileId, symbolIds]) => {
+                const items = Array.from(symbolIds).sort();
+                return items.length > 0 ? `${items.join(', ')}` : `(${fileId}.0)`;
+            });
         outgoingParts.push(...resolvedParts);
     }
     outgoingParts.push(...unresolvedDeps);
@@ -118,11 +122,26 @@ const formatSymbol = (symbol: CodeSymbol, allFiles: SourceFile[]): string[] => {
             s.dependencies.forEach(d => {
                 if (d.resolvedFileId === symbol.fileId && d.resolvedSymbolId === symbol.id && s !== symbol) {
                     if(!incoming.has(file.id)) incoming.set(file.id, new Set());
-                    const disp = formatSymbolIdDisplay(file, s);
-                    if (disp) incoming.get(file.id)!.add(disp);
+                    // Suppress same-file incoming for properties
+                    if (file.id === symbol.fileId && symbol.kind === 'property') return;
+                    const disp = formatSymbolIdDisplay(file, s) ?? `(${file.id}.0)`;
+                    incoming.get(file.id)!.add(disp);
                 }
             });
         });
+        // Include file-level imports to this file as incoming for exported symbols
+        // but only if there is no symbol-level incoming from that file already
+        if (file.id !== symbol.fileId && symbol.isExported) {
+            file.fileRelationships?.forEach(rel => {
+                if (rel.resolvedFileId === symbol.fileId) {
+                    const already = incoming.get(file.id);
+                    if (!already || already.size === 0) {
+                        if(!incoming.has(file.id)) incoming.set(file.id, new Set());
+                        incoming.get(file.id)!.add(`(${file.id}.0)`);
+                    }
+                }
+            });
+        }
     });
 
     if (incoming.size > 0) {
@@ -133,6 +152,35 @@ const formatSymbol = (symbol: CodeSymbol, allFiles: SourceFile[]): string[] => {
     return result;
 };
 
+
+const isWithin = (inner: CodeSymbol, outer: CodeSymbol): boolean => {
+    const a = inner.range;
+    const b = outer.scopeRange;
+    return (
+        (a.start.line > b.start.line || (a.start.line === b.start.line && a.start.column >= b.start.column)) &&
+        (a.end.line < b.end.line || (a.end.line === b.end.line && a.end.column <= b.end.column))
+    );
+};
+
+const buildChildrenMap = (symbols: CodeSymbol[]): Map<string, CodeSymbol[]> => {
+    const parents = symbols.filter(s => s.kind === 'class' || s.kind === 'interface');
+    const map = new Map<string, CodeSymbol[]>();
+    for (const parent of parents) map.set(parent.id, []);
+    for (const sym of symbols) {
+        if (sym.kind === 'class' || sym.kind === 'interface') continue;
+        const parent = parents
+            .filter(p => isWithin(sym, p))
+            .sort((a, b) => (a.scopeRange.end.line - a.scopeRange.start.line) - (b.scopeRange.end.line - b.scopeRange.start.line))[0];
+        if (parent) {
+            map.get(parent.id)!.push(sym);
+        }
+    }
+    // Sort children by position
+    for (const [k, arr] of map.entries()) {
+        arr.sort((a, b) => a.range.start.line - b.range.start.line || a.range.start.column - b.range.start.column);
+    }
+    return map;
+};
 
 const formatFile = (file: SourceFile, allFiles: SourceFile[]): string => {
     if (file.parseError) return `§ (${file.id}) ${file.relativePath} [error]`;
@@ -152,14 +200,15 @@ const formatFile = (file: SourceFile, allFiles: SourceFile[]): string => {
     if (file.fileRelationships) {
         const outgoingFiles = new Set<number>();
         file.fileRelationships.forEach(rel => {
-            if (rel.resolvedFileId && rel.resolvedFileId !== file.id) {
+            // Only show true file-level imports on the header
+            if ((rel.kind === 'import' || rel.kind === 'dynamic_import') && rel.resolvedFileId && rel.resolvedFileId !== file.id) {
                 let text = `(${rel.resolvedFileId}.0)`;
                 if (rel.kind === 'dynamic_import') text += ' [dynamic]';
                 outgoingFiles.add(rel.resolvedFileId);
                 outgoing.push(text);
             }
         });
-        if (outgoing.length > 0) headerLines.push(`  -> ${Array.from(new Set(outgoing)).join(', ')}`);
+        if (outgoing.length > 0) headerLines.push(`  -> ${Array.from(new Set(outgoing)).sort().join(', ')}`);
     }
 
     // Incoming: any other file that has a file-level relationship pointing here
@@ -170,9 +219,58 @@ const formatFile = (file: SourceFile, allFiles: SourceFile[]): string => {
             if (rel.resolvedFileId === file.id) incoming.push(`(${other.id}.0)`);
         });
     });
-    if (incoming.length > 0) headerLines.push(`  <- ${Array.from(new Set(incoming)).join(', ')}`);
+    if (incoming.length > 0) headerLines.push(`  <- ${Array.from(new Set(incoming)).sort().join(', ')}`);
 
-    const symbolLines = file.symbols.flatMap(s => formatSymbol(s, allFiles));
+    // If file has no exported symbols, hide local symbols (consumer/entry files)
+    const hasExports = file.symbols.some(s => s.isExported);
+    let symbolsToPrint = hasExports ? file.symbols.slice() : [];
+
+    // Group properties/methods under their class/interface parent
+    const childrenMap = buildChildrenMap(symbolsToPrint);
+    const childIds = new Set<string>(Array.from(childrenMap.values()).flat().map(s => s.id));
+    const topLevel = symbolsToPrint.filter(s => !childIds.has(s.id));
+
+    const symbolLines: string[] = [];
+    for (const sym of topLevel) {
+        const lines = formatSymbol(sym, allFiles);
+        symbolLines.push(...lines);
+        if (childrenMap.has(sym.id)) {
+            const kids = childrenMap.get(sym.id)!;
+            for (const kid of kids) {
+                const kLines = formatSymbol(kid, allFiles).map(l => `  ${l}`);
+                symbolLines.push(...kLines);
+            }
+        }
+    }
+
+    // If we hid symbols, aggregate outgoing dependencies from all symbols onto header
+    if (!hasExports) {
+        const aggOutgoing = new Map<number, Set<string>>();
+        file.symbols.forEach(s => {
+            s.dependencies.forEach(dep => {
+                if (dep.resolvedFileId && dep.resolvedFileId !== file.id) {
+                    if (!aggOutgoing.has(dep.resolvedFileId)) aggOutgoing.set(dep.resolvedFileId, new Set());
+                    if (dep.resolvedSymbolId) {
+                        const targetFile = allFiles.find(f => f.id === dep.resolvedFileId)!;
+                        const targetSymbol = targetFile.symbols.find(ts => ts.id === dep.resolvedSymbolId);
+                        const disp = targetSymbol ? (formatSymbolIdDisplay(targetFile, targetSymbol) ?? `(${dep.resolvedFileId}.0)`) : `(${dep.resolvedFileId}.0)`;
+                        aggOutgoing.get(dep.resolvedFileId)!.add(disp);
+                    } else {
+                        aggOutgoing.get(dep.resolvedFileId)!.add(`(${dep.resolvedFileId}.0)`);
+                    }
+                }
+            });
+        });
+        if (aggOutgoing.size > 0) {
+            const parts = Array.from(aggOutgoing.entries())
+                .sort((a, b) => a[0] - b[0])
+                .flatMap(([fid, ids]) => {
+                    const arr = Array.from(ids).sort();
+                    return arr.length > 0 ? arr : [`(${fid}.0)`];
+                });
+            for (const p of parts) headerLines.push(`  -> ${p}`);
+        }
+    }
     return [...headerLines, ...symbolLines].join('\n');
 };
 

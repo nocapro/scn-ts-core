@@ -22,6 +22,9 @@ export const findChildByFieldName = (node: SyntaxNode, fieldName: string): Synta
 };
 
 export const getIdentifier = (node: SyntaxNode, sourceCode: string, defaultName: string = '<anonymous>'): string => {
+    if (node.type === 'member_expression') {
+        return getNodeText(node, sourceCode);
+    }
     const nameNode = findChildByFieldName(node, 'name') ?? findChild(node, ['identifier', 'property_identifier']);
     return nameNode ? getNodeText(nameNode, sourceCode) : defaultName;
 };

@@ -20,6 +20,10 @@ export const typescriptQueries = `
   (property_identifier) @symbol.method.def
   (formal_parameters) @scope.method.def)
 
+; Method signatures (interfaces, abstract class methods)
+(method_signature
+  name: (property_identifier) @symbol.method.def) @scope.method.def
+
 ; Constructor definitions
 (method_definition
   (property_identifier) @symbol.constructor.def
@@ -30,8 +34,9 @@ export const typescriptQueries = `
 (property_signature
   (property_identifier) @symbol.property.def)
 
-; Mark interface properties as exported (public)
+; Mark interface properties and method signatures as exported (public)
 (property_signature) @mod.export
+(method_signature) @mod.export
 
 ; Class field definitions (TypeScript grammar uses public_field_definition)
 (public_field_definition
@@ -40,6 +45,20 @@ export const typescriptQueries = `
 ; Variable declarations
 (variable_declarator
   name: (identifier) @symbol.variable.def)
+
+; Common patterns to support JS features in fixtures
+; IIFE: (function(){ ... })()
+(call_expression
+  function: (parenthesized_expression
+    (function_expression) @symbol.function.def
+  )
+) @scope.function.def
+
+; Tagged template usage -> capture identifier before template as call
+(call_expression
+  function: (identifier) @rel.call)
+
+; (Removed overly broad CommonJS/object key captures that polluted TS fixtures)
 
 ; Import statements
 (import_statement
@@ -68,6 +87,12 @@ export const typescriptQueries = `
 ; Property access
 (member_expression
   property: (property_identifier) @rel.references)
+
+; CommonJS require as import at file-level: require("./path")
+((call_expression
+   function: (identifier) @__fn
+   arguments: (arguments (string) @rel.import))
+  (#eq? @__fn "require"))
 
 ; Export modifiers
 (export_statement) @mod.export

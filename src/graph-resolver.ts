@@ -31,6 +31,13 @@ const resolveRelationship = (rel: Relationship, sourceFile: SourceFile, fileMap:
         return;
     }
     
+    // Handle dynamic imports
+    if (rel.kind === 'dynamic_import') {
+        const targetFile = findFileByImportPath(rel.targetName, sourceFile, fileMap, pathResolver, root);
+        if (targetFile) rel.resolvedFileId = targetFile.id;
+        return;
+    }
+    
     // Attempt intra-file resolution first
     const intraFileSymbol = sourceFile.symbols.find(s => s.name === rel.targetName);
     if (intraFileSymbol) {

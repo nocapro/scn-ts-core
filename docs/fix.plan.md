@@ -1,43 +1,126 @@
-  • I set up an AST inspection script and used it to confirm node kinds for TS/JS (class_declaration, method_definition, function_expression for IIFE, call_expression,
-     member_expression, etc.), per your ast-checker guidance.
-  • I tightened the TypeScript query to:
-    • keep class name capture on type_identifier (valid per AST),
-    • capture methods and method signatures,
-    • capture constructors via property_identifier == "constructor",
-    • support CJS require as import at file level,
-    • avoid the earlier invalid/broad patterns.
-  • I adjusted the analyzer to:
-    • extract readonly/static/abstract/async modifiers from text,
-    • aggregate file-level relationships for non-symbol code,
-    • leave symbol-level captures unchanged so they can resolve IDs.
-  • I updated the formatter to:
-    • group class/interface members under their parent,
-    • stabilize and sort outgoing arrows,
-    • include file-level imports and, when symbols are hidden in consumer files, aggregate outgoing symbol arrows to header lines.
+### **Final Comprehensive Analysis Report: Systemic Failures (Revised)**
 
-  Where we still differ from fixtures:
-  • base class BaseEntity isn’t surfacing; members print but the class line is absent. I verified AST has class_declaration>type_identifier; the class pattern should
-    match. This likely means the class capture isn’t returning due to a query nuance. I’ll debug the query against a minimal file with only abstract class to see if
-    abstract token causes a pattern miss and adjust to accept optional abstract.
-  • consumer headers like src/main.ts still only show -> (2.0) instead of -> (2.1) and -> (2.2). I’ll include file-level resolved symbol relationships
-    (call/references) in header rendering for non-export consumer files, not just imports, to match the fixture.
-  • JS prototype/IIFE: AST shows function_expression within parenthesized_expression inside a call_expression. I’ll refine the IIFE query to mark the outer call as a
-    function symbol with signature, and capture the Widget function and generator declaration inside. Then capture window.Widget and window.idGenerator assignments via
-     member_expression left-hand side to surface them as variables.
-  • Advanced types: I’ll adjust the type alias RHS parsing to remove quotes in string literal unions (fixtures show unquoted click|scroll|mousemove), handle mapped
-    types to the compact form, and treat satisfies as a reference to User rather than printing the object fields as separate properties.
+The test suite reveals systemic failures across the analysis pipeline. While my previous report captured the high-level themes, a deeper analysis shows more specific and recurring problems in symbol scoping, pattern recognition, and output formatting.
 
-  Next concrete steps I’ll do now:
-  • Update TS query to allow optional abstract token in class capture, and to capture file-level call/reference relationships into header (not just imports).
-  • Extend queries to capture CJS object export shape: module.exports = { value, run }, with run referencing cjsFunc.
-  • Add a safe transformer in analyzer to normalize alias RHS: strip quotes in unions, compact conditional/mapped types per fixture, and treat satisfies object as a
-    single config variable with a relationship to User.
+---
 
-  Summary of changes made so far:
-  • Added scripts/ast.ts for live AST inspection.
-  • Fixed invalid TS query nodes, added method_signature support, require() import, and removed overbroad patterns that polluted TS fixtures.
-  • Formatter updates: grouping, sorting, aggregated outgoing, and better incoming calculation.
-  • Analyzer: richer modifier detection and heuristics for symbol labels.
+### 1. Critical Query Error in CSS Parser
 
-  I’m proceeding to refine the TS query for abstract class/IIFE and adjust header rendering to include resolved call/reference relationships at file level to align with
-  the fixtures.
+*   `[ ]` **1.1.** A fatal error in the CSS tree-sitter query (`src/queries/css.ts`) is the root cause of multiple test crashes. The query uses an invalid node name, `custom_property_name`, making it impossible to analyze any file containing CSS.
+    *   **Impact:** All tests involving `.css` files crash with a `QueryError`.
+    *   **Affected Fixtures:** `react-css`, `advanced-css`, `complex-css`.
+
+---
+
+### 2. Dependency Resolution and Graph Failures
+
+*   `[ ]` **2.1. Unresolved Member Expression Dependencies:** Fails to link calls like `util.shouldRun()` to the specific symbol within the imported file. (Fixture: `dep-graph-circular`)
+    *   **Code Context:** `import { util } from './utils'; ... util.shouldRun()`
+    *   **Expected:** `funcA` shows a dependency on the `util` symbol `(3.1)`.
+        ```
+        + ~ (1.1) funcA()
+          -> (2.1), (3.1)
+        ```
+    *   **Actual:** The link to `(3.1)` is missing.
+        ```
+        + ~ (1.1) funcA()
+          -> (2.1)
+        ```
+*   `[ ]` **2.2. Path Alias Resolution Failure:** Does not correctly process `tsconfig.json` `paths` aliases, breaking all aliased imports. (Fixture: `monorepo-aliases`)
+    *   **Code Context:** `import { Button } from '@shared-ui/Button';`
+    *   **Expected:** The `App` component's use of `<Button>` is linked to its definition in another package.
+        ```
+        - ◇ (3.3) App
+          ⛶ Button
+            -> (1.1)
+        ```
+    *   **Actual:** The link is completely missing; the `App` component appears empty.
+        ```
+        - ◇ (3.1) App
+        ```
+*   `[ ]` **2.3. Lack of Dynamic `import()` Support:** Fails to recognize `await import()` as a dynamic dependency. (Fixture: `dynamic-imports`)
+    *   **Code Context:** `addEventListener('click', async () => { ... await import('./heavy-module'); ... })`
+    *   **Expected:** An anonymous function symbol is created with a `[dynamic]` dependency.
+        ```
+        - ~ <anonymous>() ...
+          -> (1.0) [dynamic]
+          -> (1.1)
+        ```
+    *   **Actual:** The analyzer misses the function and its dependencies.
+        ```
+        - @ result
+        ```
+---
+
+### 3. Incomplete Language and Framework Analysis
+
+#### `[ ]` **3.1. Failure to Parse Core JS/TS Syntax**
+The system cannot analyze files containing only simple `export const` declarations with literal values.
+
+*   **Affected Fixture:** `dep-graph-diamond`
+*   **Expected:** `export const D = 'D';` produces an exported variable symbol.
+*   **Actual:** The file is parsed as empty.
+
+#### `[ ]` **3.2. Incorrect Symbol Scoping and Hoisting**
+The analyzer incorrectly extracts nested functions and local variables as top-level symbols, breaking component and hook structures.
+
+*   **Affected Fixtures:** `react-advanced`, `react-render-props`
+*   **Code Context:** A hook `useCounter` containing a nested function `increment`, or a component `Counter` containing a local variable `theme`.
+*   **Expected:** `increment` and `theme` should not appear as top-level symbols. They are implementation details of their parent scope.
+    ```
+    + ~ (1.1) useCounter()
+      <- (4.2)
+    ```
+*   **Actual:** Nested symbols are "hoisted" to the top level, creating a flat, incorrect structure.
+    ```
+    + ~ (1.1) useCounter()
+      <- (4.1)
+    + ~ (1.2) increment()  // <-- Incorrectly hoisted
+      <- (4.0)
+    ```
+
+#### `[ ]` **3.3. Failure to Analyze Advanced React Patterns**
+The analyzer misinterprets key React patterns, leading to incorrect symbol types and broken hierarchies.
+
+*   `[ ]` **3.3.1. React Components Identified as Functions:** Any functional component (including HOCs, server components, and basic components) is misidentified as a plain function (`~`) instead of a React component (`◇`).
+    *   **Affected Fixtures:** `react-advanced`, `react-render-props`, `react-server-components`.
+*   `[ ]` **3.3.2. Failure to Analyze Render Props:** The analyzer cannot parse the anonymous function passed as a prop inside JSX, completely losing the component sub-tree within it.
+    *   **Affected Fixture:** `react-render-props`.
+    *   **Expected:** An anonymous function (`~ <anonymous>`) is shown as a child of the `<MouseTracker>` element, containing its own JSX children.
+        ```
+        ⛶ MouseTracker
+          -> (1.2)
+          - ~ <anonymous>({x:#, y:#})
+            ⛶ <>
+        ```
+    *   **Actual:** The render prop is ignored, and its JSX children (`h1`, `p`) are incorrectly hoisted as top-level symbols in the `App` file.
+        ```
+        + ◇ (2.2) MouseTracker
+        + ⛶ (2.3) h1            // <-- Incorrectly hoisted
+        + ⛶ (2.4) p             // <-- Incorrectly hoisted
+        ```
+*   `[ ]` **3.3.3. Incorrect File Directive Formatting:** `use client`/`use server` directives are captured literally instead of being normalized.
+    *   **Affected Fixture:** `react-server-components`.
+    *   **Expected:** Normalized labels `[server]` and `[client]`.
+    *   **Actual:** Literal labels `[use server]` and `[use client]`.
+
+#### `[ ]` **3.4. Failure to Parse CSS-in-JS Syntax**
+The analyzer does not recognize the `styled.div` tagged template literal syntax. It incorrectly identifies the styled component as a simple variable.
+
+*   **Affected Fixture:** `css-in-js`
+*   **Expected:** A single, cohesive symbol for `CardWrapper` identified as a styled `div`.
+    ```
+    - ~div (1.1) CardWrapper { props: #CardProps } [styled] { 💧 📐 }
+    ```
+*   **Actual:** The symbol is split into a disconnected variable (`@`) and an empty component (`◇`).
+    ```
+    - @ CardWrapper
+    ...
+    + ◇ (1.3) CardWrapper
+    ```
+
+#### `[ ]` **3.5. Incomplete Multi-Language Tooling Integration**
+The system cannot handle the code generation workflow from GraphQL.
+
+*   **Affected Fixture:** `graphql-codegen`
+*   **Problem:** The analyzer has no parser for `.graphql` files and fails to link the generated `.ts` file back to its source GraphQL query.

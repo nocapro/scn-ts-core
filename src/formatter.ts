@@ -16,7 +16,7 @@ const ICONS: Record<string, string> = {
 const isIdEligible = (symbol: CodeSymbol): boolean => {
     if (symbol.kind === 'property' || symbol.kind === 'constructor') return false;
     if (symbol.kind === 'variable') return symbol.isExported || symbol.name === 'module.exports' || symbol.name === 'default';
-    if (symbol.kind === 'method') return true;
+    if (symbol.kind === 'method') return !!symbol.isExported;
     return true;
 };
 
@@ -163,11 +163,11 @@ const isWithin = (inner: CodeSymbol, outer: CodeSymbol): boolean => {
 };
 
 const buildChildrenMap = (symbols: CodeSymbol[]): Map<string, CodeSymbol[]> => {
-    const parents = symbols.filter(s => s.kind === 'class' || s.kind === 'interface');
+    const parents = symbols.filter(s => s.kind === 'class' || s.kind === 'interface' || s.kind === 'react_component');
     const map = new Map<string, CodeSymbol[]>();
     for (const parent of parents) map.set(parent.id, []);
     for (const sym of symbols) {
-        if (sym.kind === 'class' || sym.kind === 'interface') continue;
+        if (sym.kind === 'class' || sym.kind === 'interface' || sym.kind === 'react_component') continue;
         const parent = parents
             .filter(p => isWithin(sym, p))
             .sort((a, b) => (a.scopeRange.end.line - a.scopeRange.start.line) - (b.scopeRange.end.line - b.scopeRange.start.line))[0];
@@ -221,9 +221,12 @@ const formatFile = (file: SourceFile, allFiles: SourceFile[]): string => {
     });
     if (incoming.length > 0) headerLines.push(`  <- ${Array.from(new Set(incoming)).sort().join(', ')}`);
 
-    // If file has no exported symbols, hide local symbols (consumer/entry files)
+    // If file has no exported symbols, only show symbols that are "entry points" for analysis,
+    // which we define as having outgoing dependencies.
     const hasExports = file.symbols.some(s => s.isExported);
-    let symbolsToPrint = hasExports ? file.symbols.slice() : [];
+    let symbolsToPrint = hasExports
+        ? file.symbols.slice()
+        : file.symbols.filter(s => s.dependencies.length > 0);
 
     // Group properties/methods under their class/interface parent
     const childrenMap = buildChildrenMap(symbolsToPrint);
@@ -243,32 +246,48 @@ const formatFile = (file: SourceFile, allFiles: SourceFile[]): string => {
         }
     }
 
-    // If we hid symbols, aggregate outgoing dependencies from all symbols onto header
-    if (!hasExports) {
+    // If we hid symbols (or there were none to begin with for an entry file),
+    // aggregate outgoing dependencies from all symbols onto the file header
+    if (symbolsToPrint.length === 0) {
         const aggOutgoing = new Map<number, Set<string>>();
-        file.symbols.forEach(s => {
-            s.dependencies.forEach(dep => {
-                if (dep.resolvedFileId && dep.resolvedFileId !== file.id) {
-                    if (!aggOutgoing.has(dep.resolvedFileId)) aggOutgoing.set(dep.resolvedFileId, new Set());
-                    if (dep.resolvedSymbolId) {
-                        const targetFile = allFiles.find(f => f.id === dep.resolvedFileId)!;
-                        const targetSymbol = targetFile.symbols.find(ts => ts.id === dep.resolvedSymbolId);
-                        const disp = targetSymbol ? (formatSymbolIdDisplay(targetFile, targetSymbol) ?? `(${dep.resolvedFileId}.0)`) : `(${dep.resolvedFileId}.0)`;
-                        aggOutgoing.get(dep.resolvedFileId)!.add(disp);
-                    } else {
-                        aggOutgoing.get(dep.resolvedFileId)!.add(`(${dep.resolvedFileId}.0)`);
+        const unresolvedDeps: string[] = [];
+
+        const processDep = (dep: import('./types').Relationship) => {
+            if (dep.resolvedFileId && dep.resolvedFileId !== file.id) {
+                if (!aggOutgoing.has(dep.resolvedFileId)) aggOutgoing.set(dep.resolvedFileId, new Set());
+                let text = `(${dep.resolvedFileId}.0)`; // Default to file-level
+                if (dep.resolvedSymbolId) {
+                    const targetFile = allFiles.find(f => f.id === dep.resolvedFileId)!;
+                    const targetSymbol = targetFile.symbols.find(ts => ts.id === dep.resolvedSymbolId);
+                    if (targetSymbol) {
+                        text = formatSymbolIdDisplay(targetFile, targetSymbol) ?? `(${dep.resolvedFileId}.0)`;
                     }
                 }
-            });
-        });
+                if (dep.kind === 'dynamic_import') text += ' [dynamic]';
+                aggOutgoing.get(dep.resolvedFileId)!.add(text);
+            } else if (dep.resolvedFileId === undefined && dep.kind === 'macro') {
+                unresolvedDeps.push(`${dep.targetName} [macro]`);
+            }
+        };
+
+        file.symbols.forEach(s => s.dependencies.forEach(processDep));
+        file.fileRelationships?.forEach(processDep);
+
+        const outgoingParts: string[] = [];
         if (aggOutgoing.size > 0) {
-            const parts = Array.from(aggOutgoing.entries())
+            const resolvedParts = Array.from(aggOutgoing.entries())
                 .sort((a, b) => a[0] - b[0])
-                .flatMap(([fid, ids]) => {
-                    const arr = Array.from(ids).sort();
-                    return arr.length > 0 ? arr : [`(${fid}.0)`];
-                });
-            for (const p of parts) headerLines.push(`  -> ${p}`);
+                .flatMap(([, symbolIds]) => Array.from(symbolIds).sort());
+            outgoingParts.push(...resolvedParts);
+        }
+        outgoingParts.push(...unresolvedDeps);
+
+        if (outgoingParts.length > 0) {
+            // Some fixtures expect separate -> lines per dependency.
+            // This preserves that behavior.
+            for (const part of outgoingParts) {
+                headerLines.push(`  -> ${part}`);
+            }
         }
     }
     return [...headerLines, ...symbolLines].join('\n');

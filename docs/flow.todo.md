@@ -1,3 +1,13 @@
+if you given 2.1 fix plan
+
+what would scripts/ast.ts edit to run for explore the parse in to support the context of task above?
+
+beware, do not fix 2.1 yet. just modify ast.ts first!
+
+
+
+=== DONE
+
 no need fs, this is in-memory based programmatic api
 
 ===

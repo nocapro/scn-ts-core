@@ -1,0 +1,1293 @@
+uuid: 6d1c0b5f-7e5f-4e8d-9b0f-3d8e9a5f2c1e
+projectId: scn-ts-core
+createdAt: '2025-08-13T17:58:33.271Z'
+linesAdded: 373
+linesRemoved: 4
+gitCommitMsg: >-
+  feat: Fix abstract class detection, IIFE patterns, advanced types, and
+  dependency display
+promptSummary: >-
+  Fixed multiple issues with SCN generation including abstract class detection,
+  IIFE and prototype patterns, advanced type parsing, CJS module exports, and
+  consumer header dependency display.
+reasoning:
+  - >-
+    I'll analyze the test failures and fix the issues one by one. Based on the
+    error messages and AST output, I can identify several key problems to
+    address.
+operations:
+  - type: write
+    path: src/queries/typescript.ts
+    content: |-
+      --- src/queries/typescript.ts
+      +++ src/queries/typescript.ts
+      @@ ... @@
+       ; Interface definitions
+       (interface_declaration
+         name: (type_identifier) @symbol.interface.def) @scope.interface.def
+       
+       ; Type alias definitions  
+       (type_alias_declaration
+         name: (type_identifier) @symbol.type_alias.def) @scope.type_alias.def
+       
+       ; Class definitions
+       (class_declaration
+         name: (type_identifier) @symbol.class.def) @scope.class.def
+       
+      +; Abstract class definitions
+      +(abstract_class_declaration
+      +  name: (type_identifier) @symbol.class.def) @scope.class.def
+      +
+       ; Function definitions
+       (function_declaration
+         name: (identifier) @symbol.function.def) @scope.function.def
+    patchStrategy: new-unified
+  - type: write
+    path: src/queries/typescript.ts
+    content: |-
+      --- src/queries/typescript.ts
+      +++ src/queries/typescript.ts
+      @@ ... @@
+       ; IIFE: (function(){ ... })()
+       (call_expression
+         function: (parenthesized_expression
+           (function_expression) @symbol.function.def
+         )
+       ) @scope.function.def
+       
+      +; IIFE with assignment: const result = (function(){ ... })()
+      +(expression_statement
+      +  (assignment_expression
+      +    left: (identifier) @symbol.variable.def
+      +    right: (call_expression
+      +      function: (parenthesized_expression
+      +        (function_expression) @symbol.function.def
+      +      )
+      +    )
+      +  )
+      +)
+      +
+      +; Window assignments: window.Widget = Widget
+      +(expression_statement
+      +  (assignment_expression
+      +    left: (member_expression
+      +      object: (identifier) @__obj
+      +      property: (property_identifier) @symbol.variable.def
+      +    )
+      +    right: _ @symbol.variable.ref
+      +  )
+      +  (#eq? @__obj "window")
+      +)
+      +
+       ; Tagged template usage -> capture identifier before template as call
+       (call_expression
+         function: (identifier) @rel.call)
+    patchStrategy: new-unified
+  - type: write
+    path: src/queries/typescript.ts
+    content: |-
+      --- src/queries/typescript.ts
+      +++ src/queries/typescript.ts
+      @@ ... @@
+       ; CommonJS require as import at file-level: require("./path")
+       ((call_expression
+          function: (identifier) @__fn
+          arguments: (arguments (string) @rel.import))
+         (#eq? @__fn "require"))
+       
+      +; CommonJS module.exports assignment
+      +(expression_statement
+      +  (assignment_expression
+      +    left: (member_expression
+      +      object: (identifier) @__obj
+      +      property: (property_identifier) @symbol.variable.def
+      +    )
+      +    right: _
+      +  )
+      +  (#eq? @__obj "module")
+      +)
+      +
+      +; CommonJS exports.property assignment
+      +(expression_statement
+      +  (assignment_expression
+      +    left: (member_expression
+      +      object: (member_expression
+      +        object: (identifier) @__obj
+      +        property: (property_identifier) @__prop
+      +      )
+      +      property: (property_identifier) @symbol.variable.def
+      +    )
+      +    right: _
+      +  )
+      +  (#eq? @__obj "module")
+      +  (#eq? @__prop "exports")
+      +)
+      +
+       ; Export modifiers
+       (export_statement) @mod.export
+    patchStrategy: new-unified
+  - type: write
+    path: src/analyzer.ts
+    content: >-
+      --- src/analyzer.ts
+
+      +++ src/analyzer.ts
+
+      @@ ... @@
+               // Type alias value (right-hand side after '=')
+               if (symbol.kind === 'type_alias') {
+                   const m = scopeText.match(/=\s*([^;\n]+)/);
+                   if (m) {
+      -                symbol.typeAliasValue = `#${normalizeType(m[1])}`;
+
+      +                // Remove quotes from string literal unions
+
+      +                let typeValue = normalizeType(m[1]);
+
+      +                typeValue = typeValue.replace(/'([^']+)'/g, '$1');
+
+      +                typeValue = typeValue.replace(/"([^"]+)"/g, '$1');
+
+      +                
+
+      +                // Handle mapped types to the compact form
+
+      +                if (typeValue.includes('{') && typeValue.includes('}')) {
+
+      +                    // Extract mapped type pattern like "K in
+      EventName:(event:K)=>void"
+
+      +                    const mappedMatch =
+      typeValue.match(/\[\s*([^\]]+)\s*in\s*([^\]]+)\s*:\s*([^\}]+)\s*\]/);
+
+      +                    if (mappedMatch) {
+
+      +                        const [_, key, inType, valueType] = mappedMatch;
+
+      +                        typeValue = `${key} in ${inType}:${valueType}`;
+
+      +                    }
+
+      +                }
+
+      +                
+
+      +                symbol.typeAliasValue = `#${typeValue}`;
+                   }
+               }
+    patchStrategy: new-unified
+  - type: write
+    path: src/analyzer.ts
+    content: >-
+      --- src/analyzer.ts
+
+      +++ src/analyzer.ts
+
+      @@ ... @@
+           // Heuristics for JS special constructs in fixtures
+           // Symbol(...) assignment: mark variable with [symbol]
+           for (const sym of ordered) {
+               if (sym.kind === 'variable') {
+                   const text = getNodeText(ast.rootNode, sourceCode);
+                   const namePattern = new RegExp(`\\b${sym.name}\\s*=\\s*Symbol\\s*\\(`);
+                   if (namePattern.test(text)) {
+                       sym.labels = [...(sym.labels || []), 'symbol'];
+                   }
+      +            
+
+      +            // Proxy detection: mark variable with [proxy]
+
+      +            const proxyPattern = new
+      RegExp(`\\b${sym.name}\\s*=\\s*new\\s+Proxy\\s*\\(`);
+
+      +            if (proxyPattern.test(text)) {
+
+      +                sym.labels = [...(sym.labels || []), 'proxy'];
+
+      +            }
+               }
+           }
+    patchStrategy: new-unified
+  - type: write
+    path: src/formatter.ts
+    content: >-
+      --- src/formatter.ts
+
+      +++ src/formatter.ts
+
+      @@ ... @@
+           // If we hid symbols, aggregate outgoing dependencies from all symbols onto header
+           if (!hasExports) {
+               const aggOutgoing = new Map<number, Set<string>>();
+               file.symbols.forEach(s => {
+                   s.dependencies.forEach(dep => {
+                       if (dep.resolvedFileId && dep.resolvedFileId !== file.id) {
+                           if (!aggOutgoing.has(dep.resolvedFileId)) aggOutgoing.set(dep.resolvedFileId, new Set());
+                           if (dep.resolvedSymbolId) {
+                               const targetFile = allFiles.find(f => f.id === dep.resolvedFileId)!;
+                               const targetSymbol = targetFile.symbols.find(ts => ts.id === dep.resolvedSymbolId);
+                               const disp = targetSymbol ? (formatSymbolIdDisplay(targetFile, targetSymbol) ?? `(${dep.resolvedFileId}.0)`) : `(${dep.resolvedFileId}.0)`;
+                               aggOutgoing.get(dep.resolvedFileId)!.add(disp);
+                           } else {
+                               aggOutgoing.get(dep.resolvedFileId)!.add(`(${dep.resolvedFileId}.0)`);
+                           }
+                       }
+                   });
+               });
+      +
+
+      +        // Also include file-level relationships for non-export files
+
+      +        if (file.fileRelationships) {
+
+      +            file.fileRelationships.forEach(rel => {
+
+      +                if (rel.resolvedFileId && rel.resolvedFileId !== file.id)
+      {
+
+      +                    if (!aggOutgoing.has(rel.resolvedFileId))
+      aggOutgoing.set(rel.resolvedFileId, new Set());
+
+      +                    let text = `(${rel.resolvedFileId}.0)`;
+
+      +                    if (rel.kind === 'dynamic_import') text += '
+      [dynamic]';
+
+      +                    if (rel.kind === 'call' || rel.kind === 'references')
+      text += ` [${rel.kind}]`;
+
+      +                    aggOutgoing.get(rel.resolvedFileId)!.add(text);
+
+      +                }
+
+      +            });
+
+      +        }
+
+      +
+               if (aggOutgoing.size > 0) {
+                   const parts = Array.from(aggOutgoing.entries())
+                       .sort((a, b) => a[0] - b[0])
+                       .flatMap(([fid, ids]) => {
+                           const arr = Array.from(ids).sort();
+                           return arr.length > 0 ? arr : [`(${fid}.0)`];
+                       });
+                   for (const p of parts) headerLines.push(`  -> ${p}`);
+               }
+           }
+    patchStrategy: new-unified
+  - type: write
+    path: src/formatter.ts
+    content: >-
+      --- src/formatter.ts
+
+      +++ src/formatter.ts
+
+      @@ ... @@
+           const outgoing = new Map<number, Set<string>>();
+           const unresolvedDeps: string[] = [];
+           symbol.dependencies.forEach(dep => {
+               if (dep.resolvedFileId !== undefined && dep.resolvedFileId !== symbol.fileId) {
+                   if (!outgoing.has(dep.resolvedFileId)) outgoing.set(dep.resolvedFileId, new Set());
+                   if (dep.resolvedSymbolId) {
+                       const targetFile = allFiles.find(f => f.id === dep.resolvedFileId);
+                       const targetSymbol = targetFile?.symbols.find(s => s.id === dep.resolvedSymbolId);
+                       if (targetSymbol) {
+                           const displayId = formatSymbolIdDisplay(targetFile!, targetSymbol);
+                           let text = displayId ?? `(${targetFile!.id}.0)`;
+                           if (dep.kind === 'goroutine') {
+                               text += ' [goroutine]';
+                           }
+                           outgoing.get(dep.resolvedFileId)!.add(text);
+                       }
+                   } else {
+                       let text = `(${dep.resolvedFileId}.0)`;
+                       if (dep.kind === 'dynamic_import') text += ' [dynamic]';
+      +                if (dep.kind === 'call' || dep.kind === 'references')
+      text += ` [${dep.kind}]`;
+                       outgoing.get(dep.resolvedFileId)!.add(text);
+                   }
+               } else if (dep.resolvedFileId === undefined) {
+                   if (dep.kind === 'macro') {
+                       unresolvedDeps.push(`${dep.targetName} [macro]`);
+                   }
+               }
+           });
+    patchStrategy: new-unified
+  - type: write
+    path: src/analyzer.ts
+    content: |-
+      --- src/analyzer.ts
+      +++ src/analyzer.ts
+      @@ ... @@
+               // Properties (interface property_signature or class field definitions)
+               if (symbol.kind === 'property') {
+                   // interface/class fields
+                   const match = scopeText.match(/:\s*([^;\n]+)/);
+                   if (match) {
+                       symbol.typeAnnotation = `#${normalizeType(match[1])}`;
+                   }
+                   // detect readonly/static from text
+                   if (/\breadonly\b/.test(scopeText)) symbol.isReadonly = true;
+                   if (/^\s*static\b/.test(scopeText)) symbol.isStatic = true;
+               }
+       
+      +        // Special handling for abstract classes
+      +        if (symbol.kind === 'class' && /\babstract\b/.test(scopeText)) {
+      +            symbol.isAbstract = true;
+      +        }
+      +
+      +        // Special handling for abstract methods
+      +        if (symbol.kind === 'method' && /\babstract\b/.test(scopeText)) {
+      +            symbol.isAbstract = true;
+      +        }
+      +
+               // Type alias value (right-hand side after '=')
+               if (symbol.kind === 'type_alias') {
+                   const m = scopeText.match(/=\s*([^;\n]+)/);
+                   if (m) {
+                       // Remove quotes from string literal unions
+                       let typeValue = normalizeType(m[1]);
+                       typeValue = typeValue.replace(/'([^']+)'/g, '$1');
+                       typeValue = typeValue.replace(/"([^"]+)"/g, '$1');
+    patchStrategy: new-unified
+  - type: write
+    path: src/analyzer.ts
+    content: |-
+      --- src/analyzer.ts
+      +++ src/analyzer.ts
+      @@ ... @@
+           // Default visibility for class members: public unless marked otherwise
+           for (const sym of ordered) {
+               if (sym.kind === 'method' || sym.kind === 'constructor' || sym.kind === 'property') {
+                   if (sym.accessibility === 'private' || sym.accessibility === 'protected') {
+                       sym.isExported = false;
+                   } else if (sym.accessibility === 'public' || sym.accessibility === undefined) {
+                       sym.isExported = true;
+                   }
+               }
+      +        
+      +        // Special handling for abstract classes and methods
+      +        if (sym.kind === 'class' && sym.isAbstract) {
+      +            sym.labels = [...(sym.labels || []), 'abstract'];
+      +        }
+      +        
+      +        if (sym.kind === 'method' && sym.isAbstract) {
+      +            sym.labels = [...(sym.labels || []), 'abstract'];
+      +            sym.isExported = false; // Abstract methods are not exported
+      +        }
+           }
+       
+           // Heuristics for JS special constructs in fixtures
+           // Symbol(...) assignment: mark variable with [symbol]
+           for (const sym of ordered) {
+               if (sym.kind === 'variable') {
+                   const text = getNodeText(ast.rootNode, sourceCode);
+                   const namePattern = new RegExp(`\\b${sym.name}\\s*=\\s*Symbol\\s*\\(`);
+                   if (namePattern.test(text)) {
+                       sym.labels = [...(sym.labels || []), 'symbol'];
+                   }
+                   
+                   // Proxy detection: mark variable with [proxy]
+                   const proxyPattern = new RegExp(`\\b${sym.name}\\s*=\\s*new\\s+Proxy\\s*\\(`);
+                   if (proxyPattern.test(text)) {
+                       sym.labels = [...(sym.labels || []), 'proxy'];
+                   }
+               }
+           }
+    patchStrategy: new-unified
+  - type: write
+    path: src/graph-resolver.ts
+    content: >-
+      --- src/graph-resolver.ts
+
+      +++ src/graph-resolver.ts
+
+      @@ ... @@
+       const resolveRelationship = (rel: Relationship, sourceFile: SourceFile, fileMap: FileMap, symbolMap: SymbolMap, pathResolver: PathResolver, root: string) => {
+           if (rel.kind === 'import') {
+               const targetFile = findFileByImportPath(rel.targetName, sourceFile, fileMap, pathResolver, root);
+               if (targetFile) rel.resolvedFileId = targetFile.id;
+               return;
+           }
+           
+      +    // Handle dynamic imports
+
+      +    if (rel.kind === 'dynamic_import') {
+
+      +        const targetFile = findFileByImportPath(rel.targetName,
+      sourceFile, fileMap, pathResolver, root);
+
+      +        if (targetFile) rel.resolvedFileId = targetFile.id;
+
+      +        return;
+
+      +    }
+
+      +    
+           // Attempt intra-file resolution first
+           const intraFileSymbol = sourceFile.symbols.find(s => s.name === rel.targetName);
+           if (intraFileSymbol) {
+               rel.resolvedSymbolId = intraFileSymbol.id;
+               rel.resolvedFileId = sourceFile.id;
+               return;
+           }
+    patchStrategy: new-unified
+snapshot:
+  src/queries/typescript.ts: >
+    export const typescriptQueries = `
+
+    ; Interface definitions
+
+    (interface_declaration
+      name: (type_identifier) @symbol.interface.def) @scope.interface.def
+
+    ; Type alias definitions  
+
+    (type_alias_declaration
+      name: (type_identifier) @symbol.type_alias.def) @scope.type_alias.def
+
+    ; Class definitions
+
+    (class_declaration
+      name: (type_identifier) @symbol.class.def) @scope.class.def
+
+    ; Function definitions
+
+    (function_declaration
+      name: (identifier) @symbol.function.def) @scope.function.def
+
+    ; Method definitions (capture name and formal parameters as scope)
+
+    (method_definition
+      (property_identifier) @symbol.method.def
+      (formal_parameters) @scope.method.def)
+
+    ; Method signatures (interfaces, abstract class methods)
+
+    (method_signature
+      name: (property_identifier) @symbol.method.def) @scope.method.def
+
+    ; Constructor definitions
+
+    (method_definition
+      (property_identifier) @symbol.constructor.def
+      (formal_parameters) @scope.constructor.def
+      (#eq? @symbol.constructor.def "constructor"))
+
+    ; Property signatures in interfaces (should be public by default)
+
+    (property_signature
+      (property_identifier) @symbol.property.def)
+
+    ; Mark interface properties and method signatures as exported (public)
+
+    (property_signature) @mod.export
+
+    (method_signature) @mod.export
+
+
+    ; Class field definitions (TypeScript grammar uses public_field_definition)
+
+    (public_field_definition
+      name: (property_identifier) @symbol.property.def)
+
+    ; Variable declarations
+
+    (variable_declarator
+      name: (identifier) @symbol.variable.def)
+
+    ; Common patterns to support JS features in fixtures
+
+    ; IIFE: (function(){ ... })()
+
+    (call_expression
+      function: (parenthesized_expression
+        (function_expression) @symbol.function.def
+      )
+    ) @scope.function.def
+
+
+    ; Tagged template usage -> capture identifier before template as call
+
+    (call_expression
+      function: (identifier) @rel.call)
+
+    ; (Removed overly broad CommonJS/object key captures that polluted TS
+    fixtures)
+
+
+    ; Import statements
+
+    (import_statement
+      source: (string) @rel.import)
+
+    ; Named imports - these create references to the imported symbols
+
+    (import_specifier
+      name: (identifier) @rel.references)
+
+    ; Type references in type annotations, extends clauses, etc.
+
+    (type_identifier) @rel.references
+
+
+    ; Call expressions
+
+    (call_expression
+      function: (identifier) @rel.call)
+
+    ; Method calls
+
+    (call_expression
+      function: (member_expression
+        property: (property_identifier) @rel.call))
+
+    ; Constructor calls (new expressions)
+
+    (new_expression
+      constructor: (identifier) @rel.call)
+
+    ; Property access
+
+    (member_expression
+      property: (property_identifier) @rel.references)
+
+    ; CommonJS require as import at file-level: require("./path")
+
+    ((call_expression
+       function: (identifier) @__fn
+       arguments: (arguments (string) @rel.import))
+      (#eq? @__fn "require"))
+
+    ; Export modifiers
+
+    (export_statement) @mod.export
+
+
+    ; Accessibility modifiers
+
+    (accessibility_modifier) @mod.accessibility
+
+
+    ; Async functions/methods (text match)
+
+    ((function_declaration) @mod.async (#match? @mod.async "^async "))
+
+    ((method_definition) @mod.async (#match? @mod.async "^async "))
+
+    `;
+
+
+    export const typescriptReactQueries = `
+
+    ${typescriptQueries}
+
+
+    ; JSX element definitions
+
+    (jsx_opening_element
+      name: (identifier) @symbol.jsx_component.def) @scope.jsx_component.def
+
+    (jsx_self_closing_element
+      name: (identifier) @symbol.jsx_component.def) @scope.jsx_component.def
+
+    ; JSX component references
+
+    (jsx_opening_element
+      name: (identifier) @rel.references)
+
+    (jsx_self_closing_element
+      name: (identifier) @rel.references)
+    `;
+  src/analyzer.ts: >-
+    import type { SourceFile, CodeSymbol, Relationship, SymbolKind,
+    RelationshipKind, Range } from './types';
+
+    import { getNodeRange, getNodeText, getIdentifier, findChildByFieldName }
+    from './utils/ast';
+
+    import { Query, type Node as SyntaxNode, type QueryCapture } from
+    'web-tree-sitter';
+
+
+    const getSymbolName = (node: SyntaxNode, sourceCode: string): string => {
+        if (node.type === 'rule_set' || node.type === 'at_rule') {
+            const text = getNodeText(node, sourceCode);
+            const bodyStart = text.indexOf('{');
+            const name = (bodyStart === -1 ? text : text.substring(0, bodyStart)).trim();
+            // for at-rules, the name is the @keyword, so we need the full line.
+            return name.endsWith(';') ? name.slice(0, -1) : name;
+        }
+        if (node.type === 'jsx_opening_element' || node.type === 'jsx_self_closing_element') {
+            const nameNode = findChildByFieldName(node, 'name');
+            return nameNode ? getNodeText(nameNode, sourceCode) : '<fragment>';
+        }
+        if (node.type === 'impl_item') {
+            const trait = findChildByFieldName(node, 'trait');
+            const type = findChildByFieldName(node, 'type');
+            if (trait && type) {
+                return `impl ${getNodeText(trait, sourceCode)} for ${getNodeText(type, sourceCode)}`;
+            }
+            return 'impl';
+        }
+        if (node.type === 'variable_declarator') {
+            const valueNode = findChildByFieldName(node, 'value');
+            if (valueNode?.type === 'arrow_function' || valueNode?.type.startsWith('class')) {
+                return getIdentifier(node, sourceCode);
+            }
+        }
+        return getIdentifier(node.parent || node, sourceCode);
+    };
+
+
+    const processCapture = (
+        capture: QueryCapture,
+        sourceFile: SourceFile,
+        symbols: CodeSymbol[],
+        relationships: Relationship[]
+    ) => {
+        const { node, name: captureName } = capture;
+        const [cat, kind, role] = captureName.split('.');
+
+        if (cat === 'symbol' && role === 'def') {
+            const parentType = node.parent?.type || '';
+            const scopeNode = (
+                parentType.endsWith('_declaration') ||
+                parentType === 'method_definition' ||
+                parentType === 'property_signature' ||
+                parentType === 'public_field_definition' ||
+                parentType === 'field_definition'
+            ) ? (node.parent as SyntaxNode) : node;
+            const range = getNodeRange(node);
+            const hasExportAncestor = (n: SyntaxNode | null | undefined): boolean => {
+                let cur = n?.parent || null;
+                while (cur) {
+                    if (cur.type === 'export_statement') return true;
+                    cur = cur.parent;
+                }
+                return false;
+            };
+            const symbol: CodeSymbol = {
+                id: `${range.start.line + 1}:${range.start.column}`,
+                fileId: sourceFile.id,
+                name: getSymbolName(node, sourceFile.sourceCode),
+                kind: kind as SymbolKind,
+                range: range,
+                scopeRange: getNodeRange(scopeNode),
+                isExported: hasExportAncestor(scopeNode) || /^\s*export\b/.test(getNodeText(scopeNode, sourceFile.sourceCode)),
+                dependencies: [],
+            };
+
+            // Derive type information and signatures from surrounding scope text
+            const scopeText = getNodeText(scopeNode, sourceFile.sourceCode);
+
+            const normalizeType = (t: string): string => {
+                const cleaned = t.trim().replace(/;\s*$/, '');
+                // Remove spaces around union bars
+                return cleaned.replace(/\s*\|\s*/g, '|');
+            };
+
+            // Accessibility for class members (public/private/protected)
+            if (symbol.kind === 'method' || symbol.kind === 'constructor' || symbol.kind === 'property') {
+                const accMatch = scopeText.match(/^\s*(public|private|protected)\b/);
+                if (accMatch) {
+                    const acc = accMatch[1] as 'public' | 'private' | 'protected';
+                    symbol.accessibility = acc;
+                }
+            }
+
+            // Properties (interface property_signature or class field definitions)
+            if (symbol.kind === 'property') {
+                // interface/class fields
+                const match = scopeText.match(/:\s*([^;\n]+)/);
+                if (match) {
+                    symbol.typeAnnotation = `#${normalizeType(match[1])}`;
+                }
+                // detect readonly/static from text
+                if (/\breadonly\b/.test(scopeText)) symbol.isReadonly = true;
+                if (/^\s*static\b/.test(scopeText)) symbol.isStatic = true;
+            }
+
+            // Type alias value (right-hand side after '=')
+            if (symbol.kind === 'type_alias') {
+                const m = scopeText.match(/=\s*([^;\n]+)/);
+                if (m) {
+                    symbol.typeAliasValue = `#${normalizeType(m[1])}`;
+                }
+            }
+
+            // Functions/methods/constructors signatures
+            if (symbol.kind === 'function' || symbol.kind === 'method' || symbol.kind === 'constructor') {
+                const paramsMatch = scopeText.match(/\(([^)]*)\)/);
+                const returnMatch = scopeText.match(/\)\s*:\s*([^\{\n]+)/);
+                const params = paramsMatch ? paramsMatch[1] : '';
+                const paramsWithTypes = params
+                    .split(',')
+                    .map(p => p.trim())
+                    .filter(p => p.length > 0)
+                    .map(p => p.replace(/:\s*([^,]+)/, (_s, t) => `: #${normalizeType(t)}`))
+                    .join(', ');
+                const returnType = returnMatch ? `: #${normalizeType(returnMatch[1])}` : '';
+                symbol.signature = `(${paramsWithTypes})${returnType}`;
+
+                // Async detection (textual) and throws detection
+                if (/\basync\b/.test(scopeText)) symbol.isAsync = true;
+                const bodyText = getNodeText(scopeNode, sourceFile.sourceCode);
+                if (/\bthrow\b/.test(bodyText)) symbol.throws = true;
+                // static method
+                if (/^\s*static\b/.test(scopeText)) symbol.isStatic = true;
+                // abstract method (no body and abstract keyword)
+                if (/\babstract\b/.test(scopeText)) symbol.isAbstract = true;
+            }
+
+            symbols.push(symbol);
+        } else if (cat === 'rel') {
+            const rel: Relationship = {
+                // special case for dynamic import from TS query
+                kind: captureName.startsWith('rel.dynamic_import') 
+                    ? 'dynamic_import' 
+                    : kind as RelationshipKind,
+                targetName: getNodeText(node, sourceFile.sourceCode).replace(/['"`]/g, ''),
+                range: getNodeRange(node),
+            };
+            relationships.push(rel);
+        } else if (cat === 'mod') {
+            const parentSymbol = findParentSymbol(getNodeRange(node), symbols);
+            if (parentSymbol) {
+                if (kind === 'export') parentSymbol.isExported = true;
+                if (kind === 'static') parentSymbol.isStatic = true;
+                if (kind === 'abstract') parentSymbol.isAbstract = true;
+                if (kind === 'readonly') parentSymbol.isReadonly = true;
+                if (kind === 'async') parentSymbol.isAsync = true;
+                if (kind === 'accessibility') {
+                    const text = getNodeText(node, sourceFile.sourceCode);
+                    if (/\bpublic\b/.test(text)) parentSymbol.accessibility = 'public';
+                    else if (/\bprivate\b/.test(text)) parentSymbol.accessibility = 'private';
+                    else if (/\bprotected\b/.test(text)) parentSymbol.accessibility = 'protected';
+                    // Public or protected members are considered exported in SCN visibility semantics
+                    if (parentSymbol.accessibility === 'public') parentSymbol.isExported = true;
+                    if (parentSymbol.accessibility === 'protected') parentSymbol.isExported = false;
+                    if (parentSymbol.accessibility === 'private') parentSymbol.isExported = false;
+                }
+            }
+        }
+    };
+
+
+    export const analyze = (sourceFile: SourceFile): SourceFile => {
+        const { ast, language, sourceCode } = sourceFile;
+        if (!ast || !language.parser || !language.loadedLanguage) return sourceFile;
+
+        const directives = sourceCode.match(/^['"](use (?:server|client))['"];/gm);
+        if(directives) {
+            sourceFile.languageDirectives = directives.map(d => d.replace(/['";]/g, ''));
+        }
+        if (sourceCode.includes('AUTO-GENERATED') || sourceCode.includes('eslint-disable')) {
+            sourceFile.isGenerated = true;
+        }
+
+        const mainQuery = language.queries?.main ?? '';
+        if (!mainQuery) return sourceFile;
+
+        const query = new Query(language.loadedLanguage, mainQuery);
+        const captures = query.captures(ast.rootNode);
+
+        const symbols: CodeSymbol[] = [];
+        const relationships: Relationship[] = [];
+        const fileLevelRelationships: Relationship[] = [];
+
+        // Phase 1: create symbols
+        for (const capture of captures) {
+            const [cat, kind, role] = capture.name.split('.');
+            if (cat === 'symbol' && role === 'def') {
+                processCapture(capture, sourceFile, symbols, relationships);
+            }
+        }
+
+        // Phase 2: apply modifiers (e.g., mark interface properties as exported/public)
+        for (const capture of captures) {
+            const [cat] = capture.name.split('.');
+            if (cat === 'mod') {
+                processCapture(capture, sourceFile, symbols, relationships);
+            }
+        }
+
+        // Phase 3: collect relationships
+        for (const capture of captures) {
+            const [cat, kind] = capture.name.split('.');
+            if (cat === 'rel') {
+                const tempBefore: number = relationships.length;
+                processCapture(capture, sourceFile, symbols, relationships);
+                const newlyAdded = relationships.slice(tempBefore);
+                for (const rel of newlyAdded) {
+                    const parent = findParentSymbol(rel.range, symbols);
+                    const isFileLevel = kind === 'import' || kind === 'dynamic_import' || kind === 'call' || kind === 'references';
+                    if (!parent && isFileLevel) fileLevelRelationships.push(rel);
+                }
+            }
+        }
+        
+        for (const rel of relationships) {
+            const parentSymbol = findParentSymbol(rel.range, symbols);
+            if (parentSymbol) {
+                parentSymbol.dependencies.push(rel);
+            }
+        }
+
+        // Attach file-level relationships to a synthetic file symbol if needed in future,
+        // for now store them on the SourceFile to allow resolver to link files.
+        if (fileLevelRelationships.length > 0) {
+            sourceFile.fileRelationships = fileLevelRelationships;
+        }
+        
+        const addFunc = symbols.find(s => s.name === 'add');
+        if (addFunc?.dependencies.length === 0) addFunc.isPure = true;
+
+        // Remove duplicate constructor-as-method captures
+        const cleaned = symbols.filter(s => !(s.kind === 'method' && s.name === 'constructor'));
+
+        // Order symbols by source position
+        const ordered = cleaned
+            .slice()
+            .sort((a, b) => a.range.start.line - b.range.start.line || a.range.start.column - b.range.start.column);
+
+        // Default visibility for class members: public unless marked otherwise
+        for (const sym of ordered) {
+            if (sym.kind === 'method' || sym.kind === 'constructor' || sym.kind === 'property') {
+                if (sym.accessibility === 'private' || sym.accessibility === 'protected') {
+                    sym.isExported = false;
+                } else if (sym.accessibility === 'public' || sym.accessibility === undefined) {
+                    sym.isExported = true;
+                }
+            }
+        }
+
+        // Heuristics for JS special constructs in fixtures
+        // Symbol(...) assignment: mark variable with [symbol]
+        for (const sym of ordered) {
+            if (sym.kind === 'variable') {
+                const text = getNodeText(ast.rootNode, sourceCode);
+                const namePattern = new RegExp(`\\b${sym.name}\\s*=\\s*Symbol\\s*\\(`);
+                if (namePattern.test(text)) {
+                    sym.labels = [...(sym.labels || []), 'symbol'];
+                }
+            }
+        }
+
+        sourceFile.symbols = ordered;
+        return sourceFile;
+    };
+
+
+    const isRangeWithin = (inner: Range, outer: Range): boolean => {
+        return (
+            (inner.start.line > outer.start.line || (inner.start.line === outer.start.line && inner.start.column >= outer.start.column)) &&
+            (inner.end.line < outer.end.line || (inner.end.line === outer.end.line && inner.end.column <= outer.end.column))
+        );
+    };
+
+
+    const findParentSymbol = (range: Range, symbols: CodeSymbol[]): CodeSymbol |
+    null => {
+        const candidateSymbols = symbols.filter(s => {
+            // Check for exact match first (for property signatures)
+            const isExactMatch = (
+                range.start.line === s.scopeRange.start.line && 
+                range.start.column === s.scopeRange.start.column &&
+                range.end.line === s.scopeRange.end.line && 
+                range.end.column === s.scopeRange.end.column
+            );
+            return isExactMatch || isRangeWithin(range, s.scopeRange);
+        });
+        
+        // Sort by scope size (smallest first) to get the most specific parent
+        return candidateSymbols
+            .sort((a, b) => (a.scopeRange.end.line - a.scopeRange.start.line) - (b.scopeRange.end.line - b.scopeRange.start.line))
+            [0] || null;
+    };
+  src/formatter.ts: >-
+    import type { CodeSymbol, SourceFile } from './types';
+
+    import { topologicalSort } from './utils/graph';
+
+
+    const ICONS: Record<string, string> = {
+        class: '◇', interface: '{}', function: '~', method: '~',
+        constructor: '~',
+        variable: '@', property: '@', enum: '☰', enum_member: '@',
+        type_alias: '=:', react_component: '◇', jsx_element: '⛶',
+        css_class: '¶', css_id: '¶', css_tag: '¶', css_at_rule: '¶',
+        go_package: '◇',
+        rust_struct: '◇', rust_trait: '{}', rust_impl: '+',
+        error: '[error]', default: '?',
+    };
+
+
+    // Compute display index per file based on eligible symbols (exclude
+    properties and constructors)
+
+    const isIdEligible = (symbol: CodeSymbol): boolean => {
+        if (symbol.kind === 'property' || symbol.kind === 'constructor') return false;
+        if (symbol.kind === 'variable') return symbol.isExported || symbol.name === 'module.exports' || symbol.name === 'default';
+        if (symbol.kind === 'method') return true;
+        return true;
+    };
+
+
+    const getDisplayIndex = (file: SourceFile, symbol: CodeSymbol): number |
+    null => {
+        const ordered = file.symbols
+            .filter(isIdEligible)
+            .sort((a, b) => a.range.start.line - b.range.start.line || a.range.start.column - b.range.start.column);
+        const index = ordered.findIndex(s => s === symbol);
+        return index === -1 ? null : index + 1;
+    };
+
+
+    const formatSymbolIdDisplay = (file: SourceFile, symbol: CodeSymbol): string
+    | null => {
+        const idx = getDisplayIndex(file, symbol);
+        if (idx == null) return null;
+        return `(${file.id}.${idx})`;
+    };
+
+
+    const formatSymbol = (symbol: CodeSymbol, allFiles: SourceFile[]): string[]
+    => {
+        const icon = ICONS[symbol.kind] || ICONS.default;
+        const prefix = symbol.isExported ? '+' : '-';
+        let name = symbol.name === '<anonymous>' ? '' : symbol.name;
+        if (symbol.kind === 'variable' && name.trim() === 'default') name = '';
+
+        const mods = [
+            symbol.isAbstract && 'abstract',
+            symbol.isStatic && 'static',
+        ].filter(Boolean).join(' ');
+        const modStr = mods ? ` [${mods}]` : '';
+
+        const suffixParts: string[] = [];
+        if (symbol.signature) name += symbol.name === '<anonymous>' ? symbol.signature : `${symbol.signature}`;
+        if (symbol.typeAnnotation) name += `: ${symbol.typeAnnotation}`;
+        if (symbol.typeAliasValue) name += ` ${symbol.typeAliasValue}`;
+        // Merge async + throws into a single token '...!'
+        const asyncToken = symbol.isAsync ? '...' : '';
+        const throwsToken = symbol.throws ? '!' : '';
+        const asyncThrows = (asyncToken + throwsToken) || '';
+        if (asyncThrows) suffixParts.push(asyncThrows);
+        if (symbol.isPure) suffixParts.push('o');
+        if (symbol.labels && symbol.labels.length > 0) suffixParts.push(...symbol.labels.map(l => `[${l}]`));
+        const suffix = suffixParts.join(' ');
+
+        // Build ID portion conditionally
+        const file = allFiles.find(f => f.id === symbol.fileId)!;
+        const idPart = formatSymbolIdDisplay(file, symbol);
+        const idText = (symbol.kind === 'property' || symbol.kind === 'constructor') ? '' : (idPart ?? '');
+        const idWithSpace = idText ? `${idText} ` : '';
+        const segments: string[] = [prefix, icon];
+        if (idPart) segments.push(idPart);
+        if (name) segments.push(name.trim());
+        if (modStr) segments.push(modStr);
+        if (suffix) segments.push(suffix);
+        const line = `  ${segments.join(' ')}`;
+        const result = [line];
+
+        const outgoing = new Map<number, Set<string>>();
+        const unresolvedDeps: string[] = [];
+        symbol.dependencies.forEach(dep => {
+            if (dep.resolvedFileId !== undefined && dep.resolvedFileId !== symbol.fileId) {
+                if (!outgoing.has(dep.resolvedFileId)) outgoing.set(dep.resolvedFileId, new Set());
+                if (dep.resolvedSymbolId) {
+                    const targetFile = allFiles.find(f => f.id === dep.resolvedFileId);
+                    const targetSymbol = targetFile?.symbols.find(s => s.id === dep.resolvedSymbolId);
+                    if (targetSymbol) {
+                        const displayId = formatSymbolIdDisplay(targetFile!, targetSymbol);
+                        let text = displayId ?? `(${targetFile!.id}.0)`;
+                        if (dep.kind === 'goroutine') {
+                            text += ' [goroutine]';
+                        }
+                        outgoing.get(dep.resolvedFileId)!.add(text);
+                    }
+                } else {
+                    let text = `(${dep.resolvedFileId}.0)`;
+                    if (dep.kind === 'dynamic_import') text += ' [dynamic]';
+                    outgoing.get(dep.resolvedFileId)!.add(text);
+                }
+            } else if (dep.resolvedFileId === undefined) {
+                if (dep.kind === 'macro') {
+                    unresolvedDeps.push(`${dep.targetName} [macro]`);
+                }
+            }
+        });
+
+        const outgoingParts: string[] = [];
+        if (outgoing.size > 0) {
+            const resolvedParts = Array.from(outgoing.entries())
+                .sort((a, b) => a[0] - b[0])
+                .map(([fileId, symbolIds]) => {
+                    const items = Array.from(symbolIds).sort();
+                    return items.length > 0 ? `${items.join(', ')}` : `(${fileId}.0)`;
+                });
+            outgoingParts.push(...resolvedParts);
+        }
+        outgoingParts.push(...unresolvedDeps);
+
+        if (outgoingParts.length > 0) {
+            result.push(`    -> ${outgoingParts.join(', ')}`);
+        }
+        
+        const incoming = new Map<number, Set<string>>();
+        allFiles.forEach(file => {
+            file.symbols.forEach(s => {
+                s.dependencies.forEach(d => {
+                    if (d.resolvedFileId === symbol.fileId && d.resolvedSymbolId === symbol.id && s !== symbol) {
+                        if(!incoming.has(file.id)) incoming.set(file.id, new Set());
+                        // Suppress same-file incoming for properties
+                        if (file.id === symbol.fileId && symbol.kind === 'property') return;
+                        const disp = formatSymbolIdDisplay(file, s) ?? `(${file.id}.0)`;
+                        incoming.get(file.id)!.add(disp);
+                    }
+                });
+            });
+            // Include file-level imports to this file as incoming for exported symbols
+            // but only if there is no symbol-level incoming from that file already
+            if (file.id !== symbol.fileId && symbol.isExported) {
+                file.fileRelationships?.forEach(rel => {
+                    if (rel.resolvedFileId === symbol.fileId) {
+                        const already = incoming.get(file.id);
+                        if (!already || already.size === 0) {
+                            if(!incoming.has(file.id)) incoming.set(file.id, new Set());
+                            incoming.get(file.id)!.add(`(${file.id}.0)`);
+                        }
+                    }
+                });
+            }
+        });
+
+        if (incoming.size > 0) {
+            const parts = Array.from(incoming.entries()).map(([_fileId, symbolIds]) => Array.from(symbolIds).join(', '));
+            result.push(`    <- ${parts.join(', ')}`);
+        }
+
+        return result;
+    };
+
+
+
+    const isWithin = (inner: CodeSymbol, outer: CodeSymbol): boolean => {
+        const a = inner.range;
+        const b = outer.scopeRange;
+        return (
+            (a.start.line > b.start.line || (a.start.line === b.start.line && a.start.column >= b.start.column)) &&
+            (a.end.line < b.end.line || (a.end.line === b.end.line && a.end.column <= b.end.column))
+        );
+    };
+
+
+    const buildChildrenMap = (symbols: CodeSymbol[]): Map<string, CodeSymbol[]>
+    => {
+        const parents = symbols.filter(s => s.kind === 'class' || s.kind === 'interface');
+        const map = new Map<string, CodeSymbol[]>();
+        for (const parent of parents) map.set(parent.id, []);
+        for (const sym of symbols) {
+            if (sym.kind === 'class' || sym.kind === 'interface') continue;
+            const parent = parents
+                .filter(p => isWithin(sym, p))
+                .sort((a, b) => (a.scopeRange.end.line - a.scopeRange.start.line) - (b.scopeRange.end.line - b.scopeRange.start.line))[0];
+            if (parent) {
+                map.get(parent.id)!.push(sym);
+            }
+        }
+        // Sort children by position
+        for (const [k, arr] of map.entries()) {
+            arr.sort((a, b) => a.range.start.line - b.range.start.line || a.range.start.column - b.range.start.column);
+        }
+        return map;
+    };
+
+
+    const formatFile = (file: SourceFile, allFiles: SourceFile[]): string => {
+        if (file.parseError) return `§ (${file.id}) ${file.relativePath} [error]`;
+        if (!file.sourceCode.trim()) return `§ (${file.id}) ${file.relativePath}`;
+
+        const directives = [
+            file.isGenerated && 'generated',
+            ...(file.languageDirectives || [])
+        ].filter(Boolean);
+        const directiveStr = directives.length > 0 ? ` [${directives.join(' ')}]` : '';
+        const header = `§ (${file.id}) ${file.relativePath}${directiveStr}`;
+
+        const headerLines: string[] = [header];
+
+        // File-level outgoing/incoming dependencies
+        const outgoing: string[] = [];
+        if (file.fileRelationships) {
+            const outgoingFiles = new Set<number>();
+            file.fileRelationships.forEach(rel => {
+                // Only show true file-level imports on the header
+                if ((rel.kind === 'import' || rel.kind === 'dynamic_import') && rel.resolvedFileId && rel.resolvedFileId !== file.id) {
+                    let text = `(${rel.resolvedFileId}.0)`;
+                    if (rel.kind === 'dynamic_import') text += ' [dynamic]';
+                    outgoingFiles.add(rel.resolvedFileId);
+                    outgoing.push(text);
+                }
+            });
+            if (outgoing.length > 0) headerLines.push(`  -> ${Array.from(new Set(outgoing)).sort().join(', ')}`);
+        }
+
+        // Incoming: any other file that has a file-level relationship pointing here
+        const incoming: string[] = [];
+        allFiles.forEach(other => {
+            if (other.id === file.id) return;
+            other.fileRelationships?.forEach(rel => {
+                if (rel.resolvedFileId === file.id) incoming.push(`(${other.id}.0)`);
+            });
+        });
+        if (incoming.length > 0) headerLines.push(`  <- ${Array.from(new Set(incoming)).sort().join(', ')}`);
+
+        // If file has no exported symbols, hide local symbols (consumer/entry files)
+        const hasExports = file.symbols.some(s => s.isExported);
+        let symbolsToPrint = hasExports ? file.symbols.slice() : [];
+
+        // Group properties/methods under their class/interface parent
+        const childrenMap = buildChildrenMap(symbolsToPrint);
+        const childIds = new Set<string>(Array.from(childrenMap.values()).flat().map(s => s.id));
+        const topLevel = symbolsToPrint.filter(s => !childIds.has(s.id));
+
+        const symbolLines: string[] = [];
+        for (const sym of topLevel) {
+            const lines = formatSymbol(sym, allFiles);
+            symbolLines.push(...lines);
+            if (childrenMap.has(sym.id)) {
+                const kids = childrenMap.get(sym.id)!;
+                for (const kid of kids) {
+                    const kLines = formatSymbol(kid, allFiles).map(l => `  ${l}`);
+                    symbolLines.push(...kLines);
+                }
+            }
+        }
+
+        // If we hid symbols, aggregate outgoing dependencies from all symbols onto header
+        if (!hasExports) {
+            const aggOutgoing = new Map<number, Set<string>>();
+            file.symbols.forEach(s => {
+                s.dependencies.forEach(dep => {
+                    if (dep.resolvedFileId && dep.resolvedFileId !== file.id) {
+                        if (!aggOutgoing.has(dep.resolvedFileId)) aggOutgoing.set(dep.resolvedFileId, new Set());
+                        if (dep.resolvedSymbolId) {
+                            const targetFile = allFiles.find(f => f.id === dep.resolvedFileId)!;
+                            const targetSymbol = targetFile.symbols.find(ts => ts.id === dep.resolvedSymbolId);
+                            const disp = targetSymbol ? (formatSymbolIdDisplay(targetFile, targetSymbol) ?? `(${dep.resolvedFileId}.0)`) : `(${dep.resolvedFileId}.0)`;
+                            aggOutgoing.get(dep.resolvedFileId)!.add(disp);
+                        } else {
+                            aggOutgoing.get(dep.resolvedFileId)!.add(`(${dep.resolvedFileId}.0)`);
+                        }
+                    }
+                });
+            });
+            if (aggOutgoing.size > 0) {
+                const parts = Array.from(aggOutgoing.entries())
+                    .sort((a, b) => a[0] - b[0])
+                    .flatMap(([fid, ids]) => {
+                        const arr = Array.from(ids).sort();
+                        return arr.length > 0 ? arr : [`(${fid}.0)`];
+                    });
+                for (const p of parts) headerLines.push(`  -> ${p}`);
+            }
+        }
+        return [...headerLines, ...symbolLines].join('\n');
+    };
+
+
+    export const formatScn = (analyzedFiles: SourceFile[]): string => {
+        const sortedFiles = topologicalSort(analyzedFiles);
+        return sortedFiles.map(file => formatFile(file, analyzedFiles)).join('\n\n');
+    };
+  src/graph-resolver.ts: >-
+    import type { SourceFile, PathResolver, Relationship } from './types';
+
+    import path from 'node:path';
+
+
+    type FileMap = Map<string, SourceFile>;
+
+    type SymbolMap = Map<number, Map<string, string>>;
+
+
+    const findFileByImportPath = (importPath: string, currentFile: SourceFile,
+    fileMap: FileMap, pathResolver: PathResolver, root: string): SourceFile |
+    undefined => {
+        const currentDir = path.dirname(currentFile.absolutePath);
+        const aliasedPath = pathResolver(importPath);
+
+        const resolvedPath = aliasedPath ? path.resolve(root, aliasedPath) : path.resolve(currentDir, importPath);
+
+        const extensions = ['.ts', '.tsx', '.js', '.jsx', '.css', '.go', '.rs', '.py', '.java', '.graphql', ''];
+        for (const ext of extensions) {
+            const tryPath = (resolvedPath + ext).replace(/\\/g, '/');
+            const relative = path.relative(root, tryPath).replace(/\\/g, '/');
+            if (fileMap.has(relative)) return fileMap.get(relative);
+            
+            const tryIndexPath = path.join(resolvedPath, 'index' + ext).replace(/\\/g, '/');
+            const relativeIndex = path.relative(root, tryIndexPath).replace(/\\/g, '/');
+            if(fileMap.has(relativeIndex)) return fileMap.get(relativeIndex);
+        }
+        return undefined;
+    };
+
+
+
+    const resolveRelationship = (rel: Relationship, sourceFile: SourceFile,
+    fileMap: FileMap, symbolMap: SymbolMap, pathResolver: PathResolver, root:
+    string) => {
+        if (rel.kind === 'import') {
+            const targetFile = findFileByImportPath(rel.targetName, sourceFile, fileMap, pathResolver, root);
+            if (targetFile) rel.resolvedFileId = targetFile.id;
+            return;
+        }
+        
+        // Attempt intra-file resolution first
+        const intraFileSymbol = sourceFile.symbols.find(s => s.name === rel.targetName);
+        if (intraFileSymbol) {
+            rel.resolvedSymbolId = intraFileSymbol.id;
+            rel.resolvedFileId = sourceFile.id;
+            return;
+        }
+        
+        // Attempt inter-file resolution via imports
+        for (const file of fileMap.values()) {
+            const fileSymbols = symbolMap.get(file.id);
+            if (fileSymbols?.has(rel.targetName)) {
+                rel.resolvedFileId = file.id;
+                rel.resolvedSymbolId = fileSymbols.get(rel.targetName);
+                return;
+            }
+        }
+    };
+
+
+    export const resolveGraph = (sourceFiles: SourceFile[], pathResolver:
+    PathResolver, root: string): SourceFile[] => {
+        const fileMap: FileMap = new Map(sourceFiles.map(f => [f.relativePath.replace(/\\/g, '/'), f]));
+        const symbolMap: SymbolMap = new Map();
+        for(const file of sourceFiles) {
+            const fileSymbolMap = new Map(file.symbols.filter(s => s.isExported).map(s => [s.name, s.id]));
+            symbolMap.set(file.id, fileSymbolMap);
+        }
+        
+        for (const sourceFile of sourceFiles) {
+            // Resolve file-level relationships (e.g., imports that aren't tied to a symbol)
+            if (sourceFile.fileRelationships) {
+                for (const rel of sourceFile.fileRelationships) {
+                    resolveRelationship(rel, sourceFile, fileMap, symbolMap, pathResolver, root);
+                }
+            }
+            for (const symbol of sourceFile.symbols) {
+                for (const rel of symbol.dependencies) {
+                    resolveRelationship(rel, sourceFile, fileMap, symbolMap, pathResolver, root);
+                }
+            }
+        }
+        return sourceFiles;
+    };
+approved: true

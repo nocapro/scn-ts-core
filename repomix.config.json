@@ -23,13 +23,13 @@
     }
   },
   "include": [
-    // "test",
-    "package.json",
-    "src",
-    "tsconfig.json",
-    "`",
-    // "docs/repomix-wasm.md",
-    "node_modules/web-tree-sitter/src/index.ts"
+    "docs/fix.plan.md",
+     "test/ts/fixtures/09.dep-graph-circular.fixture.yaml",
+     "src/analyzer.ts",
+     "src/graph-resolver.ts",
+     "src/queries/typescript.ts",
+     "src/types.ts",
+     "scripts/ast.ts"
   ],
   "ignore": {
     "useGitignore": true,

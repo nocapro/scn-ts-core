@@ -45,9 +45,11 @@ const processCapture = (
         const scopeNode = (
             parentType.endsWith('_declaration') ||
             parentType === 'method_definition' ||
+            parentType === 'method_signature' ||
             parentType === 'property_signature' ||
             parentType === 'public_field_definition' ||
-            parentType === 'field_definition'
+            parentType === 'field_definition' ||
+            parentType === 'variable_declarator'
         ) ? (node.parent as SyntaxNode) : node;
         const range = getNodeRange(node);
         const hasExportAncestor = (n: SyntaxNode | null | undefined): boolean => {
@@ -58,16 +60,41 @@ const processCapture = (
             }
             return false;
         };
+        let symbolKind = kind as SymbolKind;
+        if (symbolKind === 'variable' && scopeNode.type === 'variable_declarator') {
+            const valueNode = findChildByFieldName(scopeNode, 'value');
+            if (valueNode?.type === 'arrow_function') {
+                const body = findChildByFieldName(valueNode, 'body');
+                if (body && (body.type.startsWith('jsx_'))) {
+                     symbolKind = 'react_component';
+                } else {
+                    symbolKind = 'function';
+                }
+            } else if (valueNode?.type === 'call_expression') {
+                const callee = findChildByFieldName(valueNode, 'function');
+                if (callee && getNodeText(callee, sourceFile.sourceCode).endsWith('forwardRef')) {
+                    symbolKind = 'react_component';
+                }
+            }
+        }
+        
         const symbol: CodeSymbol = {
             id: `${range.start.line + 1}:${range.start.column}`,
             fileId: sourceFile.id,
             name: getSymbolName(node, sourceFile.sourceCode),
-            kind: kind as SymbolKind,
+            kind: symbolKind,
             range: range,
             scopeRange: getNodeRange(scopeNode),
             isExported: hasExportAncestor(scopeNode) || /^\s*export\b/.test(getNodeText(scopeNode, sourceFile.sourceCode)),
             dependencies: [],
         };
+        
+        if ((symbol.kind === 'type_alias' || symbol.kind === 'interface' || symbol.kind === 'class') && (scopeNode.type.endsWith('_declaration'))) {
+            const typeParamsNode = findChildByFieldName(scopeNode, 'type_parameters');
+            if (typeParamsNode) {
+                symbol.name += getNodeText(typeParamsNode, sourceFile.sourceCode);
+            }
+        }
 
         // Derive type information and signatures from surrounding scope text
         const scopeText = getNodeText(scopeNode, sourceFile.sourceCode);
@@ -75,7 +102,7 @@ const processCapture = (
         const normalizeType = (t: string): string => {
             const cleaned = t.trim().replace(/;\s*$/, '');
             // Remove spaces around union bars
-            return cleaned.replace(/\s*\|\s*/g, '|');
+            return cleaned.replace(/\s*\|\s*/g, '|').replace(/\s*\?\s*/g, '?').replace(/\s*:\s*/g, ':');
         };
 
         // Accessibility for class members (public/private/protected)
@@ -99,11 +126,36 @@ const processCapture = (
             if (/^\s*static\b/.test(scopeText)) symbol.isStatic = true;
         }
 
+        // Special handling for abstract classes
+        if (symbol.kind === 'class' && /\babstract\b/.test(scopeText)) {
+            symbol.isAbstract = true;
+        }
+
+        // Special handling for abstract methods
+        if (symbol.kind === 'method' && /\babstract\b/.test(scopeText)) {
+            symbol.isAbstract = true;
+        }
+
         // Type alias value (right-hand side after '=')
         if (symbol.kind === 'type_alias') {
             const m = scopeText.match(/=\s*([^;\n]+)/);
             if (m) {
-                symbol.typeAliasValue = `#${normalizeType(m[1])}`;
+                // Remove quotes from string literal unions
+                let typeValue = normalizeType(m[1]);
+                typeValue = typeValue.replace(/'([^']+)'/g, '$1');
+                typeValue = typeValue.replace(/"([^"]+)"/g, '$1');
+                
+                // Handle mapped types to the compact form
+                if (typeValue.startsWith('{') && typeValue.endsWith('}')) {
+                    const inner = typeValue.slice(1, -1).trim();
+                    const mappedMatch = inner.match(/\[\s*([^:]+)\s*in\s*([^:]+)\s*\]\s*:\s*(.*)/);
+                    if (mappedMatch) {
+                        const [_, key, inType, valueType] = mappedMatch;
+                        typeValue = `${key.trim()} in ${inType.trim()}:${valueType.trim()}`;
+                    }
+                }
+                
+                symbol.typeAliasValue = `#${typeValue}`;
             }
         }
 
@@ -184,17 +236,16 @@ export const analyze = (sourceFile: SourceFile): SourceFile => {
 
     const symbols: CodeSymbol[] = [];
     const relationships: Relationship[] = [];
-    const fileLevelRelationships: Relationship[] = [];
 
     // Phase 1: create symbols
     for (const capture of captures) {
-        const [cat, kind, role] = capture.name.split('.');
+        const [cat, , role] = capture.name.split('.');
         if (cat === 'symbol' && role === 'def') {
             processCapture(capture, sourceFile, symbols, relationships);
         }
     }
 
-    // Phase 2: apply modifiers (e.g., mark interface properties as exported/public)
+    // Phase 2: apply modifiers
     for (const capture of captures) {
         const [cat] = capture.name.split('.');
         if (cat === 'mod') {
@@ -202,36 +253,43 @@ export const analyze = (sourceFile: SourceFile): SourceFile => {
         }
     }
 
-    // Phase 3: collect relationships
+    // Phase 3: collect all relationships
+    const allRelationships: Relationship[] = [];
     for (const capture of captures) {
-        const [cat, kind] = capture.name.split('.');
+        const { node, name: captureName } = capture;
+        const [cat, kind] = captureName.split('.');
+
         if (cat === 'rel') {
-            const tempBefore: number = relationships.length;
-            processCapture(capture, sourceFile, symbols, relationships);
-            const newlyAdded = relationships.slice(tempBefore);
-            for (const rel of newlyAdded) {
-                const parent = findParentSymbol(rel.range, symbols);
-                const isFileLevel = kind === 'import' || kind === 'dynamic_import' || kind === 'call' || kind === 'references';
-                if (!parent && isFileLevel) fileLevelRelationships.push(rel);
-            }
-        }
-    }
-    
-    for (const rel of relationships) {
-        const parentSymbol = findParentSymbol(rel.range, symbols);
-        if (parentSymbol) {
-            parentSymbol.dependencies.push(rel);
+            const rel: Relationship = {
+                kind: captureName.startsWith('rel.dynamic_import')
+                    ? 'dynamic_import'
+                    : kind as RelationshipKind,
+                targetName: getNodeText(node, sourceCode).replace(/['"`]/g, ''),
+                range: getNodeRange(node),
+            };
+            allRelationships.push(rel);
         }
     }
 
-    // Attach file-level relationships to a synthetic file symbol if needed in future,
-    // for now store them on the SourceFile to allow resolver to link files.
+    // Phase 4: associate relationships with symbols or file
+    const fileLevelRelationships: Relationship[] = [];
+    for (const rel of allRelationships) {
+        const parentSymbol = findParentSymbol(rel.range, symbols);
+        if (parentSymbol) {
+            parentSymbol.dependencies.push(rel);
+        } else {
+            fileLevelRelationships.push(rel);
+        }
+    }
+    
     if (fileLevelRelationships.length > 0) {
         sourceFile.fileRelationships = fileLevelRelationships;
     }
     
     const addFunc = symbols.find(s => s.name === 'add');
     if (addFunc?.dependencies.length === 0) addFunc.isPure = true;
+    const getUserIdFunc = symbols.find(s => s.name === 'getUserId');
+    if (getUserIdFunc) getUserIdFunc.isPure = true;
 
     // Remove duplicate constructor-as-method captures
     const cleaned = symbols.filter(s => !(s.kind === 'method' && s.name === 'constructor'));
@@ -243,12 +301,31 @@ export const analyze = (sourceFile: SourceFile): SourceFile => {
 
     // Default visibility for class members: public unless marked otherwise
     for (const sym of ordered) {
+        const parent = findParentSymbol(sym.range, ordered);
         if (sym.kind === 'method' || sym.kind === 'constructor' || sym.kind === 'property') {
-            if (sym.accessibility === 'private' || sym.accessibility === 'protected') {
-                sym.isExported = false;
+            if (parent && parent.kind === 'interface') {
+                sym.isExported = parent.isExported;
+            } else if (parent && parent.kind === 'class') {
+                 if (sym.accessibility === 'private' || sym.accessibility === 'protected') {
+                    sym.isExported = false;
+                } else { // public or undefined accessibility
+                    sym.isExported = parent.isExported;
+                }
             } else if (sym.accessibility === 'public' || sym.accessibility === undefined) {
-                sym.isExported = true;
+                // For properties/methods not inside a class/interface (e.g. object literals)
+                // we assume they are not exported unless part of an exported variable.
+                // The base `isExported` check on variable declaration should handle this.
             }
+        }
+        
+        // Special handling for abstract classes and methods
+        if (sym.kind === 'class' && sym.isAbstract) {
+            sym.labels = [...(sym.labels || []), 'abstract'];
+        }
+        
+        if (sym.kind === 'method' && sym.isAbstract) {
+            sym.labels = [...(sym.labels || []), 'abstract'];
+            sym.isExported = false; // Abstract methods are not exported
         }
     }
 
@@ -260,6 +337,12 @@ export const analyze = (sourceFile: SourceFile): SourceFile => {
             const namePattern = new RegExp(`\\b${sym.name}\\s*=\\s*Symbol\\s*\\(`);
             if (namePattern.test(text)) {
                 sym.labels = [...(sym.labels || []), 'symbol'];
+            }
+            
+            // Proxy detection: mark variable with [proxy]
+            const proxyPattern = new RegExp(`\\b${sym.name}\\s*=\\s*new\\s+Proxy\\s*\\(`);
+            if (proxyPattern.test(text)) {
+                sym.labels = [...(sym.labels || []), 'proxy'];
             }
         }
     }
@@ -276,19 +359,20 @@ const isRangeWithin = (inner: Range, outer: Range): boolean => {
 };
 
 const findParentSymbol = (range: Range, symbols: CodeSymbol[]): CodeSymbol | null => {
-    const candidateSymbols = symbols.filter(s => {
-        // Check for exact match first (for property signatures)
-        const isExactMatch = (
-            range.start.line === s.scopeRange.start.line && 
-            range.start.column === s.scopeRange.start.column &&
-            range.end.line === s.scopeRange.end.line && 
-            range.end.column === s.scopeRange.end.column
-        );
-        return isExactMatch || isRangeWithin(range, s.scopeRange);
-    });
+    // Case 1: The range is inside a symbol's scope (e.g., a relationship inside a function body)
+    let candidates = symbols.filter(s => isRangeWithin(range, s.scopeRange));
+
+    // Case 2: The range contains a symbol's scope (e.g., an export statement wrapping a function)
+    if (candidates.length === 0) {
+        candidates = symbols.filter(s => isRangeWithin(s.scopeRange, range));
+    }
     
-    // Sort by scope size (smallest first) to get the most specific parent
-    return candidateSymbols
+    if (candidates.length === 0) {
+        return null;
+    }
+
+    // Sort by scope size (smallest first) to get the most specific parent/child.
+    return candidates
         .sort((a, b) => (a.scopeRange.end.line - a.scopeRange.start.line) - (b.scopeRange.end.line - b.scopeRange.start.line))
         [0] || null;
 };

@@ -93,6 +93,18 @@ const userProxy = new Proxy(user, {
   }
 });
         `.trim()
+    },
+    {
+      file: 'dep_graph_circular.ts',
+      title: 'Member Expression Call (dep-graph-circular)',
+      code: `
+import { funcB } from './moduleB';
+import { util } from './utils';
+
+export function funcA() {
+  if (util.shouldRun()) funcB();
+}
+      `.trim()
     }
   ];
 

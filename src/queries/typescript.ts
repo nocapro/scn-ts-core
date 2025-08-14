@@ -11,32 +11,28 @@ export const typescriptQueries = `
 (class_declaration
   name: (type_identifier) @symbol.class.def) @scope.class.def
 
+; Abstract class definitions
+(abstract_class_declaration
+  name: (type_identifier) @symbol.class.def) @scope.class.def
+
 ; Function definitions
 (function_declaration
   name: (identifier) @symbol.function.def) @scope.function.def
 
 ; Method definitions (capture name and formal parameters as scope)
-(method_definition
-  (property_identifier) @symbol.method.def
-  (formal_parameters) @scope.method.def)
+(method_definition name: (property_identifier) @symbol.method.def) @scope.method.def
 
 ; Method signatures (interfaces, abstract class methods)
 (method_signature
   name: (property_identifier) @symbol.method.def) @scope.method.def
 
 ; Constructor definitions
-(method_definition
-  (property_identifier) @symbol.constructor.def
-  (formal_parameters) @scope.constructor.def
-  (#eq? @symbol.constructor.def "constructor"))
+(method_definition name: (property_identifier) @symbol.constructor.def
+  (#eq? @symbol.constructor.def "constructor")) @scope.constructor.def
 
 ; Property signatures in interfaces (should be public by default)
 (property_signature
   (property_identifier) @symbol.property.def)
-
-; Mark interface properties and method signatures as exported (public)
-(property_signature) @mod.export
-(method_signature) @mod.export
 
 ; Class field definitions (TypeScript grammar uses public_field_definition)
 (public_field_definition
@@ -54,6 +50,30 @@ export const typescriptQueries = `
   )
 ) @scope.function.def
 
+; IIFE with assignment: const result = (function(){ ... })()
+(expression_statement
+  (assignment_expression
+    left: (identifier) @symbol.variable.def
+    right: (call_expression
+      function: (parenthesized_expression
+        (function_expression) @symbol.function.def
+      )
+    )
+  )
+)
+
+; Window assignments: window.Widget = Widget
+(expression_statement
+  (assignment_expression
+    left: (member_expression
+      object: (identifier) @__obj
+      property: (property_identifier) @symbol.variable.def
+    )
+    right: _ @symbol.variable.ref
+  )
+  (#eq? @__obj "window")
+)
+
 ; Tagged template usage -> capture identifier before template as call
 (call_expression
   function: (identifier) @rel.call)
@@ -70,6 +90,21 @@ export const typescriptQueries = `
 
 ; Type references in type annotations, extends clauses, etc.
 (type_identifier) @rel.references
+
+; `satisfies` expressions
+(satisfies_expression
+  (type_identifier) @rel.references)
+
+; Identifiers used in expressions
+(binary_expression
+  left: (identifier) @rel.references
+  right: (identifier) @rel.references
+)
+
+; template literal types
+(template_type
+  (type_identifier) @rel.references)
+
 
 ; Call expressions
 (call_expression
@@ -94,6 +129,34 @@ export const typescriptQueries = `
    arguments: (arguments (string) @rel.import))
   (#eq? @__fn "require"))
 
+; CommonJS module.exports assignment
+(expression_statement
+  (assignment_expression
+    left: (member_expression
+      object: (identifier) @__obj
+      property: (property_identifier) @symbol.variable.def
+    )
+    right: _
+  )
+  (#eq? @__obj "module")
+)
+
+; CommonJS exports.property assignment
+(expression_statement
+  (assignment_expression
+    left: (member_expression
+      object: (member_expression
+        object: (identifier) @__obj
+        property: (property_identifier) @__prop
+      )
+      property: (property_identifier) @symbol.variable.def
+    )
+    right: _
+  )
+  (#eq? @__obj "module")
+  (#eq? @__prop "exports")
+)
+
 ; Export modifiers
 (export_statement) @mod.export
 
@@ -108,17 +171,30 @@ export const typescriptQueries = `
 export const typescriptReactQueries = `
 ${typescriptQueries}
 
-; JSX element definitions
+; JSX component definitions (uppercase)
 (jsx_opening_element
-  name: (identifier) @symbol.jsx_component.def) @scope.jsx_component.def
+  name: (identifier) @symbol.react_component.def
+  (#match? @symbol.react_component.def "^[A-Z]")) @scope.react_component.def
 
 (jsx_self_closing_element
-  name: (identifier) @symbol.jsx_component.def) @scope.jsx_component.def
+  name: (identifier) @symbol.react_component.def
+  (#match? @symbol.react_component.def "^[A-Z]")) @scope.react_component.def
 
-; JSX component references
+; JSX element definitions (lowercase tags)
 (jsx_opening_element
-  name: (identifier) @rel.references)
+  name: (identifier) @symbol.jsx_element.def
+  (#match? @symbol.jsx_element.def "^[a-z]")) @scope.jsx_element.def
 
 (jsx_self_closing_element
-  name: (identifier) @rel.references)
+  name: (identifier) @symbol.jsx_element.def
+  (#match? @symbol.jsx_element.def "^[a-z]")) @scope.jsx_element.def
+
+; JSX component references (uppercase)
+(jsx_opening_element
+  name: (identifier) @rel.references
+  (#match? @rel.references "^[A-Z]"))
+
+(jsx_self_closing_element
+  name: (identifier) @rel.references
+  (#match? @rel.references "^[A-Z]"))
 `;

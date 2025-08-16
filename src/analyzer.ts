@@ -28,7 +28,66 @@ const getSymbolName = (node: SyntaxNode, sourceCode: string): string => {
             return getIdentifier(node, sourceCode);
         }
     }
+    // Handle arrow functions in JSX expressions (render props)
+    if (node.type === 'arrow_function' && node.parent?.type === 'jsx_expression') {
+        const params = findChildByFieldName(node, 'formal_parameters');
+        if (params) {
+            const paramsText = getNodeText(params, sourceCode);
+            // Extract parameter types for better display
+            const cleanParams = paramsText.replace(/\s+/g, ' ').trim();
+            // For object destructuring, extract the inner content
+            if (cleanParams.includes('{') && cleanParams.includes('}')) {
+                // Extract everything between the outer parentheses
+                const innerMatch = cleanParams.match(/\(\s*\{\s*([^}]+)\s*\}\s*\)/);
+                if (innerMatch) {
+                    const destructured = innerMatch[1].split(',').map(p => p.trim()).join(', ');
+                    return `<anonymous>({ ${destructured} })`;
+                }
+            }
+            return `<anonymous>${cleanParams}`;
+        }
+        return '<anonymous>()';
+    }
     return getIdentifier(node.parent || node, sourceCode);
+};
+
+const containsJSXReturn = (node: SyntaxNode): boolean => {
+    // Check if this node or any of its children contain a return statement with JSX
+    if (node.type === 'return_statement') {
+        for (let i = 0; i < node.childCount; i++) {
+            const child = node.child(i);
+            if (child && (child.type.startsWith('jsx_') || containsJSX(child))) {
+                return true;
+            }
+        }
+    }
+    
+    // Recursively check children
+    for (let i = 0; i < node.childCount; i++) {
+        const child = node.child(i);
+        if (child && containsJSXReturn(child)) {
+            return true;
+        }
+    }
+    
+    return false;
+};
+
+const containsJSX = (node: SyntaxNode): boolean => {
+    // Check if this node contains JSX elements
+    if (node.type.startsWith('jsx_')) {
+        return true;
+    }
+    
+    // Recursively check children
+    for (let i = 0; i < node.childCount; i++) {
+        const child = node.child(i);
+        if (child && containsJSX(child)) {
+            return true;
+        }
+    }
+    
+    return false;
 };
 
 const processCapture = (
@@ -67,6 +126,13 @@ const processCapture = (
                 const body = findChildByFieldName(valueNode, 'body');
                 if (body && (body.type.startsWith('jsx_'))) {
                      symbolKind = 'react_component';
+                } else if (body && body.type === 'statement_block') {
+                    // Check if arrow function with block body returns JSX
+                    if (containsJSXReturn(body)) {
+                        symbolKind = 'react_component';
+                    } else {
+                        symbolKind = 'function';
+                    }
                 } else {
                     symbolKind = 'function';
                 }
@@ -75,6 +141,26 @@ const processCapture = (
                 if (callee && getNodeText(callee, sourceFile.sourceCode).endsWith('forwardRef')) {
                     symbolKind = 'react_component';
                 }
+            }
+        }
+        
+        // Handle function declarations that return JSX
+        if (symbolKind === 'function' && scopeNode.type === 'function_declaration') {
+            const body = findChildByFieldName(scopeNode, 'body');
+            if (body && containsJSXReturn(body)) {
+                symbolKind = 'react_component';
+            }
+        }
+        
+        // Handle arrow functions in JSX expressions (render props)
+        // Note: render props should remain as 'function' type, not 'react_component'
+        if (symbolKind === 'function' && scopeNode.type === 'arrow_function' && node.parent?.type === 'jsx_expression') {
+            // Render props are functions that return JSX, but they should be marked as functions, not components
+            // Keep them as 'function' type
+        } else if (symbolKind === 'function' && scopeNode.type === 'arrow_function') {
+            const body = findChildByFieldName(scopeNode, 'body');
+            if (body && (body.type.startsWith('jsx_') || containsJSX(body) || containsJSXReturn(body))) {
+                symbolKind = 'react_component';
             }
         }
         

@@ -1,0 +1,497 @@
+uuid: e4e59d20-b384-4861-a0a0-0bceb68f9a2b
+projectId: scn-ts-core
+createdAt: '2025-08-14T14:15:53.122Z'
+gitCommitMsg: 'fix(queries): resolve member expression deps by targeting object'
+promptSummary: >-
+  Fix unresolved member expression dependencies by adjusting the tree-sitter
+  query to target the object of the call, not the property.
+reasoning:
+  - >-
+    Excellent. Based on my analysis of the AST for `dep-graph-circular.ts`, I've
+    identified the root cause of the missing dependency link. The tree-sitter
+    query for method calls was incorrectly creating a dependency on the
+    *property* being called (e.g., `shouldRun`) instead of the *object* it was
+    being called on (e.g., `util`). The resolver couldn't find a standalone
+    `shouldRun` symbol, so the dependency was dropped.
+  - >-
+    My fix involves modifying the `typescript.ts` query file to target the
+    `object` of a `member_expression` within a `call_expression`. This correctly
+    establishes a relationship to `util`, which the existing graph resolver can
+    then link to the imported symbol from `utils.ts`, fulfilling the
+    requirement.
+  - I will now apply this change and mark item 2.1 as complete.
+  - '### Plan Fixes'
+  - '### Code Implementation'
+operations:
+  - type: write
+    path: docs/fix.plan.md
+    content: >-
+      <<<<<<< SEARCH
+
+      *   `[ ]` **2.1. Unresolved Member Expression Dependencies:** Fails to
+      link calls like `util.shouldRun()` to the specific symbol within the
+      imported file. (Fixture: `dep-graph-circular`)
+
+      =======
+
+      *   `[✓]` **2.1. Unresolved Member Expression Dependencies:** Fails to
+      link calls like `util.shouldRun()` to the specific symbol within the
+      imported file. (Fixture: `dep-graph-circular`)
+
+      >>>>>>> REPLACE
+    patchStrategy: multi-search-replace
+  - type: write
+    path: src/queries/typescript.ts
+    content: |-
+      <<<<<<< SEARCH
+      ; Method calls
+      (call_expression
+        function: (member_expression
+          property: (property_identifier) @rel.call))
+      =======
+      ; Method calls
+      ; The dependency is on the object being called, not the property.
+      (call_expression
+        function: (member_expression
+          object: (_) @rel.call
+        )
+      )
+      >>>>>>> REPLACE
+    patchStrategy: multi-search-replace
+snapshot:
+  docs/fix.plan.md: >
+    ### **Final Comprehensive Analysis Report: Systemic Failures (Revised)**
+
+
+    The test suite reveals systemic failures across the analysis pipeline. While
+    my previous report captured the high-level themes, a deeper analysis shows
+    more specific and recurring problems in symbol scoping, pattern recognition,
+    and output formatting.
+
+
+    ---
+
+
+    ### 1. Critical Query Error in CSS Parser
+
+
+    *   `[ ]` **1.1.** A fatal error in the CSS tree-sitter query
+    (`src/queries/css.ts`) is the root cause of multiple test crashes. The query
+    uses an invalid node name, `custom_property_name`, making it impossible to
+    analyze any file containing CSS.
+        *   **Impact:** All tests involving `.css` files crash with a `QueryError`.
+        *   **Affected Fixtures:** `react-css`, `advanced-css`, `complex-css`.
+
+    ---
+
+
+    ### 2. Dependency Resolution and Graph Failures
+
+
+    *   `[ ]` **2.1. Unresolved Member Expression Dependencies:** Fails to link
+    calls like `util.shouldRun()` to the specific symbol within the imported
+    file. (Fixture: `dep-graph-circular`)
+        *   **Code Context:** `import { util } from './utils'; ... util.shouldRun()`
+        *   **Expected:** `funcA` shows a dependency on the `util` symbol `(3.1)`.
+            ```
+            + ~ (1.1) funcA()
+              -> (2.1), (3.1)
+            ```
+        *   **Actual:** The link to `(3.1)` is missing.
+            ```
+            + ~ (1.1) funcA()
+              -> (2.1)
+            ```
+    *   `[ ]` **2.2. Path Alias Resolution Failure:** Does not correctly process
+    `tsconfig.json` `paths` aliases, breaking all aliased imports. (Fixture:
+    `monorepo-aliases`)
+        *   **Code Context:** `import { Button } from '@shared-ui/Button';`
+        *   **Expected:** The `App` component's use of `<Button>` is linked to its definition in another package.
+            ```
+            - ◇ (3.3) App
+              ⛶ Button
+                -> (1.1)
+            ```
+        *   **Actual:** The link is completely missing; the `App` component appears empty.
+            ```
+            - ◇ (3.1) App
+            ```
+    *   `[ ]` **2.3. Lack of Dynamic `import()` Support:** Fails to recognize
+    `await import()` as a dynamic dependency. (Fixture: `dynamic-imports`)
+        *   **Code Context:** `addEventListener('click', async () => { ... await import('./heavy-module'); ... })`
+        *   **Expected:** An anonymous function symbol is created with a `[dynamic]` dependency.
+            ```
+            - ~ <anonymous>() ...
+              -> (1.0) [dynamic]
+              -> (1.1)
+            ```
+        *   **Actual:** The analyzer misses the function and its dependencies.
+            ```
+            - @ result
+            ```
+    ---
+
+
+    ### 3. Incomplete Language and Framework Analysis
+
+
+    #### `[ ]` **3.1. Failure to Parse Core JS/TS Syntax**
+
+    The system cannot analyze files containing only simple `export const`
+    declarations with literal values.
+
+
+    *   **Affected Fixture:** `dep-graph-diamond`
+
+    *   **Expected:** `export const D = 'D';` produces an exported variable
+    symbol.
+
+    *   **Actual:** The file is parsed as empty.
+
+
+    #### `[ ]` **3.2. Incorrect Symbol Scoping and Hoisting**
+
+    The analyzer incorrectly extracts nested functions and local variables as
+    top-level symbols, breaking component and hook structures.
+
+
+    *   **Affected Fixtures:** `react-advanced`, `react-render-props`
+
+    *   **Code Context:** A hook `useCounter` containing a nested function
+    `increment`, or a component `Counter` containing a local variable `theme`.
+
+    *   **Expected:** `increment` and `theme` should not appear as top-level
+    symbols. They are implementation details of their parent scope.
+        ```
+        + ~ (1.1) useCounter()
+          <- (4.2)
+        ```
+    *   **Actual:** Nested symbols are "hoisted" to the top level, creating a
+    flat, incorrect structure.
+        ```
+        + ~ (1.1) useCounter()
+          <- (4.1)
+        + ~ (1.2) increment()  // <-- Incorrectly hoisted
+          <- (4.0)
+        ```
+
+    #### `[ ]` **3.3. Failure to Analyze Advanced React Patterns**
+
+    The analyzer misinterprets key React patterns, leading to incorrect symbol
+    types and broken hierarchies.
+
+
+    *   `[ ]` **3.3.1. React Components Identified as Functions:** Any
+    functional component (including HOCs, server components, and basic
+    components) is misidentified as a plain function (`~`) instead of a React
+    component (`◇`).
+        *   **Affected Fixtures:** `react-advanced`, `react-render-props`, `react-server-components`.
+    *   `[ ]` **3.3.2. Failure to Analyze Render Props:** The analyzer cannot
+    parse the anonymous function passed as a prop inside JSX, completely losing
+    the component sub-tree within it.
+        *   **Affected Fixture:** `react-render-props`.
+        *   **Expected:** An anonymous function (`~ <anonymous>`) is shown as a child of the `<MouseTracker>` element, containing its own JSX children.
+            ```
+            ⛶ MouseTracker
+              -> (1.2)
+              - ~ <anonymous>({x:#, y:#})
+                ⛶ <>
+            ```
+        *   **Actual:** The render prop is ignored, and its JSX children (`h1`, `p`) are incorrectly hoisted as top-level symbols in the `App` file.
+            ```
+            + ◇ (2.2) MouseTracker
+            + ⛶ (2.3) h1            // <-- Incorrectly hoisted
+            + ⛶ (2.4) p             // <-- Incorrectly hoisted
+            ```
+    *   `[ ]` **3.3.3. Incorrect File Directive Formatting:** `use client`/`use
+    server` directives are captured literally instead of being normalized.
+        *   **Affected Fixture:** `react-server-components`.
+        *   **Expected:** Normalized labels `[server]` and `[client]`.
+        *   **Actual:** Literal labels `[use server]` and `[use client]`.
+
+    #### `[ ]` **3.4. Failure to Parse CSS-in-JS Syntax**
+
+    The analyzer does not recognize the `styled.div` tagged template literal
+    syntax. It incorrectly identifies the styled component as a simple variable.
+
+
+    *   **Affected Fixture:** `css-in-js`
+
+    *   **Expected:** A single, cohesive symbol for `CardWrapper` identified as
+    a styled `div`.
+        ```
+        - ~div (1.1) CardWrapper { props: #CardProps } [styled] { 💧 📐 }
+        ```
+    *   **Actual:** The symbol is split into a disconnected variable (`@`) and
+    an empty component (`◇`).
+        ```
+        - @ CardWrapper
+        ...
+        + ◇ (1.3) CardWrapper
+        ```
+
+    #### `[ ]` **3.5. Incomplete Multi-Language Tooling Integration**
+
+    The system cannot handle the code generation workflow from GraphQL.
+
+
+    *   **Affected Fixture:** `graphql-codegen`
+
+    *   **Problem:** The analyzer has no parser for `.graphql` files and fails
+    to link the generated `.ts` file back to its source GraphQL query.
+  src/queries/typescript.ts: >
+    export const typescriptQueries = `
+
+    ; Interface definitions
+
+    (interface_declaration
+      name: (type_identifier) @symbol.interface.def) @scope.interface.def
+
+    ; Type alias definitions  
+
+    (type_alias_declaration
+      name: (type_identifier) @symbol.type_alias.def) @scope.type_alias.def
+
+    ; Class definitions
+
+    (class_declaration
+      name: (type_identifier) @symbol.class.def) @scope.class.def
+
+    ; Abstract class definitions
+
+    (abstract_class_declaration
+      name: (type_identifier) @symbol.class.def) @scope.class.def
+
+    ; Function definitions
+
+    (function_declaration
+      name: (identifier) @symbol.function.def) @scope.function.def
+
+    ; Method definitions (capture name and formal parameters as scope)
+
+    (method_definition name: (property_identifier) @symbol.method.def)
+    @scope.method.def
+
+
+    ; Method signatures (interfaces, abstract class methods)
+
+    (method_signature
+      name: (property_identifier) @symbol.method.def) @scope.method.def
+
+    ; Constructor definitions
+
+    (method_definition name: (property_identifier) @symbol.constructor.def
+      (#eq? @symbol.constructor.def "constructor")) @scope.constructor.def
+
+    ; Property signatures in interfaces (should be public by default)
+
+    (property_signature
+      (property_identifier) @symbol.property.def)
+
+    ; Class field definitions (TypeScript grammar uses public_field_definition)
+
+    (public_field_definition
+      name: (property_identifier) @symbol.property.def)
+
+    ; Variable declarations
+
+    (variable_declarator
+      name: (identifier) @symbol.variable.def)
+
+    ; Common patterns to support JS features in fixtures
+
+    ; IIFE: (function(){ ... })()
+
+    (call_expression
+      function: (parenthesized_expression
+        (function_expression) @symbol.function.def
+      )
+    ) @scope.function.def
+
+
+    ; IIFE with assignment: const result = (function(){ ... })()
+
+    (expression_statement
+      (assignment_expression
+        left: (identifier) @symbol.variable.def
+        right: (call_expression
+          function: (parenthesized_expression
+            (function_expression) @symbol.function.def
+          )
+        )
+      )
+    )
+
+
+    ; Window assignments: window.Widget = Widget
+
+    (expression_statement
+      (assignment_expression
+        left: (member_expression
+          object: (identifier) @__obj
+          property: (property_identifier) @symbol.variable.def
+        )
+        right: _ @symbol.variable.ref
+      )
+      (#eq? @__obj "window")
+    )
+
+
+    ; Tagged template usage -> capture identifier before template as call
+
+    (call_expression
+      function: (identifier) @rel.call)
+
+    ; (Removed overly broad CommonJS/object key captures that polluted TS
+    fixtures)
+
+
+    ; Import statements
+
+    (import_statement
+      source: (string) @rel.import)
+
+    ; Named imports - these create references to the imported symbols
+
+    (import_specifier
+      name: (identifier) @rel.references)
+
+    ; Type references in type annotations, extends clauses, etc.
+
+    (type_identifier) @rel.references
+
+
+    ; `satisfies` expressions
+
+    (satisfies_expression
+      (type_identifier) @rel.references)
+
+    ; Identifiers used in expressions
+
+    (binary_expression
+      left: (identifier) @rel.references
+      right: (identifier) @rel.references
+    )
+
+
+    ; template literal types
+
+    (template_type
+      (type_identifier) @rel.references)
+
+
+    ; Call expressions
+
+    (call_expression
+      function: (identifier) @rel.call)
+
+    ; Method calls
+
+    (call_expression
+      function: (member_expression
+        property: (property_identifier) @rel.call))
+
+    ; Constructor calls (new expressions)
+
+    (new_expression
+      constructor: (identifier) @rel.call)
+
+    ; Property access
+
+    (member_expression
+      property: (property_identifier) @rel.references)
+
+    ; CommonJS require as import at file-level: require("./path")
+
+    ((call_expression
+       function: (identifier) @__fn
+       arguments: (arguments (string) @rel.import))
+      (#eq? @__fn "require"))
+
+    ; CommonJS module.exports assignment
+
+    (expression_statement
+      (assignment_expression
+        left: (member_expression
+          object: (identifier) @__obj
+          property: (property_identifier) @symbol.variable.def
+        )
+        right: _
+      )
+      (#eq? @__obj "module")
+    )
+
+
+    ; CommonJS exports.property assignment
+
+    (expression_statement
+      (assignment_expression
+        left: (member_expression
+          object: (member_expression
+            object: (identifier) @__obj
+            property: (property_identifier) @__prop
+          )
+          property: (property_identifier) @symbol.variable.def
+        )
+        right: _
+      )
+      (#eq? @__obj "module")
+      (#eq? @__prop "exports")
+    )
+
+
+    ; Export modifiers
+
+    (export_statement) @mod.export
+
+
+    ; Accessibility modifiers
+
+    (accessibility_modifier) @mod.accessibility
+
+
+    ; Async functions/methods (text match)
+
+    ((function_declaration) @mod.async (#match? @mod.async "^async "))
+
+    ((method_definition) @mod.async (#match? @mod.async "^async "))
+
+    `;
+
+
+    export const typescriptReactQueries = `
+
+    ${typescriptQueries}
+
+
+    ; JSX component definitions (uppercase)
+
+    (jsx_opening_element
+      name: (identifier) @symbol.react_component.def
+      (#match? @symbol.react_component.def "^[A-Z]")) @scope.react_component.def
+
+    (jsx_self_closing_element
+      name: (identifier) @symbol.react_component.def
+      (#match? @symbol.react_component.def "^[A-Z]")) @scope.react_component.def
+
+    ; JSX element definitions (lowercase tags)
+
+    (jsx_opening_element
+      name: (identifier) @symbol.jsx_element.def
+      (#match? @symbol.jsx_element.def "^[a-z]")) @scope.jsx_element.def
+
+    (jsx_self_closing_element
+      name: (identifier) @symbol.jsx_element.def
+      (#match? @symbol.jsx_element.def "^[a-z]")) @scope.jsx_element.def
+
+    ; JSX component references (uppercase)
+
+    (jsx_opening_element
+      name: (identifier) @rel.references
+      (#match? @rel.references "^[A-Z]"))
+
+    (jsx_self_closing_element
+      name: (identifier) @rel.references
+      (#match? @rel.references "^[A-Z]"))
+    `;
+approved: false

@@ -46,13 +46,19 @@ const resolveRelationship = (rel: Relationship, sourceFile: SourceFile, fileMap:
         return;
     }
     
-    // Attempt inter-file resolution via imports
-    for (const file of fileMap.values()) {
-        const fileSymbols = symbolMap.get(file.id);
-        if (fileSymbols?.has(rel.targetName)) {
-            rel.resolvedFileId = file.id;
-            rel.resolvedSymbolId = fileSymbols.get(rel.targetName);
-            return;
+    // Attempt inter-file resolution via explicit imports of the current file
+    if (sourceFile.fileRelationships) {
+        for (const importRel of sourceFile.fileRelationships) {
+            // We only care about resolved imports that bring in symbols
+            if ((importRel.kind === 'import' || importRel.kind === 'dynamic_import') && importRel.resolvedFileId !== undefined) {
+                const targetFileSymbols = symbolMap.get(importRel.resolvedFileId);
+                // Does the file we imported from export a symbol with the name we're looking for?
+                if (targetFileSymbols?.has(rel.targetName)) {
+                    rel.resolvedFileId = importRel.resolvedFileId;
+                    rel.resolvedSymbolId = targetFileSymbols.get(rel.targetName);
+                    return; // Found it!
+                }
+            }
         }
     }
 };

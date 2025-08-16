@@ -1,0 +1,343 @@
+uuid: d6d080f8-c266-4e58-8664-9f4d1e2dae6e
+projectId: scn-ts-core
+createdAt: '2025-08-14T14:18:41.294Z'
+gitCommitMsg: 'fix(resolver): resolve inter-file dependencies via imports'
+promptSummary: >-
+  Fixing unresolved member expression dependencies by correcting the graph
+  resolver logic to be import-aware instead of using a global search.
+reasoning:
+  - >-
+    You are correct, the test report shows that issue 2.1 is not resolved. My
+    previous fix to the tree-sitter query was a necessary first step, but it
+    exposed a deeper issue in how dependencies are resolved.
+  - >-
+    The problem was in `src/graph-resolver.ts`. When trying to link a symbol
+    like `util`, the resolver performed a global search across all files for an
+    exported symbol with that name. This is incorrect and brittle. It should
+    only look for `util` in files that are explicitly imported by `moduleA.ts`.
+  - >-
+    The fix is to change the resolver to use the file's own import relationships
+    (`fileRelationships`) to find the correct source file for a given symbol,
+    instead of searching globally. This makes the resolution process respect the
+    module import graph.
+  - >-
+    I will also revert the diagnostic change I made to `scripts/ast.ts` as it's
+    no longer needed.
+  - 'Here are the patches:'
+  - First, I'll revert the change to the AST script.
+  - Next, here is the corrected logic for the graph resolver.
+operations:
+  - type: write
+    path: scripts/ast.ts
+    content: |-
+      <<<<<<< SEARCH
+          },
+          {
+            file: 'dep_graph_circular.ts',
+            title: 'Member Expression Call (dep-graph-circular)',
+            code: `
+      import { funcB } from './moduleB';
+      import { util } from './utils';
+
+      export function funcA() {
+        if (util.shouldRun()) funcB();
+      }
+            `.trim()
+          }
+        ];
+      =======
+          }
+        ];
+      >>>>>>> REPLACE
+    patchStrategy: multi-search-replace
+  - type: write
+    path: src/graph-resolver.ts
+    content: |-
+      <<<<<<< SEARCH
+          // Attempt inter-file resolution via imports
+          for (const file of fileMap.values()) {
+              const fileSymbols = symbolMap.get(file.id);
+              if (fileSymbols?.has(rel.targetName)) {
+                  rel.resolvedFileId = file.id;
+                  rel.resolvedSymbolId = fileSymbols.get(rel.targetName);
+                  return;
+              }
+          }
+      =======
+          // Attempt inter-file resolution via explicit imports of the current file
+          if (sourceFile.fileRelationships) {
+              for (const importRel of sourceFile.fileRelationships) {
+                  // We only care about resolved imports that bring in symbols
+                  if ((importRel.kind === 'import' || importRel.kind === 'dynamic_import') && importRel.resolvedFileId !== undefined) {
+                      const targetFileSymbols = symbolMap.get(importRel.resolvedFileId);
+                      // Does the file we imported from export a symbol with the name we're looking for?
+                      if (targetFileSymbols?.has(rel.targetName)) {
+                          rel.resolvedFileId = importRel.resolvedFileId;
+                          rel.resolvedSymbolId = targetFileSymbols.get(rel.targetName);
+                          return; // Found it!
+                      }
+                  }
+              }
+          }
+      >>>>>>> REPLACE
+    patchStrategy: multi-search-replace
+snapshot:
+  scripts/ast.ts: >
+    import { initializeParser, parse } from '../src/parser';
+
+    import { getLanguageForFile } from '../src/languages';
+
+    import path from 'node:path';
+
+
+    async function main() {
+      const wasmDir = path.join(process.cwd(), 'test', 'wasm');
+      await initializeParser({ wasmBaseUrl: wasmDir });
+
+      const samples: Array<{file: string, code: string, title: string}> = [
+        {
+          file: 'sample.ts',
+          title: 'TS class/interface snippet',
+          code: `
+    export interface User { id: number; name: string; }
+
+    export type UserId = number | string;
+
+    export class ApiClient { private apiKey: string; constructor(key: string) {
+    this.apiKey = key; } async fetchUser(id: UserId): Promise<User> { return {
+    id: 1, name: 'x' }; } }
+          `.trim()
+        },
+        {
+          file: 'iife.js',
+          title: 'IIFE and prototype',
+          code: `
+    (function(){
+      function Widget(name){ this.name = name }
+      Widget.prototype.render = function(){ return 'x' }
+      function * idGenerator(){ let i=0; while(true) yield i++; }
+      window.Widget = Widget; window.idGenerator = idGenerator;
+    })();
+          `.trim()
+        },
+        {
+          file: 'cjs.js',
+          title: 'CJS require',
+          code: `
+    const cjs = require('./cjs_module');
+          `.trim()
+        },
+        {
+          file: 'cjs_exports.js',
+          title: 'CJS module.exports',
+          code: `
+    function cjsFunc() { console.log('cjs'); }
+
+    module.exports = {
+      value: 42,
+      run: () => cjsFunc()
+    };
+          `.trim()
+        },
+        {
+          file: 'tagged.js',
+          title: 'Tagged template',
+          code: `
+    function styler(strings, ...values) { return '' }
+
+    const name = 'a';
+
+    document.body.innerHTML = styler\`Hello, \${name}!\`;
+          `.trim()
+        },
+        {
+          file: 'abstract_class.ts',
+          title: 'Abstract Class',
+          code: `
+    abstract class BaseEntity {
+      readonly id: string;
+      static species: string;
+      protected constructor(id: string) { this.id = id; }
+      abstract getDescription(): string;
+      static getSpeciesName(): string { return this.species; }
+    }
+          `.trim()
+        },
+        {
+          file: 'advanced_types.ts',
+          title: 'Advanced Types',
+          code: `
+    type EventName = 'click' | 'scroll' | 'mousemove';
+
+    type Style = 'bold' | 'italic';
+
+    type CssClass = \`text-\${Style}\`;
+
+    type HandlerMap = { [K in EventName]: (event: K) => void };
+
+    type UnpackPromise<T> = T extends Promise<infer U> ? U : T;
+
+    interface User { id: number; name: string; }
+
+    const config = { user: { id: 1, name: 'a' } satisfies User };
+          `.trim()
+        },
+        {
+            file: 'proxy.js',
+            title: 'JS Proxy',
+            code: `
+    const hiddenProp = Symbol('hidden');
+
+    const user = { name: 'John', [hiddenProp]: 'secret' };
+
+    const userProxy = new Proxy(user, {
+      get(target, prop) {
+        return prop in target ? target[prop] : 'N/A';
+      }
+    });
+            `.trim()
+        },
+        {
+          file: 'dep_graph_circular.ts',
+          title: 'Member Expression Call (dep-graph-circular)',
+          code: `
+    import { funcB } from './moduleB';
+
+    import { util } from './utils';
+
+
+    export function funcA() {
+      if (util.shouldRun()) funcB();
+    }
+          `.trim()
+        }
+      ];
+
+      for (const sample of samples) {
+        const lang = getLanguageForFile(sample.file)!;
+        const tree = parse(sample.code, lang)!;
+        console.log(`\n===== ${sample.title} (${sample.file}) =====`);
+        printAST(tree.rootNode);
+      }
+    }
+
+
+    function printAST(node: any, depth = 0) {
+      const indent = '  '.repeat(depth);
+      const isNamed = typeof node.isNamed === 'function' ? node.isNamed() : true;
+      console.log(`${indent}${node.type}${isNamed ? '' : ' [anon]'} [${node.startPosition.row}:${node.startPosition.column}-${node.endPosition.row}:${node.endPosition.column}]`);
+
+      const fieldNames: string[] = node.fieldNames || [];
+      for (const fieldName of fieldNames) {
+        const child = node.childForFieldName(fieldName);
+        if (child) {
+          console.log(`${indent}  ${fieldName}:`);
+          printAST(child, depth + 2);
+        }
+      }
+
+      for (let i = 0; i < node.childCount; i++) {
+        const child = node.child(i);
+        if (!fieldNames.some(fn => node.childForFieldName(fn) === child)) {
+          printAST(child, depth + 1);
+        }
+      }
+    }
+
+
+    main().catch(e => { console.error(e); process.exit(1); });
+  src/graph-resolver.ts: >-
+    import type { SourceFile, PathResolver, Relationship } from './types';
+
+    import path from 'node:path';
+
+
+    type FileMap = Map<string, SourceFile>;
+
+    type SymbolMap = Map<number, Map<string, string>>;
+
+
+    const findFileByImportPath = (importPath: string, currentFile: SourceFile,
+    fileMap: FileMap, pathResolver: PathResolver, root: string): SourceFile |
+    undefined => {
+        const currentDir = path.dirname(currentFile.absolutePath);
+        const aliasedPath = pathResolver(importPath);
+
+        const resolvedPath = aliasedPath ? path.resolve(root, aliasedPath) : path.resolve(currentDir, importPath);
+
+        const extensions = ['.ts', '.tsx', '.js', '.jsx', '.css', '.go', '.rs', '.py', '.java', '.graphql', ''];
+        for (const ext of extensions) {
+            const tryPath = (resolvedPath + ext).replace(/\\/g, '/');
+            const relative = path.relative(root, tryPath).replace(/\\/g, '/');
+            if (fileMap.has(relative)) return fileMap.get(relative);
+            
+            const tryIndexPath = path.join(resolvedPath, 'index' + ext).replace(/\\/g, '/');
+            const relativeIndex = path.relative(root, tryIndexPath).replace(/\\/g, '/');
+            if(fileMap.has(relativeIndex)) return fileMap.get(relativeIndex);
+        }
+        return undefined;
+    };
+
+
+
+    const resolveRelationship = (rel: Relationship, sourceFile: SourceFile,
+    fileMap: FileMap, symbolMap: SymbolMap, pathResolver: PathResolver, root:
+    string) => {
+        if (rel.kind === 'import') {
+            const targetFile = findFileByImportPath(rel.targetName, sourceFile, fileMap, pathResolver, root);
+            if (targetFile) rel.resolvedFileId = targetFile.id;
+            return;
+        }
+        
+        // Handle dynamic imports
+        if (rel.kind === 'dynamic_import') {
+            const targetFile = findFileByImportPath(rel.targetName, sourceFile, fileMap, pathResolver, root);
+            if (targetFile) rel.resolvedFileId = targetFile.id;
+            return;
+        }
+        
+        // Attempt intra-file resolution first
+        const intraFileSymbol = sourceFile.symbols.find(s => s.name === rel.targetName);
+        if (intraFileSymbol) {
+            rel.resolvedSymbolId = intraFileSymbol.id;
+            rel.resolvedFileId = sourceFile.id;
+            return;
+        }
+        
+        // Attempt inter-file resolution via imports
+        for (const file of fileMap.values()) {
+            const fileSymbols = symbolMap.get(file.id);
+            if (fileSymbols?.has(rel.targetName)) {
+                rel.resolvedFileId = file.id;
+                rel.resolvedSymbolId = fileSymbols.get(rel.targetName);
+                return;
+            }
+        }
+    };
+
+
+    export const resolveGraph = (sourceFiles: SourceFile[], pathResolver:
+    PathResolver, root: string): SourceFile[] => {
+        const fileMap: FileMap = new Map(sourceFiles.map(f => [f.relativePath.replace(/\\/g, '/'), f]));
+        const symbolMap: SymbolMap = new Map();
+        for(const file of sourceFiles) {
+            const fileSymbolMap = new Map(file.symbols.filter(s => s.isExported).map(s => [s.name, s.id]));
+            symbolMap.set(file.id, fileSymbolMap);
+        }
+        
+        for (const sourceFile of sourceFiles) {
+            // Resolve file-level relationships (e.g., imports that aren't tied to a symbol)
+            if (sourceFile.fileRelationships) {
+                for (const rel of sourceFile.fileRelationships) {
+                    resolveRelationship(rel, sourceFile, fileMap, symbolMap, pathResolver, root);
+                }
+            }
+            for (const symbol of sourceFile.symbols) {
+                for (const rel of symbol.dependencies) {
+                    resolveRelationship(rel, sourceFile, fileMap, symbolMap, pathResolver, root);
+                }
+            }
+        }
+        return sourceFiles;
+    };
+approved: false

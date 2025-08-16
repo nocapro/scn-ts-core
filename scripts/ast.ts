@@ -93,18 +93,6 @@ const userProxy = new Proxy(user, {
   }
 });
         `.trim()
-    },
-    {
-      file: 'dep_graph_circular.ts',
-      title: 'Member Expression Call (dep-graph-circular)',
-      code: `
-import { funcB } from './moduleB';
-import { util } from './utils';
-
-export function funcA() {
-  if (util.shouldRun()) funcB();
-}
-      `.trim()
     }
   ];
 
@@ -112,6 +100,24 @@ export function funcA() {
     const lang = getLanguageForFile(sample.file)!;
     const tree = parse(sample.code, lang)!;
     console.log(`\n===== ${sample.title} (${sample.file}) =====`);
+    
+    // Run analysis
+    console.log('ANALYSIS:');
+    const { generateScn } = await import('../src/main');
+    try {
+      const scnOutput = await generateScn({
+        files: [{
+          path: sample.file,
+          content: sample.code
+        }]
+      });
+      console.log('SCN Output:');
+      console.log(scnOutput);
+    } catch (error) {
+      console.log('Analysis error:', error);
+    }
+    
+    console.log('\nAST:');
     printAST(tree.rootNode);
   }
 }

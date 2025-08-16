@@ -78,6 +78,10 @@ export const typescriptQueries = `
 (call_expression
   function: (identifier) @rel.call)
 
+; Template literal variable references
+(template_substitution
+  (identifier) @rel.references)
+
 ; (Removed overly broad CommonJS/object key captures that polluted TS fixtures)
 
 ; Import statements
@@ -111,9 +115,12 @@ export const typescriptQueries = `
   function: (identifier) @rel.call)
 
 ; Method calls
+; Only capture the object being called, not the property
 (call_expression
   function: (member_expression
-    property: (property_identifier) @rel.call))
+    object: (_) @rel.call
+  )
+)
 
 ; Constructor calls (new expressions)
 (new_expression
@@ -188,6 +195,15 @@ ${typescriptQueries}
 (jsx_self_closing_element
   name: (identifier) @symbol.jsx_element.def
   (#match? @symbol.jsx_element.def "^[a-z]")) @scope.jsx_element.def
+
+; Arrow functions in JSX expressions (render props)
+(jsx_expression
+  (arrow_function) @symbol.function.def) @scope.function.def
+
+; React fragments (empty JSX elements)
+(jsx_element
+  (jsx_opening_element) @symbol.jsx_element.def
+  (#not-has-child? @symbol.jsx_element.def identifier)) @scope.jsx_element.def
 
 ; JSX component references (uppercase)
 (jsx_opening_element

@@ -1,0 +1,1283 @@
+uuid: 444e9768-45e0-496a-8b1e-b81b8973d42b
+projectId: scn-ts-core
+createdAt: '2025-08-24T22:30:16.967Z'
+linesAdded: 197
+linesRemoved: 23
+gitCommitMsg: 'feat(web): make core library browser-compatible and integrate with web demo'
+promptSummary: >-
+  The user wants to connect the `scn-ts-core` library to the `scn-ts-web-demo`
+  application. This involves making the core library browser-compatible by
+  removing Node.js dependencies like `path`, creating a new browser-friendly API
+  for analysis and logging, and then updating the web demo to import and use
+  these new APIs.
+reasoning:
+  - >-
+    To get the web demo working, I'll need to make the `scn-ts-core` package
+    browser-compatible and expose the necessary functions and types for the UI.
+    Here's the plan:
+  - >-
+    1.  **Browser Compatibility**: The core package uses Node.js's `path`
+    module, which isn't available in the browser. I'll create a simplified,
+    browser-friendly `path` utility inside `scn-ts-core` and update all modules
+    to use it.
+  - >-
+    2.  **Web API**: I'll refactor `src/main.ts` to expose a new
+    `analyzeProject` function that handles file parsing and analysis, and
+    reports progress, which is what the web demo needs. I'll also expose the
+    `formatScn` function under the alias `generateScn` for the demo's use.
+  - >-
+    3.  **Logging**: The web demo is set up to display logs. I'll add a simple
+    `logger` module to `scn-ts-core` that can be hooked into by the UI.
+  - >-
+    4.  **Type Exports**: I'll export all the necessary types (`FileContent`,
+    `LogHandler`, `LogLevel`) from the main entry point for the web demo to
+    consume.
+  - >-
+    5.  **Connecting the Demo**: Finally, I'll update the web demo's source
+    files (`App.tsx`, `LogViewer.tsx`, `default-files.ts`) to import the newly
+    exposed APIs from `scn-ts-core` and correctly call them.
+  - I'll start by creating the new utility files.
+  - First, I'll create a browser-compatible path utility.
+  - Next, I'll create the logger module.
+  - >-
+    To support the logger, I'll add the `LogLevel` type to the central types
+    file.
+  - >-
+    Now I'll refactor `src/main.ts` to expose the new API for the web demo and
+    make it browser-compatible.
+  - >-
+    Now, I'll update the core modules to use the new path utility instead of
+    `node:path`.
+  - With `scn-ts-core` ready, I'll now update the web demo to use it.
+operations:
+  - type: write
+    path: src/utils/path.ts
+    content: >-
+      // A simplified path utility for browser environments that assumes
+      POSIX-style paths.
+
+      export default {
+          join(...parts: string[]): string {
+              const path = parts.join('/');
+              // Replace multiple slashes, but keep leading slashes for absolute paths
+              return path.replace(/[/]+/g, '/');
+          },
+
+          dirname(p: string): string {
+              const i = p.lastIndexOf('/');
+              if (i === -1) return '.';
+              if (i === 0) return '/'; // root directory
+              const result = p.substring(0, i);
+              return result || '/';
+          },
+
+          extname(p: string): string {
+              const i = p.lastIndexOf('.');
+              // ensure it's not the first char and a slash doesn't appear after it
+              if (i <= 0 || p.lastIndexOf('/') > i) return '';
+              return p.substring(i);
+          },
+
+          resolve(...args: string[]): string {
+              let resolvedPath = '';
+              let resolvedAbsolute = false;
+              
+              for (let i = args.length - 1; i >= -1 && !resolvedAbsolute; i--) {
+                  const path = i >= 0 ? args[i] : '/'; // CWD is root for web
+                  if (path.length === 0) continue;
+                  
+                  resolvedPath = path + '/' + resolvedPath;
+                  resolvedAbsolute = path.charAt(0) === '/';
+              }
+              
+              const parts = resolvedPath.split('/').filter(p => p);
+              const stack: string[] = [];
+              for (const p of parts) {
+                  if (p === '..') {
+                      stack.pop();
+                  } else if (p !== '.') {
+                      stack.push(p);
+                  }
+              }
+              
+              let result = stack.join('/');
+              if (resolvedAbsolute) {
+                  result = '/' + result;
+              }
+              
+              return result || (resolvedAbsolute ? '/' : '.');
+          },
+
+          relative(from: string, to: string): string {
+              const fromParts = from.split('/').filter(p => p && p !== '.');
+              const toParts = to.split('/').filter(p => p && p !== '.');
+              
+              let i = 0;
+              while(i < fromParts.length && i < toParts.length && fromParts[i] === toParts[i]) {
+                  i++;
+              }
+              
+              const upCount = fromParts.length - i;
+              const remainingTo = toParts.slice(i);
+              
+              const ups = Array(upCount).fill('..');
+              const resultParts = [...ups, ...remainingTo];
+              
+              return resultParts.join('/') || '.';
+          }
+      };
+    patchStrategy: replace
+  - type: write
+    path: src/logger.ts
+    content: >-
+      import type { LogLevel } from './types';
+
+
+      export type LogHandler = (level: Exclude<LogLevel, 'silent'>, ...args:
+      any[]) => void;
+
+
+      class Logger {
+        private handler: LogHandler | null = null;
+        private level: LogLevel = 'info';
+
+        private logLevels: Record<LogLevel, number> = {
+          error: 0,
+          warn: 1,
+          info: 2,
+          debug: 3,
+          silent: -1,
+        };
+
+        setLogHandler(handler: LogHandler | null) {
+          this.handler = handler;
+        }
+
+        setLevel(level: LogLevel) {
+          this.level = level;
+        }
+
+        private shouldLog(level: Exclude<LogLevel, 'silent'>): boolean {
+          if (this.level === 'silent' || !this.handler) return false;
+          return this.logLevels[level] <= this.logLevels[this.level];
+        }
+
+        error(...args: any[]) {
+          if (this.shouldLog('error')) {
+            this.handler!('error', ...args);
+          }
+        }
+
+        warn(...args: any[]) {
+          if (this.shouldLog('warn')) {
+            this.handler!('warn', ...args);
+          }
+        }
+
+        info(...args: any[]) {
+          if (this.shouldLog('info')) {
+            this.handler!('info', ...args);
+          }
+        }
+
+        debug(...args: any[]) {
+          if (this.shouldLog('debug')) {
+            this.handler!('debug', ...args);
+          }
+        }
+      }
+
+
+      export const logger = new Logger();
+    patchStrategy: replace
+  - type: write
+    path: src/types.ts
+    content: |-
+      --- src/types.ts
+      +++ src/types.ts
+      @@ -1,5 +1,7 @@
+       import type { Parser, Tree, Language } from 'web-tree-sitter';
+       import type { TsConfig, PathResolver } from './utils/tsconfig';
+       export type { PathResolver };
+       
+      +export type LogLevel = 'error' | 'warn' | 'info' | 'debug' | 'silent';
+      +
+       /**
+        * Represents a file to be processed.
+        */
+    patchStrategy: new-unified
+  - type: write
+    path: src/main.ts
+    content: >-
+      import { getLanguageForFile } from './languages';
+
+      import { initializeParser as init, parse } from './parser';
+
+      import type { ParserInitOptions, SourceFile, InputFile, TsConfig, LogLevel
+      } from './types';
+
+      import { analyze } from './analyzer';
+
+      import { formatScn } from './formatter';
+
+      import path from './utils/path';
+
+      import { getPathResolver } from './utils/tsconfig';
+
+      import { resolveGraph } from './graph-resolver';
+
+      import { logger } from './logger';
+
+
+      /**
+       * Public API to initialize the parser. Must be called before any other APIs.
+       */
+      export const initializeParser = (options: ParserInitOptions):
+      Promise<void> => init(options);
+
+
+      // Types for web demo
+
+      export type { ParserInitOptions, SourceFile, LogLevel };
+
+      export type { LogHandler } from './logger';
+
+      export type FileContent = InputFile;
+
+
+      // Exports for web demo
+
+      export { logger };
+
+      export { formatScn as generateScn }; // App.tsx uses `generateScn` to
+      format the graph
+
+
+      interface AnalyzeProjectOptions {
+          files: InputFile[];
+          tsconfig?: TsConfig;
+          root?: string;
+          onProgress?: (progress: { percentage: number; message: string }) => void;
+          logLevel?: LogLevel;
+      }
+
+
+      /**
+       * Parses and analyzes a project's files to build a dependency graph.
+       */
+      export const analyzeProject = async ({
+          files,
+          tsconfig,
+          root = '/',
+          onProgress,
+          logLevel
+      }: AnalyzeProjectOptions): Promise<SourceFile[]> => {
+          if (logLevel) {
+              logger.setLevel(logLevel);
+          }
+          const pathResolver = getPathResolver(tsconfig);
+
+          let fileIdCounter = 1;
+
+          onProgress?.({ percentage: 0, message: 'Creating source files...' });
+          logger.debug('Creating source files...');
+
+          // Step 1: Create SourceFile objects for all files
+          const sourceFiles = files.map((file) => {
+              const lang = getLanguageForFile(file.path);
+              const absolutePath = path.join(root, file.path);
+              const sourceFile: SourceFile = {
+                  id: fileIdCounter++,
+                  relativePath: file.path,
+                  absolutePath,
+                  sourceCode: file.content,
+                  language: lang!,
+                  symbols: [],
+                  parseError: false,
+              };
+              return sourceFile;
+          });
+
+          onProgress?.({ percentage: 10, message: `Parsing ${sourceFiles.length} files...` });
+          logger.debug(`Parsing ${sourceFiles.length} files...`);
+
+          // Step 2: Parse all files
+          const parsedFiles = sourceFiles.map((file, i) => {
+              if (!file.language || !file.language.wasmPath || file.sourceCode.trim() === '') {
+                  return file;
+              }
+              const tree = parse(file.sourceCode, file.language);
+              if (!tree) {
+                  file.parseError = true;
+                  logger.warn(`Failed to parse ${file.relativePath}`);
+              } else {
+                  file.ast = tree;
+              }
+              const percentage = 10 + (40 * (i + 1) / sourceFiles.length);
+              onProgress?.({ percentage, message: `Parsing ${file.relativePath}` });
+              logger.debug(`[${Math.round(percentage)}%] Parsed ${file.relativePath}`);
+              return file;
+          });
+
+          onProgress?.({ percentage: 50, message: 'Analyzing files...' });
+          logger.debug('Analyzing files...');
+
+          // Step 3: Analyze all parsed files
+          const analyzedFiles = parsedFiles.map((file, i) => {
+              if (file.ast) {
+                  const analyzed = analyze(file);
+                  const percentage = 50 + (40 * (i + 1) / sourceFiles.length);
+                  onProgress?.({ percentage, message: `Analyzing ${file.relativePath}` });
+                  logger.debug(`[${Math.round(percentage)}%] Analyzed ${file.relativePath}`);
+                  return analyzed;
+              }
+              return file;
+          });
+          
+          onProgress?.({ percentage: 90, message: 'Resolving dependency graph...' });
+          logger.debug('Resolving dependency graph...');
+
+          // Step 4: Resolve the dependency graph across all files
+          const resolvedGraph = resolveGraph(analyzedFiles, pathResolver, root);
+          
+          onProgress?.({ percentage: 100, message: 'Analysis complete.' });
+          logger.debug('Analysis complete.');
+          return resolvedGraph;
+      };
+    patchStrategy: replace
+  - type: write
+    path: src/graph-resolver.ts
+    content: |-
+      --- src/graph-resolver.ts
+      +++ src/graph-resolver.ts
+      @@ -1,5 +1,5 @@
+       import type { SourceFile, PathResolver, Relationship } from './types';
+      -import path from 'node:path';
+      +import path from './utils/path';
+       
+       type FileMap = Map<string, SourceFile>;
+       type SymbolMap = Map<number, Map<string, string>>;
+    patchStrategy: new-unified
+  - type: write
+    path: src/languages.ts
+    content: |-
+      --- src/languages.ts
+      +++ src/languages.ts
+      @@ -1,5 +1,5 @@
+       import type { LanguageConfig } from './types';
+      -import path from 'node:path';
+      +import path from './utils/path';
+       import { typescriptQueries, typescriptReactQueries } from './queries/typescript';
+       import { cssQueries } from './queries/css';
+       import { goQueries } from './queries/go';
+    patchStrategy: new-unified
+  - type: write
+    path: src/parser.ts
+    content: |-
+      --- src/parser.ts
+      +++ src/parser.ts
+      @@ -1,5 +1,5 @@
+       import type { ParserInitOptions, LanguageConfig } from './types';
+       import { Parser, Language, type Tree } from 'web-tree-sitter';
+      -import path from 'node:path';
+      +import path from './utils/path';
+       import { languages } from './languages';
+       
+       let initializePromise: Promise<void> | null = null;
+    patchStrategy: new-unified
+  - type: write
+    path: src/utils/tsconfig.ts
+    content: |-
+      --- src/utils/tsconfig.ts
+      +++ src/utils/tsconfig.ts
+      @@ -1,4 +1,4 @@
+      -import path from 'node:path';
+      +import path from './path';
+       
+       export interface TsConfig {
+           compilerOptions?: {
+    patchStrategy: new-unified
+  - type: write
+    path: packages/scn-ts-web-demo/src/App.tsx
+    content: |-
+      <<<<<<< SEARCH
+      import {
+        initializeParser,
+        logger,
+        analyzeProject,
+        FileContent,
+        LogHandler,
+        generateScn,
+      } from '';//todo
+      =======
+      import {
+        initializeParser,
+        logger,
+        analyzeProject,
+        FileContent,
+        LogHandler,
+        generateScn,
+        LogLevel,
+      } from 'scn-ts-core';
+      >>>>>>> REPLACE
+      <<<<<<< SEARCH
+            const rankedGraph = await analyzeProject({ files, onProgress, logLevel: 'debug' });
+            const scn = generateScn(rankedGraph, files);
+            setScnOutput(scn);
+      =======
+            const rankedGraph = await analyzeProject({ files, onProgress, logLevel: 'debug' });
+            const scn = generateScn(rankedGraph);
+            setScnOutput(scn);
+      >>>>>>> REPLACE
+    patchStrategy: multi-search-replace
+  - type: write
+    path: packages/scn-ts-web-demo/src/components/LogViewer.tsx
+    content: |-
+      --- packages/scn-ts-web-demo/src/components/LogViewer.tsx
+      +++ packages/scn-ts-web-demo/src/components/LogViewer.tsx
+      @@ -1,5 +1,5 @@
+       import React from 'react';
+      -import { LogLevel } from '';//TODO
+      +import { LogLevel } from 'scn-ts-core';
+       import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
+       import { cn } from '@/lib/utils';
+    patchStrategy: new-unified
+  - type: write
+    path: packages/scn-ts-web-demo/src/default-files.ts
+    content: |-
+      --- packages/scn-ts-web-demo/src/default-files.ts
+      +++ packages/scn-ts-web-demo/src/default-files.ts
+      @@ -1,4 +1,4 @@
+      -import { FileContent } from ""; //TODO
+      +import { FileContent } from "scn-ts-core";
+       
+       const files: FileContent[] = [
+         {
+    patchStrategy: new-unified
+snapshot:
+  src/utils/path.ts: null
+  src/logger.ts: null
+  src/types.ts: |-
+    import type { Parser, Tree, Language } from 'web-tree-sitter';
+    import type { TsConfig, PathResolver } from './utils/tsconfig';
+    export type { PathResolver };
+
+    /**
+     * Represents a file to be processed.
+     */
+    export interface InputFile {
+      path: string; // relative path from root
+      content: string;
+    }
+
+    /**
+     * Configuration for the SCN generation process.
+     */
+    export interface ScnTsConfig {
+      files: InputFile[];
+      tsconfig?: TsConfig;
+      root?: string; // Optional: A virtual root path for resolution. Defaults to '/'.
+      _test_id?: string; // Special property for test runner to identify fixtures
+    }
+
+    /**
+     * Options for initializing the Tree-sitter parser.
+     */
+    export interface ParserInitOptions {
+        wasmBaseUrl: string;
+    }
+
+    /**
+     * Represents a supported programming language and its configuration.
+     */
+    export type SymbolKind =
+      // TS/JS
+      | 'class' | 'interface' | 'function' | 'method' | 'constructor'
+      | 'variable' | 'property' | 'enum' | 'enum_member' | 'type_alias' | 'module'
+      | 'decorator' | 'parameter' | 'type_parameter' | 'import_specifier' | 're_export'
+      // React
+      | 'react_component' | 'react_hook' | 'react_hoc' | 'jsx_attribute' | 'jsx_element' | 'styled_component'
+      // CSS
+      | 'css_class' | 'css_id' | 'css_tag' | 'css_at_rule' | 'css_property' | 'css_variable'
+      // Generic / Meta
+      | 'file' | 'reference' | 'comment' | 'error' | 'unresolved'
+      // Other Languages
+      | 'go_package' | 'go_struct' | 'go_goroutine' | 'rust_struct' | 'rust_trait' | 'rust_impl' | 'rust_macro'
+      | 'java_package' | 'python_class'
+      | 'unknown';
+
+    export interface Position {
+      line: number;
+      column: number;
+    }
+
+    export interface Range {
+      start: Position;
+      end: Position;
+    }
+
+    export interface CodeSymbol {
+      id: string;
+      fileId: number;
+      name: string;
+      kind: SymbolKind;
+      range: Range;
+      // Modifiers and metadata
+      isExported: boolean;
+      isAbstract?: boolean;
+      isStatic?: boolean;
+      isReadonly?: boolean;
+      isAsync?: boolean;
+      isPure?: boolean; // for 'o'
+      throws?: boolean; // for '!'
+      labels?: string[]; // extra display labels like [symbol], [proxy]
+      isGenerated?: boolean;
+      languageDirectives?: string[]; // e.g. 'use server'
+      superClass?: string;
+      implementedInterfaces?: string[];
+      scopeRange: Range; // The range of the entire scope (e.g., function body) for relationship association
+      accessibility?: 'public' | 'private' | 'protected';
+      // Type information and signatures
+      signature?: string; // e.g., (a: #number, b: #number): #number
+      typeAnnotation?: string; // e.g., #string for properties/variables
+      typeAliasValue?: string; // e.g., #number|string for type aliases
+      // Relationships
+      dependencies: Relationship[];
+    }
+
+    export type RelationshipKind =
+      | 'import'
+      | 'dynamic_import'
+      | 'reference'
+      | 'tagged'
+      | 'export'
+      | 'call'
+      | 'extends'
+      | 'implements'
+      | 'references'
+      | 'aliased'
+      | 'goroutine'
+      | 'macro';
+
+    export interface Relationship {
+      targetName: string; // The raw name of the target (e.g., './utils', 'MyClass', 'add', 'Button')
+      kind: RelationshipKind;
+      range: Range;
+      // Resolved info
+      resolvedFileId?: number;
+      resolvedSymbolId?: string;
+    }
+
+    export interface SourceFile {
+      id: number;
+      relativePath: string;
+      absolutePath: string;
+      language: LanguageConfig;
+      sourceCode: string;
+      ast?: Tree;
+      symbols: CodeSymbol[];
+      parseError: boolean;
+      isGenerated?: boolean;
+      languageDirectives?: string[];
+      // File-level relationships (e.g., imports not tied to a specific symbol)
+      fileRelationships?: Relationship[];
+    }
+
+    /**
+     * Represents a supported programming language and its configuration.
+     */
+    export interface LanguageConfig {
+        id: string;
+        name: string;
+        extensions: string[];
+        wasmPath: string;
+        parser?: Parser;
+        loadedLanguage?: Language;
+        queries?: Record<string, string>;
+    }
+
+    export interface AnalysisContext {
+        sourceFiles: SourceFile[];
+        pathResolver: PathResolver;
+    }
+  src/main.ts: >-
+    import { getLanguageForFile } from './languages';
+
+    import { initializeParser as init, parse } from './parser';
+
+    import type { ScnTsConfig, ParserInitOptions, SourceFile, InputFile } from
+    './types';
+
+    import { analyze } from './analyzer';
+
+    import { formatScn } from './formatter';
+
+    import path from 'node:path';
+
+    import { getPathResolver } from './utils/tsconfig';
+
+    import { resolveGraph } from './graph-resolver';
+
+
+    /**
+     * Public API to initialize the parser. Must be called before generateScn.
+     */
+    export const initializeParser = (options: ParserInitOptions): Promise<void>
+    => init(options);
+
+
+    export type { ScnTsConfig, ParserInitOptions, SourceFile, InputFile };
+
+
+    /**
+     * Generates an SCN string from a project directory.
+     */
+    export const generateScn = async (config: ScnTsConfig): Promise<string> => {
+        const root = config.root ?? '/';
+        const pathResolver = getPathResolver(config.tsconfig);
+
+        let fileIdCounter = 1; // Start with 1 to match fixture IDs
+
+        // Step 1: Create SourceFile objects for all files
+        const sourceFiles = config.files.map((file) => {
+            const lang = getLanguageForFile(file.path);
+            const absolutePath = path.join(root, file.path);
+            const sourceFile: SourceFile = {
+                id: fileIdCounter++,
+                relativePath: file.path,
+                absolutePath,
+                sourceCode: file.content,
+                language: lang!,
+                symbols: [],
+                parseError: false,
+            };
+            return sourceFile;
+        });
+
+        // Step 2: Parse all files
+        const parsedFiles = sourceFiles.map(file => {
+            if (!file.language || !file.language.wasmPath || file.sourceCode.trim() === '') {
+                return file;
+            }
+            const tree = parse(file.sourceCode, file.language);
+            if (!tree) {
+                file.parseError = true;
+            } else {
+                file.ast = tree;
+            }
+            return file;
+        });
+
+        // Step 3: Analyze all parsed files
+        const analyzedFiles = parsedFiles.map(file => {
+            if (file.ast) {
+                return analyze(file);
+            }
+            return file;
+        });
+        
+        // Step 4: Resolve the dependency graph across all files
+        const resolvedGraph = resolveGraph(analyzedFiles, pathResolver, root);
+        
+        // Step 5: Format the final SCN output
+        return formatScn(resolvedGraph);
+    };
+  src/graph-resolver.ts: >-
+    import type { SourceFile, PathResolver, Relationship } from './types';
+
+    import path from 'node:path';
+
+
+    type FileMap = Map<string, SourceFile>;
+
+    type SymbolMap = Map<number, Map<string, string>>;
+
+
+    const findFileByImportPath = (importPath: string, currentFile: SourceFile,
+    fileMap: FileMap, pathResolver: PathResolver, root: string): SourceFile |
+    undefined => {
+        const currentDir = path.dirname(currentFile.absolutePath);
+        const aliasedPath = pathResolver(importPath);
+
+        const resolvedPath = aliasedPath ? path.resolve(root, aliasedPath) : path.resolve(currentDir, importPath);
+
+        const extensions = ['.ts', '.tsx', '.js', '.jsx', '.css', '.go', '.rs', '.py', '.java', '.graphql', ''];
+        for (const ext of extensions) {
+            const tryPath = (resolvedPath + ext).replace(/\\/g, '/');
+            const relative = path.relative(root, tryPath).replace(/\\/g, '/');
+            if (fileMap.has(relative)) return fileMap.get(relative);
+            
+            const tryIndexPath = path.join(resolvedPath, 'index' + ext).replace(/\\/g, '/');
+            const relativeIndex = path.relative(root, tryIndexPath).replace(/\\/g, '/');
+            if(fileMap.has(relativeIndex)) return fileMap.get(relativeIndex);
+        }
+        return undefined;
+    };
+
+
+
+    const resolveRelationship = (rel: Relationship, sourceFile: SourceFile,
+    fileMap: FileMap, symbolMap: SymbolMap, pathResolver: PathResolver, root:
+    string) => {
+        if (rel.kind === 'import') {
+            const targetFile = findFileByImportPath(rel.targetName, sourceFile, fileMap, pathResolver, root);
+            if (targetFile) rel.resolvedFileId = targetFile.id;
+            return;
+        }
+        
+        // Handle dynamic imports
+        if (rel.kind === 'dynamic_import') {
+            const targetFile = findFileByImportPath(rel.targetName, sourceFile, fileMap, pathResolver, root);
+            if (targetFile) rel.resolvedFileId = targetFile.id;
+            return;
+        }
+        
+        // Attempt intra-file resolution first
+        const intraFileSymbol = sourceFile.symbols.find(s => s.name === rel.targetName);
+        if (intraFileSymbol) {
+            rel.resolvedSymbolId = intraFileSymbol.id;
+            rel.resolvedFileId = sourceFile.id;
+            return;
+        }
+        
+        // Attempt inter-file resolution via explicit imports of the current file
+        if (sourceFile.fileRelationships) {
+            for (const importRel of sourceFile.fileRelationships) {
+                // We only care about resolved imports that bring in symbols
+                if ((importRel.kind === 'import' || importRel.kind === 'dynamic_import') && importRel.resolvedFileId !== undefined) {
+                    const targetFileSymbols = symbolMap.get(importRel.resolvedFileId);
+                    // Does the file we imported from export a symbol with the name we're looking for?
+                    if (targetFileSymbols?.has(rel.targetName)) {
+                        rel.resolvedFileId = importRel.resolvedFileId;
+                        rel.resolvedSymbolId = targetFileSymbols.get(rel.targetName);
+                        return; // Found it!
+                    }
+                }
+            }
+        }
+    };
+
+
+    export const resolveGraph = (sourceFiles: SourceFile[], pathResolver:
+    PathResolver, root: string): SourceFile[] => {
+        const fileMap: FileMap = new Map(sourceFiles.map(f => [f.relativePath.replace(/\\/g, '/'), f]));
+        const symbolMap: SymbolMap = new Map();
+        for(const file of sourceFiles) {
+            const fileSymbolMap = new Map(file.symbols.filter(s => s.isExported).map(s => [s.name, s.id]));
+            symbolMap.set(file.id, fileSymbolMap);
+        }
+        
+        for (const sourceFile of sourceFiles) {
+            // Resolve file-level relationships (e.g., imports that aren't tied to a symbol)
+            if (sourceFile.fileRelationships) {
+                for (const rel of sourceFile.fileRelationships) {
+                    resolveRelationship(rel, sourceFile, fileMap, symbolMap, pathResolver, root);
+                }
+            }
+            for (const symbol of sourceFile.symbols) {
+                for (const rel of symbol.dependencies) {
+                    resolveRelationship(rel, sourceFile, fileMap, symbolMap, pathResolver, root);
+                }
+            }
+        }
+        return sourceFiles;
+    };
+  src/languages.ts: >-
+    import type { LanguageConfig } from './types';
+
+    import path from 'node:path';
+
+    import { typescriptQueries, typescriptReactQueries } from
+    './queries/typescript';
+
+    import { cssQueries } from './queries/css';
+
+    import { goQueries } from './queries/go';
+
+    import { rustQueries } from './queries/rust';
+
+
+    // Based on test/wasm and test/fixtures
+
+    export const languages: LanguageConfig[] = [
+        {
+            id: 'typescript',
+            name: 'TypeScript',
+            extensions: ['.ts', '.mts', '.cts'],
+            wasmPath: 'tree-sitter-typescript.wasm',
+            queries: { main: typescriptQueries },
+        },
+        {
+            id: 'tsx',
+            name: 'TypeScriptReact',
+            extensions: ['.tsx'],
+            wasmPath: 'tree-sitter-tsx.wasm',
+            queries: { main: typescriptReactQueries },
+        },
+        {
+            id: 'javascript',
+            name: 'JavaScript',
+            extensions: ['.js', '.mjs', '.cjs'],
+            wasmPath: 'tree-sitter-typescript.wasm',
+            queries: { main: typescriptQueries },
+        },
+        {
+            id: 'css',
+            name: 'CSS',
+            extensions: ['.css'],
+            wasmPath: 'tree-sitter-css.wasm',
+            queries: { main: cssQueries },
+        },
+        {
+            id: 'go',
+            name: 'Go',
+            extensions: ['.go'],
+            wasmPath: 'tree-sitter-go.wasm',
+            queries: { main: goQueries },
+        },
+        {
+            id: 'java',
+            name: 'Java',
+            extensions: ['.java'],
+            wasmPath: 'tree-sitter-java.wasm',
+            queries: {},
+        },
+        {
+            id: 'python',
+            name: 'Python',
+            extensions: ['.py'],
+            wasmPath: 'tree-sitter-python.wasm',
+            queries: {},
+        },
+        {
+            id: 'rust',
+            name: 'Rust',
+            extensions: ['.rs'],
+            wasmPath: 'tree-sitter-rust.wasm',
+            queries: { main: rustQueries },
+        },
+        {
+            id: 'c',
+            name: 'C',
+            extensions: ['.c'],
+            wasmPath: 'tree-sitter-c.wasm',
+            queries: {},
+        },
+        {
+            id: 'graphql',
+            name: 'GraphQL',
+            extensions: ['.graphql', '.gql'],
+            wasmPath: '', // No wasm file provided in the list
+            queries: {},
+        },
+    ];
+
+
+    const createLanguageMap = (): Map<string, LanguageConfig> => {
+        const map = new Map<string, LanguageConfig>();
+        languages.forEach(lang => {
+            lang.extensions.forEach(ext => {
+                map.set(ext, lang);
+            });
+        });
+        return map;
+    };
+
+
+    const languageMap = createLanguageMap();
+
+
+    export const getLanguageForFile = (filePath: string): LanguageConfig |
+    undefined => {
+        const extension = path.extname(filePath);
+        return languageMap.get(extension);
+    };
+  src/parser.ts: >-
+    import type { ParserInitOptions, LanguageConfig } from './types';
+
+    import { Parser, Language, type Tree } from 'web-tree-sitter';
+
+    import path from 'node:path';
+
+    import { languages } from './languages';
+
+
+    let initializePromise: Promise<void> | null = null;
+
+    let isInitialized = false;
+
+
+    const doInitialize = async (options: ParserInitOptions): Promise<void> => {
+        await Parser.init({
+            locateFile: (scriptName: string, _scriptDirectory: string) => {
+                return path.join(options.wasmBaseUrl, scriptName);
+            }
+        });
+
+        const languageLoaders = languages
+            .filter(lang => lang.wasmPath)
+            .map(async (lang: LanguageConfig) => {
+                const wasmPath = path.join(options.wasmBaseUrl, lang.wasmPath);
+                try {
+                    const loadedLang = await Language.load(wasmPath);
+                    const parser = new Parser();
+                    parser.setLanguage(loadedLang);
+                    lang.parser = parser;
+                    lang.loadedLanguage = loadedLang;
+                } catch (error) {
+                    console.error(`Failed to load parser for ${lang.name} from ${wasmPath}`, error);
+                    throw error;
+                }
+            });
+        
+        await Promise.all(languageLoaders);
+        isInitialized = true;
+    };
+
+
+    export const initializeParser = (options: ParserInitOptions): Promise<void>
+    => {
+        if (initializePromise) {
+            return initializePromise;
+        }
+        initializePromise = doInitialize(options);
+        return initializePromise;
+    };
+
+
+    export const parse = (sourceCode: string, lang: LanguageConfig): Tree | null
+    => {
+        if (!isInitialized || !lang.parser) {
+            return null;
+        }
+        return lang.parser.parse(sourceCode);
+    };
+  src/utils/tsconfig.ts: >-
+    import path from 'node:path';
+
+
+    export interface TsConfig {
+        compilerOptions?: {
+            baseUrl?: string;
+            paths?: Record<string, string[]>;
+        };
+    }
+
+
+    const createPathResolver = (baseUrl: string, paths: Record<string,
+    string[]>) => {
+        const aliasEntries = Object.entries(paths).map(([alias, resolutions]) => {
+            return {
+                pattern: new RegExp(`^${alias.replace('*', '(.*)')}$`),
+                resolutions,
+            };
+        });
+
+        return (importPath: string): string | null => {
+            for (const { pattern, resolutions } of aliasEntries) {
+                const match = importPath.match(pattern);
+                if (match && resolutions[0]) {
+                    const captured = match[1] || '';
+                    // Return the first resolved path.
+                    const resolvedPath = resolutions[0].replace('*', captured);
+                    return path.join(baseUrl, resolvedPath).replace(/\\/g, '/');
+                }
+            }
+            return null; // Not an alias
+        };
+    };
+
+
+    export type PathResolver = ReturnType<typeof createPathResolver>;
+
+
+    export const getPathResolver = (tsconfig?: TsConfig | null): PathResolver =>
+    {
+        const baseUrl = tsconfig?.compilerOptions?.baseUrl || '.';
+        const paths = tsconfig?.compilerOptions?.paths ?? {};
+        // The baseUrl from tsconfig is relative to the tsconfig file itself (the root).
+        // The final paths we create should be relative to the root to match our file list.
+        return createPathResolver(baseUrl, paths);
+    };
+  packages/scn-ts-web-demo/src/App.tsx: >
+    import { useState, useEffect, useCallback } from 'react';
+
+    import {
+      initializeParser,
+      logger,
+      analyzeProject,
+      FileContent,
+      LogHandler,
+      generateScn,
+    } from '';//todo
+
+    import { defaultFilesJSON } from './default-files';
+
+    import { Button } from './components/ui/button';
+
+    import { Card, CardContent, CardHeader, CardTitle } from
+    './components/ui/card';
+
+    import { Textarea } from './components/ui/textarea';
+
+    import LogViewer, { LogEntry } from './components/LogViewer';
+
+    import { Play, Loader } from 'lucide-react';
+
+
+    function App() {
+      const [isInitialized, setIsInitialized] = useState(false);
+      const [isLoading, setIsLoading] = useState(false);
+      const [filesInput, setFilesInput] = useState(defaultFilesJSON);
+      const [scnOutput, setScnOutput] = useState('');
+      const [progress, setProgress] = useState<{ percentage: number; message: string } | null>(null);
+      const [logs, setLogs] = useState<LogEntry[]>([]);
+
+      useEffect(() => {
+        const init = async () => {
+          try {
+            await initializeParser({ wasmBaseUrl: '/wasm/' });
+            setIsInitialized(true);
+            setLogs(prev => [...prev, { level: 'info', message: 'Parser initialized.', timestamp: Date.now() }]);
+          } catch (error) {
+            const message = error instanceof Error ? error.message : String(error);
+            setLogs(prev => [...prev, { level: 'error', message: `Failed to initialize parser: ${message}`, timestamp: Date.now() }]);
+          }
+        };
+        init();
+      }, []);
+
+      const handleAnalyze = useCallback(async () => {
+        if (!isInitialized) {
+          setLogs(prev => [...prev, { level: 'warn', message: 'Parser not ready.', timestamp: Date.now() }]);
+          return;
+        }
+
+        setIsLoading(true);
+        setLogs([]);
+        setScnOutput('');
+        setProgress(null);
+
+        const logHandler: LogHandler = (level, ...args) => {
+          const message = args.map(arg => typeof arg === 'object' ? JSON.stringify(arg) : String(arg)).join(' ');
+          setLogs(prev => [...prev, { level, message, timestamp: Date.now() }]);
+        };
+        logger.setLogHandler(logHandler);
+        logger.setLevel('debug');
+
+        const onProgress = (progressData: { percentage: number; message: string }) => {
+          setProgress(progressData);
+          logger.info(`[${Math.round(progressData.percentage)}%] ${progressData.message}`);
+        };
+
+        try {
+          let files: FileContent[] = [];
+          try {
+            files = JSON.parse(filesInput);
+            if (!Array.isArray(files)) throw new Error("Input is not an array.");
+          } catch (error) {
+            throw new Error(`Invalid JSON input: ${error instanceof Error ? error.message : String(error)}`);
+          }
+
+          const rankedGraph = await analyzeProject({ files, onProgress, logLevel: 'debug' });
+          const scn = generateScn(rankedGraph, files);
+          setScnOutput(scn);
+          logger.info('Analysis complete.');
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          logger.error('Analysis failed:', message);
+        } finally {
+          setIsLoading(false);
+          setProgress(null);
+          logger.setLogHandler(null);
+        }
+      }, [filesInput, isInitialized]);
+
+      return (
+        <div className="min-h-screen flex flex-col p-4 gap-4">
+          <header className="flex-shrink-0 flex items-center justify-between">
+            <h1 className="text-2xl font-bold">SCN-TS Web Demo</h1>
+            <Button onClick={handleAnalyze} disabled={isLoading || !isInitialized} className="w-32 justify-center">
+              {isLoading ? (
+                <>
+                  <Loader className="mr-2 h-4 w-4 animate-spin" />
+                  <span>{progress ? `${Math.round(progress.percentage)}%` : 'Analyzing...'}</span>
+                </>
+              ) : (
+                <>
+                  <Play className="mr-2 h-4 w-4" />
+                  <span>Analyze</span>
+                </>
+              )}
+            </Button>
+          </header>
+
+          <main className="flex-grow grid grid-cols-1 lg:grid-cols-2 gap-4 h-[calc(100vh-150px)]">
+            <Card className="flex flex-col">
+              <CardHeader>
+                <CardTitle>Input Files (JSON)</CardTitle>
+              </CardHeader>
+              <CardContent className="flex-grow">
+                <Textarea
+                  value={filesInput}
+                  onChange={(e) => setFilesInput(e.target.value)}
+                  className="h-full w-full font-mono text-xs"
+                  placeholder="Paste an array of FileContent objects here..."
+                />
+              </CardContent>
+            </Card>
+
+            <Card className="flex flex-col overflow-hidden">
+               <CardHeader>
+                <CardTitle>Output (SCN)</CardTitle>
+              </CardHeader>
+              <CardContent className="flex-grow overflow-auto p-0">
+                <pre className="text-xs whitespace-pre font-mono p-4 h-full w-full">
+                  <code>
+                    {scnOutput || (isLoading ? "Generating..." : "Output will appear here.")}
+                  </code>
+                </pre>
+              </CardContent>
+            </Card>
+          </main>
+
+          <footer className="flex-shrink-0 h-[150px]">
+            <LogViewer logs={logs} />
+          </footer>
+        </div>
+      );
+    }
+
+
+    export default App;
+  packages/scn-ts-web-demo/src/components/LogViewer.tsx: |
+    import React from 'react';
+    import { LogLevel } from '';//TODO
+    import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
+    import { cn } from '@/lib/utils';
+
+    export interface LogEntry {
+      level: Exclude<LogLevel, 'silent'>;
+      message: string;
+      timestamp: number;
+    }
+
+    const levelColorMap: Record<Exclude<LogLevel, 'silent'>, string> = {
+      error: 'text-red-500',
+      warn: 'text-yellow-500',
+      info: 'text-blue-400',
+      debug: 'text-gray-500',
+    };
+
+    const LogViewer: React.FC<{ logs: readonly LogEntry[] }> = ({ logs }) => {
+      return (
+        <Card className="h-full flex flex-col">
+          <CardHeader>
+            <CardTitle>Logs</CardTitle>
+          </CardHeader>
+          <CardContent className="flex-grow overflow-auto p-0">
+            <div className="p-4 font-mono text-xs">
+              {logs.length === 0 && <p className="text-gray-500">No logs yet. Click "Analyze" to start.</p>}
+              {logs.map((log, index) => (
+                <div key={index} className="flex items-start">
+                  <span className={cn("font-bold w-12 flex-shrink-0", levelColorMap[log.level])}>
+                    [{log.level.toUpperCase()}]
+                  </span>
+                  <span className="whitespace-pre-wrap break-all">{log.message}</span>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      );
+    };
+
+    export default LogViewer;
+  packages/scn-ts-web-demo/src/default-files.ts: |
+    import { FileContent } from ""; //TODO
+
+    const files: FileContent[] = [
+      {
+        path: "src/main.ts",
+        content: `import { formatMessage } from './utils/formatter';
+    import { createButton } from './ui/button';
+    import { Greeter } from './services/greeter.py';
+
+    console.log('App starting...');
+
+    const message = formatMessage('World');
+    const button = createButton('Click Me');
+    const greeter = new Greeter();
+
+    document.body.innerHTML = \`<h1>\${message}</h1>\`;
+    document.body.appendChild(button);
+    console.log(greeter.greet());
+    `
+      },
+      {
+        path: "src/utils/formatter.ts",
+        content: `/**
+     * Formats a message with a greeting.
+     * @param name The name to include in the message.
+     * @returns The formatted message.
+     */
+    export const formatMessage = (name: string): string => {
+      return \`Hello, \${name}!\`;
+    };
+    `
+      },
+      {
+        path: "src/ui/button.ts",
+        content: `import { formatMessage } from '../utils/formatter';
+
+    export function createButton(text: string) {
+      const btn = document.createElement('button');
+      btn.textContent = text;
+      // This is a contrived call to create a graph edge
+      btn.ariaLabel = formatMessage('Button');
+      return btn;
+    }
+    `
+      },
+      {
+        path: "src/styles.css",
+        content: `body {
+      font-family: sans-serif;
+      background-color: #f0f0f0;
+    }
+
+    h1 {
+      color: #333;
+    }`
+      },
+      {
+        path: 'src/services/greeter.py',
+        content: `class Greeter:
+        def __init__(self):
+            self.message = "Hello from Python"
+
+        def greet(self):
+            return self.message
+    `
+      },
+      {
+        path: 'src/data/user.java',
+        content: `package com.example.data;
+
+    public class User {
+        private String name;
+
+        public User(String name) {
+            this.name = name;
+        }
+
+        public String getName() {
+            return name;
+        }
+    }
+    `
+      }
+    ];
+
+    export const defaultFilesJSON = JSON.stringify(files, null, 2);
+approved: true

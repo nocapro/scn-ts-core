@@ -185,8 +185,7 @@ export const typescriptQueries = `
 ((method_definition) @mod.async (#match? @mod.async "^async "))
 `;
 
-export const typescriptReactQueries = `
-${typescriptQueries}
+export const typescriptReactQueries = typescriptQueries + `
 
 ; JSX component definitions (uppercase)
 (jsx_opening_element

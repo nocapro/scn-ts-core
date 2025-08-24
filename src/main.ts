@@ -1,30 +1,57 @@
 import { getLanguageForFile } from './languages';
 import { initializeParser as init, parse } from './parser';
-import type { ScnTsConfig, ParserInitOptions, SourceFile, InputFile } from './types';
+import type { ParserInitOptions, SourceFile, InputFile, TsConfig, LogLevel } from './types';
 import { analyze } from './analyzer';
 import { formatScn } from './formatter';
-import path from 'node:path';
+import path from './utils/path';
 import { getPathResolver } from './utils/tsconfig';
 import { resolveGraph } from './graph-resolver';
+import { logger } from './logger';
 
 /**
- * Public API to initialize the parser. Must be called before generateScn.
+ * Public API to initialize the parser. Must be called before any other APIs.
  */
 export const initializeParser = (options: ParserInitOptions): Promise<void> => init(options);
 
-export type { ScnTsConfig, ParserInitOptions, SourceFile, InputFile };
+// Types for web demo
+export type { ParserInitOptions, SourceFile, LogLevel, InputFile, TsConfig, ScnTsConfig } from './types';
+export type { LogHandler } from './logger';
+export type FileContent = InputFile;
+
+// Exports for web demo
+export { logger };
+export { formatScn as generateScn }; // App.tsx uses `generateScn` to format the graph
+
+interface AnalyzeProjectOptions {
+    files: InputFile[];
+    tsconfig?: TsConfig;
+    root?: string;
+    onProgress?: (progress: { percentage: number; message: string }) => void;
+    logLevel?: LogLevel;
+}
 
 /**
- * Generates an SCN string from a project directory.
+ * Parses and analyzes a project's files to build a dependency graph.
  */
-export const generateScn = async (config: ScnTsConfig): Promise<string> => {
-    const root = config.root ?? '/';
-    const pathResolver = getPathResolver(config.tsconfig);
+export const analyzeProject = async ({
+    files,
+    tsconfig,
+    root = '/',
+    onProgress,
+    logLevel
+}: AnalyzeProjectOptions): Promise<SourceFile[]> => {
+    if (logLevel) {
+        logger.setLevel(logLevel);
+    }
+    const pathResolver = getPathResolver(tsconfig);
 
-    let fileIdCounter = 1; // Start with 1 to match fixture IDs
+    let fileIdCounter = 1;
+
+    onProgress?.({ percentage: 0, message: 'Creating source files...' });
+    logger.debug('Creating source files...');
 
     // Step 1: Create SourceFile objects for all files
-    const sourceFiles = config.files.map((file) => {
+    const sourceFiles = files.map((file) => {
         const lang = getLanguageForFile(file.path);
         const absolutePath = path.join(root, file.path);
         const sourceFile: SourceFile = {
@@ -39,31 +66,49 @@ export const generateScn = async (config: ScnTsConfig): Promise<string> => {
         return sourceFile;
     });
 
+    onProgress?.({ percentage: 10, message: `Parsing ${sourceFiles.length} files...` });
+    logger.debug(`Parsing ${sourceFiles.length} files...`);
+
     // Step 2: Parse all files
-    const parsedFiles = sourceFiles.map(file => {
+    const parsedFiles = sourceFiles.map((file, i) => {
         if (!file.language || !file.language.wasmPath || file.sourceCode.trim() === '') {
             return file;
         }
         const tree = parse(file.sourceCode, file.language);
         if (!tree) {
             file.parseError = true;
+            logger.warn(`Failed to parse ${file.relativePath}`);
         } else {
             file.ast = tree;
         }
+        const percentage = 10 + (40 * (i + 1) / sourceFiles.length);
+        onProgress?.({ percentage, message: `Parsing ${file.relativePath}` });
+        logger.debug(`[${Math.round(percentage)}%] Parsed ${file.relativePath}`);
         return file;
     });
 
+    onProgress?.({ percentage: 50, message: 'Analyzing files...' });
+    logger.debug('Analyzing files...');
+
     // Step 3: Analyze all parsed files
-    const analyzedFiles = parsedFiles.map(file => {
+    const analyzedFiles = parsedFiles.map((file, i) => {
         if (file.ast) {
-            return analyze(file);
+            const analyzed = analyze(file);
+            const percentage = 50 + (40 * (i + 1) / sourceFiles.length);
+            onProgress?.({ percentage, message: `Analyzing ${file.relativePath}` });
+            logger.debug(`[${Math.round(percentage)}%] Analyzed ${file.relativePath}`);
+            return analyzed;
         }
         return file;
     });
     
+    onProgress?.({ percentage: 90, message: 'Resolving dependency graph...' });
+    logger.debug('Resolving dependency graph...');
+
     // Step 4: Resolve the dependency graph across all files
     const resolvedGraph = resolveGraph(analyzedFiles, pathResolver, root);
     
-    // Step 5: Format the final SCN output
-    return formatScn(resolvedGraph);
+    onProgress?.({ percentage: 100, message: 'Analysis complete.' });
+    logger.debug('Analysis complete.');
+    return resolvedGraph;
 };

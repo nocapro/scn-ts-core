@@ -68,14 +68,13 @@ const formatSymbol = (symbol: CodeSymbol, allFiles: SourceFile[]): string[] => {
     // Build ID portion conditionally
     const file = allFiles.find(f => f.id === symbol.fileId)!;
     const idPart = formatSymbolIdDisplay(file, symbol);
-    const idText = (symbol.kind === 'property' || symbol.kind === 'constructor') ? '' : (idPart ?? '');
-    const idWithSpace = idText ? `${idText} ` : '';
+    const idText = (symbol.kind === 'property' || symbol.kind === 'constructor') ? null : (idPart ?? null);
     const segments: string[] = [prefix, icon];
-    if (idPart) segments.push(idPart);
+    if (idText) segments.push(idText);
     if (name) segments.push(name.trim());
     if (modStr) segments.push(modStr);
     if (suffix) segments.push(suffix);
-    const line = `  ${segments.join(' ')}`;
+    const line = `  ${segments.filter(Boolean).join(' ')}`;
     const result = [line];
 
     const outgoing = new Map<number, Set<string>>();
@@ -182,7 +181,7 @@ const buildChildrenMap = (symbols: CodeSymbol[]): Map<string, CodeSymbol[]> => {
         }
     }
     // Sort children by position
-    for (const [k, arr] of map.entries()) {
+    for (const [, arr] of map.entries()) {
         arr.sort((a, b) => a.range.start.line - b.range.start.line || a.range.start.column - b.range.start.column);
     }
     return map;

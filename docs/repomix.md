@@ -1,344 +1,1341 @@
 # Directory Structure
 ```
-docs/
-  fix.plan.md
-scripts/
-  ast.ts
+packages/
+  scn-ts-web-demo/
+    src/
+      components/
+        ui/
+          button.tsx
+          card.tsx
+          textarea.tsx
+        LogViewer.tsx
+      lib/
+        utils.ts
+      App.tsx
+      default-files.ts
+      index.css
+      main.tsx
+    index.html
+    package.json
+    postcss.config.js
+    tailwind.config.js
+    tsconfig.json
+    tsconfig.node.json
+    vite.config.ts
 src/
   queries/
+    css.ts
+    go.ts
+    rust.ts
     typescript.ts
+  utils/
+    ast.ts
+    graph.ts
+    path.ts
+    tsconfig.ts
   analyzer.ts
+  formatter.ts
   graph-resolver.ts
+  languages.ts
+  logger.ts
+  main.ts
+  parser.ts
   types.ts
-test/
-  ts/
-    fixtures/
-      09.dep-graph-circular.fixture.yaml
+package.json
+tsconfig.json
 ```
 
 # Files
 
-## File: test/ts/fixtures/09.dep-graph-circular.fixture.yaml
-````yaml
-id: dep-graph-circular
-name: Complex Dependency Graph (Circular & Peer)
-input:
-  - path: src/moduleA.ts
-    content: |
-      import { funcB } from './moduleB';
-      import { util } from './utils';
+## File: packages/scn-ts-web-demo/src/components/ui/button.tsx
+```typescript
+import * as React from "react"
+import { Slot } from "@radix-ui/react-slot"
+import { cva, type VariantProps } from "class-variance-authority"
+import { cn } from "../../lib/utils"
 
-      export function funcA() {
-        if (util.shouldRun()) funcB();
-      }
-  - path: src/moduleB.ts
-    content: |
-      import { funcA } from './moduleA';
-      import { util } from './utils';
-
-      export function funcB() {
-        if (util.shouldRun()) funcA();
-      }
-  - path: src/utils.ts
-    content: |
-      export const util = { shouldRun: () => true };
-  - path: src/main.ts
-    content: |
-      import { funcA } from './moduleA';
-      funcA();
-expected: |
-  § (3) src/utils.ts
-    <- (1.0), (2.0)
-    + @ (3.1) util
-      <- (1.1), (2.1)
-      @ shouldRun
-
-  § (1) src/moduleA.ts
-    -> (2.0), (3.0)
-    <- (2.1), (4.0)
-    + ~ (1.1) funcA()
-      -> (2.1), (3.1)
-      <- (2.1), (4.0)
-
-  § (2) src/moduleB.ts
-    -> (1.0), (3.0)
-    <- (1.1)
-    + ~ (2.1) funcB()
-      -> (1.1), (3.1)
-      <- (1.1)
-
-  § (4) src/main.ts
-    -> (1.0)
-    -> (1.1)
-````
-
-## File: docs/fix.plan.md
-````markdown
-### **Final Comprehensive Analysis Report: Systemic Failures (Revised)**
-
-The test suite reveals systemic failures across the analysis pipeline. While my previous report captured the high-level themes, a deeper analysis shows more specific and recurring problems in symbol scoping, pattern recognition, and output formatting.
-
----
-
-### 1. Critical Query Error in CSS Parser
-
-*   `[ ]` **1.1.** A fatal error in the CSS tree-sitter query (`src/queries/css.ts`) is the root cause of multiple test crashes. The query uses an invalid node name, `custom_property_name`, making it impossible to analyze any file containing CSS.
-    *   **Impact:** All tests involving `.css` files crash with a `QueryError`.
-    *   **Affected Fixtures:** `react-css`, `advanced-css`, `complex-css`.
-
----
-
-### 2. Dependency Resolution and Graph Failures
-
-*   `[ ]` **2.1. Unresolved Member Expression Dependencies:** Fails to link calls like `util.shouldRun()` to the specific symbol within the imported file. (Fixture: `dep-graph-circular`)
-    *   **Code Context:** `import { util } from './utils'; ... util.shouldRun()`
-    *   **Expected:** `funcA` shows a dependency on the `util` symbol `(3.1)`.
-        ```
-        + ~ (1.1) funcA()
-          -> (2.1), (3.1)
-        ```
-    *   **Actual:** The link to `(3.1)` is missing.
-        ```
-        + ~ (1.1) funcA()
-          -> (2.1)
-        ```
-*   `[ ]` **2.2. Path Alias Resolution Failure:** Does not correctly process `tsconfig.json` `paths` aliases, breaking all aliased imports. (Fixture: `monorepo-aliases`)
-    *   **Code Context:** `import { Button } from '@shared-ui/Button';`
-    *   **Expected:** The `App` component's use of `<Button>` is linked to its definition in another package.
-        ```
-        - ◇ (3.3) App
-          ⛶ Button
-            -> (1.1)
-        ```
-    *   **Actual:** The link is completely missing; the `App` component appears empty.
-        ```
-        - ◇ (3.1) App
-        ```
-*   `[ ]` **2.3. Lack of Dynamic `import()` Support:** Fails to recognize `await import()` as a dynamic dependency. (Fixture: `dynamic-imports`)
-    *   **Code Context:** `addEventListener('click', async () => { ... await import('./heavy-module'); ... })`
-    *   **Expected:** An anonymous function symbol is created with a `[dynamic]` dependency.
-        ```
-        - ~ <anonymous>() ...
-          -> (1.0) [dynamic]
-          -> (1.1)
-        ```
-    *   **Actual:** The analyzer misses the function and its dependencies.
-        ```
-        - @ result
-        ```
----
-
-### 3. Incomplete Language and Framework Analysis
-
-#### `[ ]` **3.1. Failure to Parse Core JS/TS Syntax**
-The system cannot analyze files containing only simple `export const` declarations with literal values.
-
-*   **Affected Fixture:** `dep-graph-diamond`
-*   **Expected:** `export const D = 'D';` produces an exported variable symbol.
-*   **Actual:** The file is parsed as empty.
-
-#### `[ ]` **3.2. Incorrect Symbol Scoping and Hoisting**
-The analyzer incorrectly extracts nested functions and local variables as top-level symbols, breaking component and hook structures.
-
-*   **Affected Fixtures:** `react-advanced`, `react-render-props`
-*   **Code Context:** A hook `useCounter` containing a nested function `increment`, or a component `Counter` containing a local variable `theme`.
-*   **Expected:** `increment` and `theme` should not appear as top-level symbols. They are implementation details of their parent scope.
-    ```
-    + ~ (1.1) useCounter()
-      <- (4.2)
-    ```
-*   **Actual:** Nested symbols are "hoisted" to the top level, creating a flat, incorrect structure.
-    ```
-    + ~ (1.1) useCounter()
-      <- (4.1)
-    + ~ (1.2) increment()  // <-- Incorrectly hoisted
-      <- (4.0)
-    ```
-
-#### `[ ]` **3.3. Failure to Analyze Advanced React Patterns**
-The analyzer misinterprets key React patterns, leading to incorrect symbol types and broken hierarchies.
-
-*   `[ ]` **3.3.1. React Components Identified as Functions:** Any functional component (including HOCs, server components, and basic components) is misidentified as a plain function (`~`) instead of a React component (`◇`).
-    *   **Affected Fixtures:** `react-advanced`, `react-render-props`, `react-server-components`.
-*   `[ ]` **3.3.2. Failure to Analyze Render Props:** The analyzer cannot parse the anonymous function passed as a prop inside JSX, completely losing the component sub-tree within it.
-    *   **Affected Fixture:** `react-render-props`.
-    *   **Expected:** An anonymous function (`~ <anonymous>`) is shown as a child of the `<MouseTracker>` element, containing its own JSX children.
-        ```
-        ⛶ MouseTracker
-          -> (1.2)
-          - ~ <anonymous>({x:#, y:#})
-            ⛶ <>
-        ```
-    *   **Actual:** The render prop is ignored, and its JSX children (`h1`, `p`) are incorrectly hoisted as top-level symbols in the `App` file.
-        ```
-        + ◇ (2.2) MouseTracker
-        + ⛶ (2.3) h1            // <-- Incorrectly hoisted
-        + ⛶ (2.4) p             // <-- Incorrectly hoisted
-        ```
-*   `[ ]` **3.3.3. Incorrect File Directive Formatting:** `use client`/`use server` directives are captured literally instead of being normalized.
-    *   **Affected Fixture:** `react-server-components`.
-    *   **Expected:** Normalized labels `[server]` and `[client]`.
-    *   **Actual:** Literal labels `[use server]` and `[use client]`.
-
-#### `[ ]` **3.4. Failure to Parse CSS-in-JS Syntax**
-The analyzer does not recognize the `styled.div` tagged template literal syntax. It incorrectly identifies the styled component as a simple variable.
-
-*   **Affected Fixture:** `css-in-js`
-*   **Expected:** A single, cohesive symbol for `CardWrapper` identified as a styled `div`.
-    ```
-    - ~div (1.1) CardWrapper { props: #CardProps } [styled] { 💧 📐 }
-    ```
-*   **Actual:** The symbol is split into a disconnected variable (`@`) and an empty component (`◇`).
-    ```
-    - @ CardWrapper
-    ...
-    + ◇ (1.3) CardWrapper
-    ```
-
-#### `[ ]` **3.5. Incomplete Multi-Language Tooling Integration**
-The system cannot handle the code generation workflow from GraphQL.
-
-*   **Affected Fixture:** `graphql-codegen`
-*   **Problem:** The analyzer has no parser for `.graphql` files and fails to link the generated `.ts` file back to its source GraphQL query.
-````
-
-## File: scripts/ast.ts
-````typescript
-import { initializeParser, parse } from '../src/parser';
-import { getLanguageForFile } from '../src/languages';
-import path from 'node:path';
-
-async function main() {
-  const wasmDir = path.join(process.cwd(), 'test', 'wasm');
-  await initializeParser({ wasmBaseUrl: wasmDir });
-
-  const samples: Array<{file: string, code: string, title: string}> = [
-    {
-      file: 'sample.ts',
-      title: 'TS class/interface snippet',
-      code: `
-export interface User { id: number; name: string; }
-export type UserId = number | string;
-export class ApiClient { private apiKey: string; constructor(key: string) { this.apiKey = key; } async fetchUser(id: UserId): Promise<User> { return { id: 1, name: 'x' }; } }
-      `.trim()
+const buttonVariants = cva(
+  "inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50",
+  {
+    variants: {
+      variant: {
+        default: "bg-blue-600 text-primary-foreground hover:bg-blue-700 text-white",
+        destructive:
+          "bg-red-500 text-destructive-foreground hover:bg-red-600",
+        outline:
+          "border border-input bg-background hover:bg-accent hover:text-accent-foreground",
+        secondary:
+          "bg-gray-200 text-secondary-foreground hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600",
+        ghost: "hover:bg-accent hover:text-accent-foreground",
+        link: "text-primary underline-offset-4 hover:underline",
+      },
+      size: {
+        default: "h-10 px-4 py-2",
+        sm: "h-9 rounded-md px-3",
+        lg: "h-11 rounded-md px-8",
+        icon: "h-10 w-10",
+      },
     },
-    {
-      file: 'iife.js',
-      title: 'IIFE and prototype',
-      code: `
-(function(){
-  function Widget(name){ this.name = name }
-  Widget.prototype.render = function(){ return 'x' }
-  function * idGenerator(){ let i=0; while(true) yield i++; }
-  window.Widget = Widget; window.idGenerator = idGenerator;
-})();
-      `.trim()
+    defaultVariants: {
+      variant: "default",
+      size: "default",
     },
-    {
-      file: 'cjs.js',
-      title: 'CJS require',
-      code: `
-const cjs = require('./cjs_module');
-      `.trim()
-    },
-    {
-      file: 'cjs_exports.js',
-      title: 'CJS module.exports',
-      code: `
-function cjsFunc() { console.log('cjs'); }
-module.exports = {
-  value: 42,
-  run: () => cjsFunc()
+  }
+)
+
+export interface ButtonProps
+  extends React.ButtonHTMLAttributes<HTMLButtonElement>,
+    VariantProps<typeof buttonVariants> {
+  asChild?: boolean
+}
+
+const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
+  ({ className, variant, size, asChild = false, ...props }, ref) => {
+    const Comp = asChild ? Slot : "button"
+    return (
+      <Comp
+        className={cn(buttonVariants({ variant, size, className }))}
+        ref={ref}
+        {...props}
+      />
+    )
+  }
+)
+Button.displayName = "Button"
+
+export { Button, buttonVariants }
+```
+
+## File: packages/scn-ts-web-demo/src/components/ui/card.tsx
+```typescript
+import * as React from "react"
+import { cn } from "../../lib/utils"
+
+const Card = React.forwardRef<
+  HTMLDivElement,
+  React.HTMLAttributes<HTMLDivElement>
+>(({ className, ...props }, ref) => (
+  <div
+    ref={ref}
+    className={cn("rounded-lg border bg-white dark:bg-gray-800 dark:border-gray-700 shadow-sm", className)}
+    {...props}
+  />
+))
+Card.displayName = "Card"
+
+const CardHeader = React.forwardRef<
+  HTMLDivElement,
+  React.HTMLAttributes<HTMLDivElement>
+>(({ className, ...props }, ref) => (
+  <div
+    ref={ref}
+    className={cn("flex flex-col space-y-1.5 p-4", className)}
+    {...props}
+  />
+))
+CardHeader.displayName = "CardHeader"
+
+const CardTitle = React.forwardRef<
+  HTMLParagraphElement,
+  React.HTMLAttributes<HTMLHeadingElement>
+>(({ className, ...props }, ref) => (
+  <h3
+    ref={ref}
+    className={cn(
+      "text-lg font-semibold leading-none tracking-tight",
+      className
+    )}
+    {...props}
+  />
+))
+CardTitle.displayName = "CardTitle"
+
+
+const CardContent = React.forwardRef<
+  HTMLDivElement,
+  React.HTMLAttributes<HTMLDivElement>
+>(({ className, ...props }, ref) => (
+  <div ref={ref} className={cn("p-4 pt-0", className)} {...props} />
+))
+CardContent.displayName = "CardContent"
+
+
+export { Card, CardHeader, CardTitle, CardContent }
+```
+
+## File: packages/scn-ts-web-demo/src/components/ui/textarea.tsx
+```typescript
+import * as React from "react"
+import { cn } from "../../lib/utils"
+
+export interface TextareaProps
+  extends React.TextareaHTMLAttributes<HTMLTextAreaElement> {}
+
+const Textarea = React.forwardRef<HTMLTextAreaElement, TextareaProps>(
+  ({ className, ...props }, ref) => {
+    return (
+      <textarea
+        className={cn(
+          "flex min-h-[80px] w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50",
+          "dark:border-gray-600 dark:bg-gray-900",
+          className
+        )}
+        ref={ref}
+        {...props}
+      />
+    )
+  }
+)
+Textarea.displayName = "Textarea"
+
+export { Textarea }
+```
+
+## File: packages/scn-ts-web-demo/src/components/LogViewer.tsx
+```typescript
+import React from 'react';
+import type { LogLevel } from 'scn-ts-core';
+import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
+import { cn } from '../lib/utils';
+
+export interface LogEntry {
+  level: Exclude<LogLevel, 'silent'>;
+  message: string;
+  timestamp: number;
+}
+
+const levelColorMap: Record<Exclude<LogLevel, 'silent'>, string> = {
+  error: 'text-red-500',
+  warn: 'text-yellow-500',
+  info: 'text-blue-400',
+  debug: 'text-gray-500',
 };
-      `.trim()
-    },
-    {
-      file: 'tagged.js',
-      title: 'Tagged template',
-      code: `
-function styler(strings, ...values) { return '' }
-const name = 'a';
-document.body.innerHTML = styler\`Hello, \${name}!\`;
-      `.trim()
-    },
-    {
-      file: 'abstract_class.ts',
-      title: 'Abstract Class',
-      code: `
-abstract class BaseEntity {
-  readonly id: string;
-  static species: string;
-  protected constructor(id: string) { this.id = id; }
-  abstract getDescription(): string;
-  static getSpeciesName(): string { return this.species; }
+
+const LogViewer: React.FC<{ logs: readonly LogEntry[] }> = ({ logs }) => {
+  return (
+    <Card className="h-full flex flex-col">
+      <CardHeader>
+        <CardTitle>Logs</CardTitle>
+      </CardHeader>
+      <CardContent className="flex-grow overflow-auto p-0">
+        <div className="p-4 font-mono text-xs">
+          {logs.length === 0 && <p className="text-gray-500">No logs yet. Click "Analyze" to start.</p>}
+          {logs.map((log, index) => (
+            <div key={index} className="flex items-start">
+              <span className={cn("font-bold w-12 flex-shrink-0", levelColorMap[log.level])}>
+                [{log.level.toUpperCase()}]
+              </span>
+              <span className="whitespace-pre-wrap break-all">{log.message}</span>
+            </div>
+          ))}
+        </div>
+      </CardContent>
+    </Card>
+  );
+};
+
+export default LogViewer;
+```
+
+## File: packages/scn-ts-web-demo/src/lib/utils.ts
+```typescript
+import { type ClassValue, clsx } from "clsx"
+import { twMerge } from "tailwind-merge"
+
+export function cn(...inputs: ClassValue[]) {
+  return twMerge(clsx(inputs))
 }
-      `.trim()
-    },
-    {
-      file: 'advanced_types.ts',
-      title: 'Advanced Types',
-      code: `
-type EventName = 'click' | 'scroll' | 'mousemove';
-type Style = 'bold' | 'italic';
-type CssClass = \`text-\${Style}\`;
-type HandlerMap = { [K in EventName]: (event: K) => void };
-type UnpackPromise<T> = T extends Promise<infer U> ? U : T;
-interface User { id: number; name: string; }
-const config = { user: { id: 1, name: 'a' } satisfies User };
-      `.trim()
-    },
-    {
-        file: 'proxy.js',
-        title: 'JS Proxy',
-        code: `
-const hiddenProp = Symbol('hidden');
-const user = { name: 'John', [hiddenProp]: 'secret' };
-const userProxy = new Proxy(user, {
-  get(target, prop) {
-    return prop in target ? target[prop] : 'N/A';
-  }
-});
-        `.trim()
-    }
-  ];
+```
 
-  for (const sample of samples) {
-    const lang = getLanguageForFile(sample.file)!;
-    const tree = parse(sample.code, lang)!;
-    console.log(`\n===== ${sample.title} (${sample.file}) =====`);
-    printAST(tree.rootNode);
+## File: packages/scn-ts-web-demo/src/App.tsx
+```typescript
+import { useState, useEffect, useCallback } from 'react';
+import {
+  initializeParser,
+  logger,
+  analyzeProject,
+  generateScn,
+} from 'scn-ts-core';
+import type { FileContent, LogHandler } from 'scn-ts-core';
+import { defaultFilesJSON } from './default-files';
+import { Button } from './components/ui/button';
+import { Card, CardContent, CardHeader, CardTitle } from './components/ui/card';
+import { Textarea } from './components/ui/textarea';
+import LogViewer from './components/LogViewer';
+import type { LogEntry } from './components/LogViewer';
+import { Play, Loader } from 'lucide-react';
+
+function App() {
+  const [isInitialized, setIsInitialized] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+  const [filesInput, setFilesInput] = useState(defaultFilesJSON);
+  const [scnOutput, setScnOutput] = useState('');
+  const [progress, setProgress] = useState<{ percentage: number; message: string } | null>(null);
+  const [logs, setLogs] = useState<LogEntry[]>([]);
+
+  useEffect(() => {
+    const init = async () => {
+      try {
+        await initializeParser({ wasmBaseUrl: '/wasm/' });
+        setIsInitialized(true);
+        setLogs(prev => [...prev, { level: 'info', message: 'Parser initialized.', timestamp: Date.now() }]);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        setLogs(prev => [...prev, { level: 'error', message: `Failed to initialize parser: ${message}`, timestamp: Date.now() }]);
+      }
+    };
+    init();
+  }, []);
+
+  const handleAnalyze = useCallback(async () => {
+    if (!isInitialized) {
+      setLogs(prev => [...prev, { level: 'warn', message: 'Parser not ready.', timestamp: Date.now() }]);
+      return;
+    }
+
+    setIsLoading(true);
+    setLogs([]);
+    setScnOutput('');
+    setProgress(null);
+
+    const logHandler: LogHandler = (level, ...args) => {
+      const message = args.map(arg => typeof arg === 'object' ? JSON.stringify(arg) : String(arg)).join(' ');
+      setLogs(prev => [...prev, { level, message, timestamp: Date.now() }]);
+    };
+    logger.setLogHandler(logHandler);
+    logger.setLevel('debug');
+
+    const onProgress = (progressData: { percentage: number; message: string }) => {
+      setProgress(progressData);
+      logger.info(`[${Math.round(progressData.percentage)}%] ${progressData.message}`);
+    };
+
+    try {
+      let files: FileContent[] = [];
+      try {
+        files = JSON.parse(filesInput);
+        if (!Array.isArray(files)) throw new Error("Input is not an array.");
+      } catch (error) {
+        throw new Error(`Invalid JSON input: ${error instanceof Error ? error.message : String(error)}`);
+      }
+
+      const rankedGraph = await analyzeProject({ files, onProgress, logLevel: 'debug' });
+      const scn = generateScn(rankedGraph);
+      setScnOutput(scn);
+      logger.info('Analysis complete.');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      logger.error('Analysis failed:', message);
+    } finally {
+      setIsLoading(false);
+      setProgress(null);
+      logger.setLogHandler(null);
+    }
+  }, [filesInput, isInitialized]);
+
+  return (
+    <div className="min-h-screen flex flex-col p-4 gap-4">
+      <header className="flex-shrink-0 flex items-center justify-between">
+        <h1 className="text-2xl font-bold">SCN-TS Web Demo</h1>
+        <Button onClick={handleAnalyze} disabled={isLoading || !isInitialized} className="w-32 justify-center">
+          {isLoading ? (
+            <>
+              <Loader className="mr-2 h-4 w-4 animate-spin" />
+              <span>{progress ? `${Math.round(progress.percentage)}%` : 'Analyzing...'}</span>
+            </>
+          ) : (
+            <>
+              <Play className="mr-2 h-4 w-4" />
+              <span>Analyze</span>
+            </>
+          )}
+        </Button>
+      </header>
+
+      <main className="flex-grow grid grid-cols-1 lg:grid-cols-2 gap-4 h-[calc(100vh-150px)]">
+        <Card className="flex flex-col">
+          <CardHeader>
+            <CardTitle>Input Files (JSON)</CardTitle>
+          </CardHeader>
+          <CardContent className="flex-grow">
+            <Textarea
+              value={filesInput}
+              onChange={(e) => setFilesInput(e.currentTarget.value)}
+              className="h-full w-full font-mono text-xs"
+              placeholder="Paste an array of FileContent objects here..."
+            />
+          </CardContent>
+        </Card>
+
+        <Card className="flex flex-col overflow-hidden">
+           <CardHeader>
+            <CardTitle>Output (SCN)</CardTitle>
+          </CardHeader>
+          <CardContent className="flex-grow overflow-auto p-0">
+            <pre className="text-xs whitespace-pre font-mono p-4 h-full w-full">
+              <code>
+                {scnOutput || (isLoading ? "Generating..." : "Output will appear here.")}
+              </code>
+            </pre>
+          </CardContent>
+        </Card>
+      </main>
+
+      <footer className="flex-shrink-0 h-[150px]">
+        <LogViewer logs={logs} />
+      </footer>
+    </div>
+  );
+}
+
+export default App;
+```
+
+## File: packages/scn-ts-web-demo/src/default-files.ts
+```typescript
+import type { FileContent } from "scn-ts-core";
+
+const files: FileContent[] = [
+  {
+    path: "src/main.ts",
+    content: `import { formatMessage } from './utils/formatter';
+import { createButton } from './ui/button';
+import { Greeter } from './services/greeter.py';
+
+console.log('App starting...');
+
+const message = formatMessage('World');
+const button = createButton('Click Me');
+const greeter = new Greeter();
+
+document.body.innerHTML = \`<h1>\${message}</h1>\`;
+document.body.appendChild(button);
+console.log(greeter.greet());
+`
+  },
+  {
+    path: "src/utils/formatter.ts",
+    content: `/**
+ * Formats a message with a greeting.
+ * @param name The name to include in the message.
+ * @returns The formatted message.
+ */
+export const formatMessage = (name: string): string => {
+  return \`Hello, \${name}!\`;
+};
+`
+  },
+  {
+    path: "src/ui/button.ts",
+    content: `import { formatMessage } from '../utils/formatter';
+
+export function createButton(text: string) {
+  const btn = document.createElement('button');
+  btn.textContent = text;
+  // This is a contrived call to create a graph edge
+  btn.ariaLabel = formatMessage('Button');
+  return btn;
+}
+`
+  },
+  {
+    path: "src/styles.css",
+    content: `body {
+  font-family: sans-serif;
+  background-color: #f0f0f0;
+}
+
+h1 {
+  color: #333;
+}`
+  },
+  {
+    path: 'src/services/greeter.py',
+    content: `class Greeter:
+    def __init__(self):
+        self.message = "Hello from Python"
+
+    def greet(self):
+        return self.message
+`
+  },
+  {
+    path: 'src/data/user.java',
+    content: `package com.example.data;
+
+public class User {
+    private String name;
+
+    public User(String name) {
+        this.name = name;
+    }
+
+    public String getName() {
+        return name;
+    }
+}
+`
+  }
+];
+
+export const defaultFilesJSON = JSON.stringify(files, null, 2);
+```
+
+## File: packages/scn-ts-web-demo/src/index.css
+```css
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* For custom scrollbars */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #888;
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #555;
+}
+```
+
+## File: packages/scn-ts-web-demo/src/main.tsx
+```typescript
+import React from 'react'
+import ReactDOM from 'react-dom/client'
+import App from './App'
+import './index.css'
+
+ReactDOM.createRoot(document.getElementById('root')!).render(
+  <React.StrictMode>
+    <App />
+  </React.StrictMode>,
+)
+```
+
+## File: packages/scn-ts-web-demo/index.html
+```html
+<!doctype html>
+<html lang="en" class="dark">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>SCN-TS Web Demo</title>
+  </head>
+  <body class="bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-gray-100">
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
+```
+
+## File: packages/scn-ts-web-demo/package.json
+```json
+{
+  "name": "scn-ts-web-demo",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "check": "tsc --noEmit",
+    "preview": "vite preview",
+    "prepare": "node scripts/prepare-wasm.cjs"
+  },
+  "dependencies": {
+    "@radix-ui/react-slot": "^1.0.2",
+    "class-variance-authority": "^0.7.0",
+    "clsx": "^2.1.1",
+    "lucide-react": "^0.379.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "tailwind-merge": "^2.3.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.12.12",
+    "@types/react": "^18.3.3",
+    "@types/react-dom": "^18.3.0",
+    "@vitejs/plugin-react": "^4.3.0",
+    "autoprefixer": "^10.4.19",
+    "eslint": "^8.57.0",
+    "postcss": "^8.4.38",
+    "tailwindcss": "^3.4.3",
+    "typescript": "^5.4.5",
+    "vite": "^5.2.12"
+  }
+}
+```
+
+## File: packages/scn-ts-web-demo/postcss.config.js
+```javascript
+export default {
+  plugins: {
+    tailwindcss: {},
+    autoprefixer: {},
+  },
+}
+```
+
+## File: packages/scn-ts-web-demo/tailwind.config.js
+```javascript
+/** @type {import('tailwindcss').Config} */
+export default {
+  darkMode: "class",
+  content: [
+    "./index.html",
+    "./src/**/*.{js,ts,jsx,tsx}",
+  ],
+  theme: {
+    extend: {},
+  },
+  plugins: [],
+}
+```
+
+## File: packages/scn-ts-web-demo/tsconfig.json
+```json
+{
+  "compilerOptions": {
+    "composite": true,
+    "target": "ES2020",
+    "useDefineForClassFields": true,
+    "lib": ["ES2020", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "skipLibCheck": true,
+
+    /* Bundler mode */
+    "moduleResolution": "bundler",
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "outDir": "dist",
+    "jsx": "react-jsx",
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["src/*"]
+    },
+
+    /* Linting */
+    "strict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noFallthroughCasesInSwitch": true
+  },
+  "include": ["src"],
+  "references": [
+    { "path": "../scn-ts-core" }
+  ]
+}
+```
+
+## File: packages/scn-ts-web-demo/tsconfig.node.json
+```json
+{
+  "compilerOptions": {
+    "skipLibCheck": true,
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "allowSyntheticDefaultImports": true,
+    "strict": true
+  },
+  "include": ["vite.config.ts"]
+}
+```
+
+## File: packages/scn-ts-web-demo/vite.config.ts
+```typescript
+import { defineConfig } from 'vite'
+import react from '@vitejs/plugin-react'
+import path from 'path'
+
+// https://vitejs.dev/config/
+export default defineConfig({
+  plugins: [react()],
+  resolve: {
+    alias: {
+      "@": path.resolve(__dirname, "src"),
+    },
+  },
+  optimizeDeps: {
+    // Exclude packages that have special loading mechanisms (like wasm)
+    // to prevent Vite from pre-bundling them and causing issues.
+    exclude: ['web-tree-sitter'],
+    // Force pre-bundling of our monorepo packages. As linked dependencies,
+    // Vite doesn't optimize it by default. We need to include it so Vite
+    // discovers its deep CJS dependencies (like graphology) and converts
+    // them to ESM for the dev server. We specifically `exclude` 'web-tree-sitter'
+    // above to prevent Vite from interfering with its unique WASM loading mechanism.
+    include: ['scn-ts-core'],
+  },
+  server: {
+    headers: {
+      // These headers are required for SharedArrayBuffer, which is used by
+      // web-tree-sitter and is good practice for applications using wasm
+      // with threading or advanced memory features.
+      'Cross-Origin-Embedder-Policy': 'require-corp',
+      'Cross-Origin-Opener-Policy': 'same-origin',
+    },
+  },
+})
+```
+
+## File: src/utils/path.ts
+```typescript
+// A simplified path utility for browser environments that assumes POSIX-style paths.
+export default {
+    join(...parts: string[]): string {
+        const path = parts.join('/');
+        // Replace multiple slashes, but keep leading slashes for absolute paths
+        return path.replace(/[/]+/g, '/');
+    },
+
+    dirname(p: string): string {
+        const i = p.lastIndexOf('/');
+        if (i === -1) return '.';
+        if (i === 0) return '/'; // root directory
+        const result = p.substring(0, i);
+        return result || '/';
+    },
+
+    extname(p: string): string {
+        const i = p.lastIndexOf('.');
+        // ensure it's not the first char and a slash doesn't appear after it
+        if (i <= 0 || p.lastIndexOf('/') > i) return '';
+        return p.substring(i);
+    },
+
+    resolve(...args: string[]): string {
+        let resolvedPath = '';
+        let resolvedAbsolute = false;
+        
+        for (let i = args.length - 1; i >= -1 && !resolvedAbsolute; i--) {
+            const path = (i >= 0 ? args[i] : '/')!; // CWD is root for web
+            if (path.length === 0 && i >= 0) continue;
+            
+            resolvedPath = path + '/' + resolvedPath;
+            resolvedAbsolute = path.charAt(0) === '/';
+        }
+        
+        const parts = resolvedPath.split('/').filter(p => p);
+        const stack: string[] = [];
+        for (const p of parts) {
+            if (p === '..') {
+                stack.pop();
+            } else if (p !== '.') {
+                stack.push(p);
+            }
+        }
+        
+        let result = stack.join('/');
+        if (resolvedAbsolute) {
+            result = '/' + result;
+        }
+        
+        return result || (resolvedAbsolute ? '/' : '.');
+    },
+
+    relative(from: string, to: string): string {
+        const fromParts = from.split('/').filter(p => p && p !== '.');
+        const toParts = to.split('/').filter(p => p && p !== '.');
+        
+        let i = 0;
+        while(i < fromParts.length && i < toParts.length && fromParts[i] === toParts[i]) {
+            i++;
+        }
+        
+        const upCount = fromParts.length - i;
+        const remainingTo = toParts.slice(i);
+        
+        const ups = Array(upCount).fill('..');
+        const resultParts = [...ups, ...remainingTo];
+        
+        return resultParts.join('/') || '.';
+    }
+};
+```
+
+## File: src/logger.ts
+```typescript
+import type { LogLevel } from './types';
+
+export type LogHandler = (level: Exclude<LogLevel, 'silent'>, ...args: any[]) => void;
+
+class Logger {
+  private handler: LogHandler | null = null;
+  private level: LogLevel = 'info';
+
+  private logLevels: Record<LogLevel, number> = {
+    error: 0,
+    warn: 1,
+    info: 2,
+    debug: 3,
+    silent: -1,
+  };
+
+  setLogHandler(handler: LogHandler | null) {
+    this.handler = handler;
+  }
+
+  setLevel(level: LogLevel) {
+    this.level = level;
+  }
+
+  private shouldLog(level: Exclude<LogLevel, 'silent'>): boolean {
+    if (this.level === 'silent' || !this.handler) return false;
+    return this.logLevels[level] <= this.logLevels[this.level];
+  }
+
+  error(...args: any[]) {
+    if (this.shouldLog('error')) {
+      this.handler!('error', ...args);
+    }
+  }
+
+  warn(...args: any[]) {
+    if (this.shouldLog('warn')) {
+      this.handler!('warn', ...args);
+    }
+  }
+
+  info(...args: any[]) {
+    if (this.shouldLog('info')) {
+      this.handler!('info', ...args);
+    }
+  }
+
+  debug(...args: any[]) {
+    if (this.shouldLog('debug')) {
+      this.handler!('debug', ...args);
+    }
   }
 }
 
-function printAST(node: any, depth = 0) {
-  const indent = '  '.repeat(depth);
-  const isNamed = typeof node.isNamed === 'function' ? node.isNamed() : true;
-  console.log(`${indent}${node.type}${isNamed ? '' : ' [anon]'} [${node.startPosition.row}:${node.startPosition.column}-${node.endPosition.row}:${node.endPosition.column}]`);
+export const logger = new Logger();
+```
 
-  const fieldNames: string[] = node.fieldNames || [];
-  for (const fieldName of fieldNames) {
-    const child = node.childForFieldName(fieldName);
-    if (child) {
-      console.log(`${indent}  ${fieldName}:`);
-      printAST(child, depth + 2);
-    }
-  }
+## File: src/utils/graph.ts
+```typescript
+import type { SourceFile } from '../types';
 
-  for (let i = 0; i < node.childCount; i++) {
-    const child = node.child(i);
-    if (!fieldNames.some(fn => node.childForFieldName(fn) === child)) {
-      printAST(child, depth + 1);
+export const topologicalSort = (sourceFiles: SourceFile[]): SourceFile[] => {
+    const adj = new Map<number, Set<number>>();
+    const inDegree = new Map<number, number>();
+    const idToFile = new Map<number, SourceFile>();
+
+    for (const file of sourceFiles) {
+        adj.set(file.id, new Set());
+        inDegree.set(file.id, 0);
+        idToFile.set(file.id, file);
     }
-  }
+
+    for (const file of sourceFiles) {
+        for (const symbol of file.symbols) {
+            for (const dep of symbol.dependencies) {
+                // Create a directed edge from the dependency to the current file
+                if (dep.resolvedFileId !== undefined && dep.resolvedFileId !== file.id) {
+                    if (!adj.get(dep.resolvedFileId)?.has(file.id)) {
+                         adj.get(dep.resolvedFileId)!.add(file.id);
+                         inDegree.set(file.id, (inDegree.get(file.id) || 0) + 1);
+                    }
+                }
+            }
+        }
+    }
+
+    const queue: number[] = [];
+    for (const [id, degree] of inDegree.entries()) {
+        if (degree === 0) {
+            queue.push(id);
+        }
+    }
+    queue.sort((a,b) => a - b);
+
+    const sorted: SourceFile[] = [];
+    while (queue.length > 0) {
+        const u = queue.shift()!;
+        sorted.push(idToFile.get(u)!);
+
+        const neighbors = Array.from(adj.get(u) || []).sort((a,b) => a-b);
+        for (const v of neighbors) {
+            inDegree.set(v, (inDegree.get(v) || 1) - 1);
+            if (inDegree.get(v) === 0) {
+                queue.push(v);
+            }
+        }
+        queue.sort((a,b) => a - b);
+    }
+
+    if (sorted.length < sourceFiles.length) {
+        const sortedIds = new Set(sorted.map(f => f.id));
+        sourceFiles.forEach(f => {
+            if (!sortedIds.has(f.id)) {
+                sorted.push(f);
+            }
+        });
+    }
+
+    // The fixtures expect a specific order that seems to be a standard topological sort,
+    // not a reverse one. Let's stick with the standard sort.
+    return sorted;
+};
+```
+
+## File: src/utils/tsconfig.ts
+```typescript
+import path from './path';
+
+export interface TsConfig {
+    compilerOptions?: {
+        baseUrl?: string;
+        paths?: Record<string, string[]>;
+    };
 }
 
-main().catch(e => { console.error(e); process.exit(1); });
-````
+const createPathResolver = (baseUrl: string, paths: Record<string, string[]>) => {
+    const aliasEntries = Object.entries(paths).map(([alias, resolutions]) => {
+        return {
+            pattern: new RegExp(`^${alias.replace('*', '(.*)')}$`),
+            resolutions,
+        };
+    });
+
+    return (importPath: string): string | null => {
+        for (const { pattern, resolutions } of aliasEntries) {
+            const match = importPath.match(pattern);
+            if (match && resolutions[0]) {
+                const captured = match[1] || '';
+                // Return the first resolved path.
+                const resolvedPath = resolutions[0].replace('*', captured);
+                return path.join(baseUrl, resolvedPath).replace(/\\/g, '/');
+            }
+        }
+        return null; // Not an alias
+    };
+};
+
+export type PathResolver = ReturnType<typeof createPathResolver>;
+
+export const getPathResolver = (tsconfig?: TsConfig | null): PathResolver => {
+    const baseUrl = tsconfig?.compilerOptions?.baseUrl || '.';
+    const paths = tsconfig?.compilerOptions?.paths ?? {};
+    // The baseUrl from tsconfig is relative to the tsconfig file itself (the root).
+    // The final paths we create should be relative to the root to match our file list.
+    return createPathResolver(baseUrl, paths);
+};
+```
+
+## File: src/main.ts
+```typescript
+import { getLanguageForFile } from './languages';
+import { initializeParser as init, parse } from './parser';
+import type { ParserInitOptions, SourceFile, InputFile, TsConfig, LogLevel } from './types';
+import { analyze } from './analyzer';
+import { formatScn } from './formatter';
+import path from './utils/path';
+import { getPathResolver } from './utils/tsconfig';
+import { resolveGraph } from './graph-resolver';
+import { logger } from './logger';
+
+/**
+ * Public API to initialize the parser. Must be called before any other APIs.
+ */
+export const initializeParser = (options: ParserInitOptions): Promise<void> => init(options);
+
+// Types for web demo
+export type { ParserInitOptions, SourceFile, LogLevel, InputFile, TsConfig, ScnTsConfig } from './types';
+export type { LogHandler } from './logger';
+export type FileContent = InputFile;
+
+// Exports for web demo
+export { logger };
+export { formatScn as generateScn }; // App.tsx uses `generateScn` to format the graph
+
+interface AnalyzeProjectOptions {
+    files: InputFile[];
+    tsconfig?: TsConfig;
+    root?: string;
+    onProgress?: (progress: { percentage: number; message: string }) => void;
+    logLevel?: LogLevel;
+}
+
+/**
+ * Parses and analyzes a project's files to build a dependency graph.
+ */
+export const analyzeProject = async ({
+    files,
+    tsconfig,
+    root = '/',
+    onProgress,
+    logLevel
+}: AnalyzeProjectOptions): Promise<SourceFile[]> => {
+    if (logLevel) {
+        logger.setLevel(logLevel);
+    }
+    const pathResolver = getPathResolver(tsconfig);
+
+    let fileIdCounter = 1;
+
+    onProgress?.({ percentage: 0, message: 'Creating source files...' });
+    logger.debug('Creating source files...');
+
+    // Step 1: Create SourceFile objects for all files
+    const sourceFiles = files.map((file) => {
+        const lang = getLanguageForFile(file.path);
+        const absolutePath = path.join(root, file.path);
+        const sourceFile: SourceFile = {
+            id: fileIdCounter++,
+            relativePath: file.path,
+            absolutePath,
+            sourceCode: file.content,
+            language: lang!,
+            symbols: [],
+            parseError: false,
+        };
+        return sourceFile;
+    });
+
+    onProgress?.({ percentage: 10, message: `Parsing ${sourceFiles.length} files...` });
+    logger.debug(`Parsing ${sourceFiles.length} files...`);
+
+    // Step 2: Parse all files
+    const parsedFiles = sourceFiles.map((file, i) => {
+        if (!file.language || !file.language.wasmPath || file.sourceCode.trim() === '') {
+            return file;
+        }
+        const tree = parse(file.sourceCode, file.language);
+        if (!tree) {
+            file.parseError = true;
+            logger.warn(`Failed to parse ${file.relativePath}`);
+        } else {
+            file.ast = tree;
+        }
+        const percentage = 10 + (40 * (i + 1) / sourceFiles.length);
+        onProgress?.({ percentage, message: `Parsing ${file.relativePath}` });
+        logger.debug(`[${Math.round(percentage)}%] Parsed ${file.relativePath}`);
+        return file;
+    });
+
+    onProgress?.({ percentage: 50, message: 'Analyzing files...' });
+    logger.debug('Analyzing files...');
+
+    // Step 3: Analyze all parsed files
+    const analyzedFiles = parsedFiles.map((file, i) => {
+        if (file.ast) {
+            const analyzed = analyze(file);
+            const percentage = 50 + (40 * (i + 1) / sourceFiles.length);
+            onProgress?.({ percentage, message: `Analyzing ${file.relativePath}` });
+            logger.debug(`[${Math.round(percentage)}%] Analyzed ${file.relativePath}`);
+            return analyzed;
+        }
+        return file;
+    });
+    
+    onProgress?.({ percentage: 90, message: 'Resolving dependency graph...' });
+    logger.debug('Resolving dependency graph...');
+
+    // Step 4: Resolve the dependency graph across all files
+    const resolvedGraph = resolveGraph(analyzedFiles, pathResolver, root);
+    
+    onProgress?.({ percentage: 100, message: 'Analysis complete.' });
+    logger.debug('Analysis complete.');
+    return resolvedGraph;
+};
+```
+
+## File: tsconfig.json
+```json
+{
+  "compilerOptions": {
+    // Environment setup & latest features
+    "lib": ["ESNext"],
+    "target": "ESNext",
+    "module": "Preserve",
+    "moduleDetection": "force",
+    "jsx": "react-jsx",
+    "allowJs": true,
+
+    // Bundler mode
+    "moduleResolution": "bundler",
+    "allowImportingTsExtensions": true,
+    "verbatimModuleSyntax": true,
+    "noEmit": true,
+
+    // Best practices
+    "strict": true,
+    "skipLibCheck": true,
+    "noFallthroughCasesInSwitch": true,
+    "noUncheckedIndexedAccess": true,
+    "noImplicitOverride": true,
+
+    // Some stricter flags (disabled by default)
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noPropertyAccessFromIndexSignature": false
+  }
+}
+```
+
+## File: src/languages.ts
+```typescript
+import type { LanguageConfig } from './types';
+import path from './utils/path';
+import { typescriptQueries, typescriptReactQueries } from './queries/typescript';
+import { cssQueries } from './queries/css';
+import { goQueries } from './queries/go';
+import { rustQueries } from './queries/rust';
+
+// Based on test/wasm and test/fixtures
+export const languages: LanguageConfig[] = [
+    {
+        id: 'typescript',
+        name: 'TypeScript',
+        extensions: ['.ts', '.mts', '.cts'],
+        wasmPath: 'tree-sitter-typescript.wasm',
+        queries: { main: typescriptQueries },
+    },
+    {
+        id: 'tsx',
+        name: 'TypeScriptReact',
+        extensions: ['.tsx'],
+        wasmPath: 'tree-sitter-tsx.wasm',
+        queries: { main: typescriptReactQueries },
+    },
+    {
+        id: 'javascript',
+        name: 'JavaScript',
+        extensions: ['.js', '.mjs', '.cjs'],
+        wasmPath: 'tree-sitter-typescript.wasm',
+        queries: { main: typescriptQueries },
+    },
+    {
+        id: 'css',
+        name: 'CSS',
+        extensions: ['.css'],
+        wasmPath: 'tree-sitter-css.wasm',
+        queries: { main: cssQueries },
+    },
+    {
+        id: 'go',
+        name: 'Go',
+        extensions: ['.go'],
+        wasmPath: 'tree-sitter-go.wasm',
+        queries: { main: goQueries },
+    },
+    {
+        id: 'java',
+        name: 'Java',
+        extensions: ['.java'],
+        wasmPath: 'tree-sitter-java.wasm',
+        queries: {},
+    },
+    {
+        id: 'python',
+        name: 'Python',
+        extensions: ['.py'],
+        wasmPath: 'tree-sitter-python.wasm',
+        queries: {},
+    },
+    {
+        id: 'rust',
+        name: 'Rust',
+        extensions: ['.rs'],
+        wasmPath: 'tree-sitter-rust.wasm',
+        queries: { main: rustQueries },
+    },
+    {
+        id: 'c',
+        name: 'C',
+        extensions: ['.c'],
+        wasmPath: 'tree-sitter-c.wasm',
+        queries: {},
+    },
+    {
+        id: 'graphql',
+        name: 'GraphQL',
+        extensions: ['.graphql', '.gql'],
+        wasmPath: '', // No wasm file provided in the list
+        queries: {},
+    },
+];
+
+const createLanguageMap = (): Map<string, LanguageConfig> => {
+    const map = new Map<string, LanguageConfig>();
+    languages.forEach(lang => {
+        lang.extensions.forEach(ext => {
+            map.set(ext, lang);
+        });
+    });
+    return map;
+};
+
+const languageMap = createLanguageMap();
+
+export const getLanguageForFile = (filePath: string): LanguageConfig | undefined => {
+    const extension = path.extname(filePath);
+    return languageMap.get(extension);
+};
+```
+
+## File: src/utils/ast.ts
+```typescript
+import type { Range } from '../types';
+import type { Node as SyntaxNode } from 'web-tree-sitter';
+
+export const getNodeText = (node: SyntaxNode, sourceCode: string): string => {
+    return sourceCode.substring(node.startIndex, node.endIndex);
+};
+
+export const getNodeRange = (node: SyntaxNode): Range => {
+    return {
+        start: { line: node.startPosition.row, column: node.startPosition.column },
+        end: { line: node.endPosition.row, column: node.endPosition.column },
+    };
+};
+
+export const findChild = (node: SyntaxNode, type: string | string[]): SyntaxNode | null => {
+    const types = Array.isArray(type) ? type : [type];
+    return node.children.find((c): c is SyntaxNode => !!c && types.includes(c.type)) || null;
+}
+
+export const findChildByFieldName = (node: SyntaxNode, fieldName: string): SyntaxNode | null => {
+    return node.childForFieldName(fieldName);
+};
+
+export const getIdentifier = (node: SyntaxNode, sourceCode: string, defaultName: string = '<anonymous>'): string => {
+    if (node.type === 'member_expression') {
+        return getNodeText(node, sourceCode);
+    }
+    const nameNode = findChildByFieldName(node, 'name') ?? findChild(node, ['identifier', 'property_identifier']);
+    return nameNode ? getNodeText(nameNode, sourceCode) : defaultName;
+};
+```
+
+## File: src/parser.ts
+```typescript
+import type { ParserInitOptions, LanguageConfig } from './types';
+import { Parser, Language, type Tree } from 'web-tree-sitter';
+import path from './utils/path';
+import { languages } from './languages';
+
+let initializePromise: Promise<void> | null = null;
+let isInitialized = false;
+
+const doInitialize = async (options: ParserInitOptions): Promise<void> => {
+    await Parser.init({
+        locateFile: (scriptName: string, _scriptDirectory: string) => {
+            return path.join(options.wasmBaseUrl, scriptName);
+        }
+    });
+
+    const languageLoaders = languages
+        .filter(lang => lang.wasmPath)
+        .map(async (lang: LanguageConfig) => {
+            const wasmPath = path.join(options.wasmBaseUrl, lang.wasmPath);
+            try {
+                const loadedLang = await Language.load(wasmPath);
+                const parser = new Parser();
+                parser.setLanguage(loadedLang);
+                lang.parser = parser;
+                lang.loadedLanguage = loadedLang;
+            } catch (error) {
+                console.error(`Failed to load parser for ${lang.name} from ${wasmPath}`, error);
+                throw error;
+            }
+        });
+    
+    await Promise.all(languageLoaders);
+    isInitialized = true;
+};
+
+export const initializeParser = (options: ParserInitOptions): Promise<void> => {
+    if (initializePromise) {
+        return initializePromise;
+    }
+    initializePromise = doInitialize(options);
+    return initializePromise;
+};
+
+export const parse = (sourceCode: string, lang: LanguageConfig): Tree | null => {
+    if (!isInitialized || !lang.parser) {
+        return null;
+    }
+    return lang.parser.parse(sourceCode);
+};
+```
+
+## File: src/queries/go.ts
+```typescript
+export const goQueries = `
+(package_clause
+  (package_identifier) @symbol.go_package.def) @scope.go_package.def
+
+(function_declaration
+ name: (identifier) @symbol.function.def) @scope.function.def
+
+(go_statement
+  (call_expression
+    function: (_) @rel.goroutine))
+
+(call_expression
+  function: (_) @rel.call)
+
+(import_spec
+  path: (interpreted_string_literal) @rel.import.source)
+`;
+```
+
+## File: src/queries/rust.ts
+```typescript
+export const rustQueries = `
+(struct_item
+  name: (type_identifier) @symbol.rust_struct.def) @scope.rust_struct.def
+
+(trait_item
+  name: (type_identifier) @symbol.rust_trait.def) @scope.rust_trait.def
+  
+(impl_item) @symbol.rust_impl.def @scope.rust_impl.def
+
+(impl_item
+  trait: (type_identifier) @rel.implements
+  type: (type_identifier) @rel.references
+)
+
+(attribute_item
+  (attribute . (token_tree (identifier) @rel.macro)))
+
+(function_item
+  name: (identifier) @symbol.function.def) @scope.function.def
+
+(impl_item
+  body: (declaration_list
+    (function_item
+      name: (identifier) @symbol.method.def) @scope.method.def))
+
+; For parameters like '&impl Trait'
+(parameter type: (reference_type (_ (type_identifier) @rel.references)))
+; For simple trait parameters
+(parameter type: (type_identifier) @rel.references)
+
+(call_expression
+  function: (field_expression
+    field: (field_identifier) @rel.call))
+
+((struct_item (visibility_modifier) @mod.export))
+((trait_item (visibility_modifier) @mod.export))
+((function_item (visibility_modifier) @mod.export))
+`;
+```
 
 ## File: src/graph-resolver.ts
-````typescript
+```typescript
 import type { SourceFile, PathResolver, Relationship } from './types';
-import path from 'node:path';
+import path from './utils/path';
 
 type FileMap = Map<string, SourceFile>;
 type SymbolMap = Map<number, Map<string, string>>;
@@ -385,13 +1382,19 @@ const resolveRelationship = (rel: Relationship, sourceFile: SourceFile, fileMap:
         return;
     }
     
-    // Attempt inter-file resolution via imports
-    for (const file of fileMap.values()) {
-        const fileSymbols = symbolMap.get(file.id);
-        if (fileSymbols?.has(rel.targetName)) {
-            rel.resolvedFileId = file.id;
-            rel.resolvedSymbolId = fileSymbols.get(rel.targetName);
-            return;
+    // Attempt inter-file resolution via explicit imports of the current file
+    if (sourceFile.fileRelationships) {
+        for (const importRel of sourceFile.fileRelationships) {
+            // We only care about resolved imports that bring in symbols
+            if ((importRel.kind === 'import' || importRel.kind === 'dynamic_import') && importRel.resolvedFileId !== undefined) {
+                const targetFileSymbols = symbolMap.get(importRel.resolvedFileId);
+                // Does the file we imported from export a symbol with the name we're looking for?
+                if (targetFileSymbols?.has(rel.targetName)) {
+                    rel.resolvedFileId = importRel.resolvedFileId;
+                    rel.resolvedSymbolId = targetFileSymbols.get(rel.targetName);
+                    return; // Found it!
+                }
+            }
         }
     }
 };
@@ -419,13 +1422,46 @@ export const resolveGraph = (sourceFiles: SourceFile[], pathResolver: PathResolv
     }
     return sourceFiles;
 };
-````
+```
+
+## File: package.json
+```json
+{
+  "name": "scn-ts-core",
+  "module": "index.ts",
+  "type": "module",
+  "private": true,
+  "devDependencies": {
+    "@types/bun": "latest",
+    "web-tree-sitter": "0.25.6"
+  },
+  "peerDependencies": {
+    "typescript": "^5"
+  }
+}
+```
+
+## File: src/queries/css.ts
+```typescript
+export const cssQueries = `
+(rule_set) @symbol.css_class.def @scope.css_class.def
+(at_rule) @symbol.css_at_rule.def @scope.css_at_rule.def
+(declaration (property_name) @symbol.css_variable.def
+  (#match? @symbol.css_variable.def "^--"))
+(call_expression 
+  (function_name) @__fn
+  (arguments (plain_value) @rel.references)
+  (#eq? @__fn "var"))
+`;
+```
 
 ## File: src/types.ts
-````typescript
+```typescript
 import type { Parser, Tree, Language } from 'web-tree-sitter';
 import type { TsConfig, PathResolver } from './utils/tsconfig';
-export type { PathResolver };
+export type { TsConfig, PathResolver };
+
+export type LogLevel = 'error' | 'warn' | 'info' | 'debug' | 'silent';
 
 /**
  * Represents a file to be processed.
@@ -461,7 +1497,7 @@ export type SymbolKind =
   | 'variable' | 'property' | 'enum' | 'enum_member' | 'type_alias' | 'module'
   | 'decorator' | 'parameter' | 'type_parameter' | 'import_specifier' | 're_export'
   // React
-  | 'react_component' | 'react_hook' | 'react_hoc' | 'jsx_attribute' | 'jsx_element'
+  | 'react_component' | 'react_hook' | 'react_hoc' | 'jsx_attribute' | 'jsx_element' | 'styled_component'
   // CSS
   | 'css_class' | 'css_id' | 'css_tag' | 'css_at_rule' | 'css_property' | 'css_variable'
   // Generic / Meta
@@ -565,10 +1601,318 @@ export interface AnalysisContext {
     sourceFiles: SourceFile[];
     pathResolver: PathResolver;
 }
-````
+```
+
+## File: src/formatter.ts
+```typescript
+import type { CodeSymbol, SourceFile } from './types';
+import { topologicalSort } from './utils/graph';
+
+const ICONS: Record<string, string> = {
+    class: '◇', interface: '{}', function: '~', method: '~',
+    constructor: '~',
+    variable: '@', property: '@', enum: '☰', enum_member: '@',
+    type_alias: '=:', react_component: '◇', jsx_element: '⛶', styled_component: '~',
+    css_class: '¶', css_id: '¶', css_tag: '¶', css_at_rule: '¶',
+    go_package: '◇',
+    rust_struct: '◇', rust_trait: '{}', rust_impl: '+',
+    error: '[error]', default: '?',
+};
+
+// Compute display index per file based on eligible symbols (exclude properties and constructors)
+const isIdEligible = (symbol: CodeSymbol): boolean => {
+    if (symbol.kind === 'property' || symbol.kind === 'constructor') return false;
+    if (symbol.kind === 'variable') return symbol.isExported || symbol.name === 'module.exports' || symbol.name === 'default';
+    if (symbol.kind === 'method') return !!symbol.isExported;
+    return true;
+};
+
+const getDisplayIndex = (file: SourceFile, symbol: CodeSymbol): number | null => {
+    const ordered = file.symbols
+        .filter(isIdEligible)
+        .sort((a, b) => a.range.start.line - b.range.start.line || a.range.start.column - b.range.start.column);
+    const index = ordered.findIndex(s => s === symbol);
+    return index === -1 ? null : index + 1;
+};
+
+const formatSymbolIdDisplay = (file: SourceFile, symbol: CodeSymbol): string | null => {
+    const idx = getDisplayIndex(file, symbol);
+    if (idx == null) return null;
+    return `(${file.id}.${idx})`;
+};
+
+const formatSymbol = (symbol: CodeSymbol, allFiles: SourceFile[]): string[] => {
+    let icon = ICONS[symbol.kind] || ICONS.default;
+    const prefix = symbol.isExported ? '+' : '-';
+    let name = symbol.name === '<anonymous>' ? '' : symbol.name;
+    if (symbol.kind === 'variable' && name.trim() === 'default') name = '';
+    
+    // Handle styled components: ~div ComponentName, ~h1 ComponentName, etc.
+    if (symbol.kind === 'styled_component' && (symbol as any)._styledTag) {
+        const tagName = (symbol as any)._styledTag;
+        icon = `~${tagName}`;
+    }
+
+    const mods = [
+        symbol.isAbstract && 'abstract',
+        symbol.isStatic && 'static',
+    ].filter(Boolean).join(' ');
+    const modStr = mods ? ` [${mods}]` : '';
+
+    const suffixParts: string[] = [];
+    if (symbol.signature) name += symbol.name === '<anonymous>' ? symbol.signature : `${symbol.signature}`;
+    if (symbol.typeAnnotation) name += `: ${symbol.typeAnnotation}`;
+    if (symbol.typeAliasValue) name += ` ${symbol.typeAliasValue}`;
+    // Merge async + throws into a single token '...!'
+    const asyncToken = symbol.isAsync ? '...' : '';
+    const throwsToken = symbol.throws ? '!' : '';
+    const asyncThrows = (asyncToken + throwsToken) || '';
+    if (asyncThrows) suffixParts.push(asyncThrows);
+    if (symbol.isPure) suffixParts.push('o');
+    if (symbol.labels && symbol.labels.length > 0) suffixParts.push(...symbol.labels.map(l => `[${l}]`));
+    const suffix = suffixParts.join(' ');
+
+    // Build ID portion conditionally
+    const file = allFiles.find(f => f.id === symbol.fileId)!;
+    const idPart = formatSymbolIdDisplay(file, symbol);
+    const idText = (symbol.kind === 'property' || symbol.kind === 'constructor') ? null : (idPart ?? null);
+    const segments: string[] = [prefix, icon];
+    if (idText) segments.push(idText);
+    if (name) segments.push(name.trim());
+    if (modStr) segments.push(modStr);
+    if (suffix) segments.push(suffix);
+    const line = `  ${segments.filter(Boolean).join(' ')}`;
+    const result = [line];
+
+    const outgoing = new Map<number, Set<string>>();
+    const unresolvedDeps: string[] = [];
+    symbol.dependencies.forEach(dep => {
+        if (dep.resolvedFileId !== undefined && dep.resolvedFileId !== symbol.fileId) {
+            if (!outgoing.has(dep.resolvedFileId)) outgoing.set(dep.resolvedFileId, new Set());
+            if (dep.resolvedSymbolId) {
+                const targetFile = allFiles.find(f => f.id === dep.resolvedFileId);
+                const targetSymbol = targetFile?.symbols.find(s => s.id === dep.resolvedSymbolId);
+                if (targetSymbol) {
+                    const displayId = formatSymbolIdDisplay(targetFile!, targetSymbol);
+                    let text = displayId ?? `(${targetFile!.id}.0)`;
+                    if (dep.kind === 'goroutine') {
+                        text += ' [goroutine]';
+                    }
+                    outgoing.get(dep.resolvedFileId)!.add(text);
+                }
+            } else {
+                let text = `(${dep.resolvedFileId}.0)`;
+                if (dep.kind === 'dynamic_import') text += ' [dynamic]';
+                outgoing.get(dep.resolvedFileId)!.add(text);
+            }
+        } else if (dep.resolvedFileId === undefined) {
+            if (dep.kind === 'macro') {
+                unresolvedDeps.push(`${dep.targetName} [macro]`);
+            }
+        }
+    });
+
+    const outgoingParts: string[] = [];
+    if (outgoing.size > 0) {
+        const resolvedParts = Array.from(outgoing.entries())
+            .sort((a, b) => a[0] - b[0])
+            .map(([fileId, symbolIds]) => {
+                const items = Array.from(symbolIds).sort();
+                return items.length > 0 ? `${items.join(', ')}` : `(${fileId}.0)`;
+            });
+        outgoingParts.push(...resolvedParts);
+    }
+    outgoingParts.push(...unresolvedDeps);
+
+    if (outgoingParts.length > 0) {
+        result.push(`    -> ${outgoingParts.join(', ')}`);
+    }
+    
+    const incoming = new Map<number, Set<string>>();
+    allFiles.forEach(file => {
+        file.symbols.forEach(s => {
+            s.dependencies.forEach(d => {
+                if (d.resolvedFileId === symbol.fileId && d.resolvedSymbolId === symbol.id && s !== symbol) {
+                    if(!incoming.has(file.id)) incoming.set(file.id, new Set());
+                    // Suppress same-file incoming for properties
+                    if (file.id === symbol.fileId && symbol.kind === 'property') return;
+                    const disp = formatSymbolIdDisplay(file, s) ?? `(${file.id}.0)`;
+                    incoming.get(file.id)!.add(disp);
+                }
+            });
+        });
+        // Include file-level imports to this file as incoming for exported symbols
+        // but only if there is no symbol-level incoming from that file already
+        if (file.id !== symbol.fileId && symbol.isExported) {
+            file.fileRelationships?.forEach(rel => {
+                if (rel.resolvedFileId === symbol.fileId) {
+                    const already = incoming.get(file.id);
+                    if (!already || already.size === 0) {
+                        if(!incoming.has(file.id)) incoming.set(file.id, new Set());
+                        incoming.get(file.id)!.add(`(${file.id}.0)`);
+                    }
+                }
+            });
+        }
+    });
+
+    if (incoming.size > 0) {
+        const parts = Array.from(incoming.entries()).map(([_fileId, symbolIds]) => Array.from(symbolIds).join(', '));
+        result.push(`    <- ${parts.join(', ')}`);
+    }
+
+    return result;
+};
+
+
+const isWithin = (inner: CodeSymbol, outer: CodeSymbol): boolean => {
+    const a = inner.range;
+    const b = outer.scopeRange;
+    return (
+        (a.start.line > b.start.line || (a.start.line === b.start.line && a.start.column >= b.start.column)) &&
+        (a.end.line < b.end.line || (a.end.line === b.end.line && a.end.column <= b.end.column))
+    );
+};
+
+const buildChildrenMap = (symbols: CodeSymbol[]): Map<string, CodeSymbol[]> => {
+    const parents = symbols.filter(s => s.kind === 'class' || s.kind === 'interface' || s.kind === 'react_component');
+    const map = new Map<string, CodeSymbol[]>();
+    for (const parent of parents) map.set(parent.id, []);
+    for (const sym of symbols) {
+        if (sym.kind === 'class' || sym.kind === 'interface' || sym.kind === 'react_component') continue;
+        const parent = parents
+            .filter(p => isWithin(sym, p))
+            .sort((a, b) => (a.scopeRange.end.line - a.scopeRange.start.line) - (b.scopeRange.end.line - b.scopeRange.start.line))[0];
+        if (parent) {
+            map.get(parent.id)!.push(sym);
+        }
+    }
+    // Sort children by position
+    for (const [, arr] of map.entries()) {
+        arr.sort((a, b) => a.range.start.line - b.range.start.line || a.range.start.column - b.range.start.column);
+    }
+    return map;
+};
+
+const formatFile = (file: SourceFile, allFiles: SourceFile[]): string => {
+    if (file.parseError) return `§ (${file.id}) ${file.relativePath} [error]`;
+    if (!file.sourceCode.trim()) return `§ (${file.id}) ${file.relativePath}`;
+
+    const directives = [
+        file.isGenerated && 'generated',
+        ...(file.languageDirectives || [])
+    ].filter(Boolean);
+    const directiveStr = directives.length > 0 ? ` [${directives.join(' ')}]` : '';
+    const header = `§ (${file.id}) ${file.relativePath}${directiveStr}`;
+
+    const headerLines: string[] = [header];
+
+    // File-level outgoing/incoming dependencies
+    const outgoing: string[] = [];
+    if (file.fileRelationships) {
+        const outgoingFiles = new Set<number>();
+        file.fileRelationships.forEach(rel => {
+            // Only show true file-level imports on the header
+            if ((rel.kind === 'import' || rel.kind === 'dynamic_import') && rel.resolvedFileId && rel.resolvedFileId !== file.id) {
+                let text = `(${rel.resolvedFileId}.0)`;
+                if (rel.kind === 'dynamic_import') text += ' [dynamic]';
+                outgoingFiles.add(rel.resolvedFileId);
+                outgoing.push(text);
+            }
+        });
+        if (outgoing.length > 0) headerLines.push(`  -> ${Array.from(new Set(outgoing)).sort().join(', ')}`);
+    }
+
+    // Incoming: any other file that has a file-level relationship pointing here
+    const incoming: string[] = [];
+    allFiles.forEach(other => {
+        if (other.id === file.id) return;
+        other.fileRelationships?.forEach(rel => {
+            if (rel.resolvedFileId === file.id) incoming.push(`(${other.id}.0)`);
+        });
+    });
+    if (incoming.length > 0) headerLines.push(`  <- ${Array.from(new Set(incoming)).sort().join(', ')}`);
+
+    // If file has no exported symbols, only show symbols that are "entry points" for analysis,
+    // which we define as having outgoing dependencies.
+    const hasExports = file.symbols.some(s => s.isExported);
+    let symbolsToPrint = hasExports
+        ? file.symbols.slice()
+        : file.symbols.filter(s => s.dependencies.length > 0);
+
+    // Group properties/methods under their class/interface parent
+    const childrenMap = buildChildrenMap(symbolsToPrint);
+    const childIds = new Set<string>(Array.from(childrenMap.values()).flat().map(s => s.id));
+    const topLevel = symbolsToPrint.filter(s => !childIds.has(s.id));
+
+    const symbolLines: string[] = [];
+    for (const sym of topLevel) {
+        const lines = formatSymbol(sym, allFiles);
+        symbolLines.push(...lines);
+        if (childrenMap.has(sym.id)) {
+            const kids = childrenMap.get(sym.id)!;
+            for (const kid of kids) {
+                const kLines = formatSymbol(kid, allFiles).map(l => `  ${l}`);
+                symbolLines.push(...kLines);
+            }
+        }
+    }
+
+    // If we hid symbols (or there were none to begin with for an entry file),
+    // aggregate outgoing dependencies from all symbols onto the file header
+    if (symbolsToPrint.length === 0) {
+        const aggOutgoing = new Map<number, Set<string>>();
+        const unresolvedDeps: string[] = [];
+
+        const processDep = (dep: import('./types').Relationship) => {
+            if (dep.resolvedFileId && dep.resolvedFileId !== file.id) {
+                if (!aggOutgoing.has(dep.resolvedFileId)) aggOutgoing.set(dep.resolvedFileId, new Set());
+                let text = `(${dep.resolvedFileId}.0)`; // Default to file-level
+                if (dep.resolvedSymbolId) {
+                    const targetFile = allFiles.find(f => f.id === dep.resolvedFileId)!;
+                    const targetSymbol = targetFile.symbols.find(ts => ts.id === dep.resolvedSymbolId);
+                    if (targetSymbol) {
+                        text = formatSymbolIdDisplay(targetFile, targetSymbol) ?? `(${dep.resolvedFileId}.0)`;
+                    }
+                }
+                if (dep.kind === 'dynamic_import') text += ' [dynamic]';
+                aggOutgoing.get(dep.resolvedFileId)!.add(text);
+            } else if (dep.resolvedFileId === undefined && dep.kind === 'macro') {
+                unresolvedDeps.push(`${dep.targetName} [macro]`);
+            }
+        };
+
+        file.symbols.forEach(s => s.dependencies.forEach(processDep));
+        file.fileRelationships?.forEach(processDep);
+
+        const outgoingParts: string[] = [];
+        if (aggOutgoing.size > 0) {
+            const resolvedParts = Array.from(aggOutgoing.entries())
+                .sort((a, b) => a[0] - b[0])
+                .flatMap(([, symbolIds]) => Array.from(symbolIds).sort());
+            outgoingParts.push(...resolvedParts);
+        }
+        outgoingParts.push(...unresolvedDeps);
+
+        if (outgoingParts.length > 0) {
+            // Some fixtures expect separate -> lines per dependency.
+            // This preserves that behavior.
+            for (const part of outgoingParts) {
+                headerLines.push(`  -> ${part}`);
+            }
+        }
+    }
+    return [...headerLines, ...symbolLines].join('\n');
+};
+
+export const formatScn = (analyzedFiles: SourceFile[]): string => {
+    const sortedFiles = topologicalSort(analyzedFiles);
+    return sortedFiles.map(file => formatFile(file, analyzedFiles)).join('\n\n');
+};
+```
 
 ## File: src/analyzer.ts
-````typescript
+```typescript
 import type { SourceFile, CodeSymbol, Relationship, SymbolKind, RelationshipKind, Range } from './types';
 import { getNodeRange, getNodeText, getIdentifier, findChildByFieldName } from './utils/ast';
 import { Query, type Node as SyntaxNode, type QueryCapture } from 'web-tree-sitter';
@@ -599,7 +1943,73 @@ const getSymbolName = (node: SyntaxNode, sourceCode: string): string => {
             return getIdentifier(node, sourceCode);
         }
     }
+    // Handle arrow functions in JSX expressions (render props)
+    if (node.type === 'arrow_function' && node.parent?.type === 'jsx_expression') {
+        const params = findChildByFieldName(node, 'formal_parameters');
+        if (params) {
+            const paramsText = getNodeText(params, sourceCode);
+            // Extract parameter types for better display
+            const cleanParams = paramsText.replace(/\s+/g, ' ').trim();
+            // For object destructuring, extract the inner content
+            if (cleanParams.includes('{') && cleanParams.includes('}')) {
+                // Extract everything between the outer parentheses
+                const innerMatch = cleanParams.match(/\(\s*\{\s*([^}]+)\s*\}\s*\)/);
+                if (innerMatch && innerMatch[1]) {
+                    const destructured = innerMatch[1]!.split(',').map(p => p.trim()).join(', ');
+                    return `<anonymous>({ ${destructured} })`;
+                }
+            }
+            return `<anonymous>${cleanParams}`;
+        }
+        return '<anonymous>()';
+    }
+    
+    // Handle styled components
+    if ((node as any)._styledTag) {
+        const componentName = getIdentifier(node.parent || node, sourceCode);
+        return `${componentName}`;
+    }
+    
     return getIdentifier(node.parent || node, sourceCode);
+};
+
+const containsJSXReturn = (node: SyntaxNode): boolean => {
+    // Check if this node or any of its children contain a return statement with JSX
+    if (node.type === 'return_statement') {
+        for (let i = 0; i < node.childCount; i++) {
+            const child = node.child(i);
+            if (child && (child.type.startsWith('jsx_') || containsJSX(child))) {
+                return true;
+            }
+        }
+    }
+    
+    // Recursively check children
+    for (let i = 0; i < node.childCount; i++) {
+        const child = node.child(i);
+        if (child && containsJSXReturn(child)) {
+            return true;
+        }
+    }
+    
+    return false;
+};
+
+const containsJSX = (node: SyntaxNode): boolean => {
+    // Check if this node contains JSX elements
+    if (node.type.startsWith('jsx_')) {
+        return true;
+    }
+    
+    // Recursively check children
+    for (let i = 0; i < node.childCount; i++) {
+        const child = node.child(i);
+        if (child && containsJSX(child)) {
+            return true;
+        }
+    }
+    
+    return false;
 };
 
 const processCapture = (
@@ -638,6 +2048,13 @@ const processCapture = (
                 const body = findChildByFieldName(valueNode, 'body');
                 if (body && (body.type.startsWith('jsx_'))) {
                      symbolKind = 'react_component';
+                } else if (body && body.type === 'statement_block') {
+                    // Check if arrow function with block body returns JSX
+                    if (containsJSXReturn(body)) {
+                        symbolKind = 'react_component';
+                    } else {
+                        symbolKind = 'function';
+                    }
                 } else {
                     symbolKind = 'function';
                 }
@@ -645,6 +2062,42 @@ const processCapture = (
                 const callee = findChildByFieldName(valueNode, 'function');
                 if (callee && getNodeText(callee, sourceFile.sourceCode).endsWith('forwardRef')) {
                     symbolKind = 'react_component';
+                }
+            }
+        }
+        
+        // Handle function declarations that return JSX
+        if (symbolKind === 'function' && scopeNode.type === 'function_declaration') {
+            const body = findChildByFieldName(scopeNode, 'body');
+            if (body && containsJSXReturn(body)) {
+                symbolKind = 'react_component';
+            }
+        }
+        
+        // Handle arrow functions in JSX expressions (render props)
+        // Note: render props should remain as 'function' type, not 'react_component'
+        if (symbolKind === 'function' && scopeNode.type === 'arrow_function' && node.parent?.type === 'jsx_expression') {
+            // Render props are functions that return JSX, but they should be marked as functions, not components
+            // Keep them as 'function' type
+        } else if (symbolKind === 'function' && scopeNode.type === 'arrow_function') {
+            const body = findChildByFieldName(scopeNode, 'body');
+            if (body && (body.type.startsWith('jsx_') || containsJSX(body) || containsJSXReturn(body))) {
+                symbolKind = 'react_component';
+            }
+        }
+        
+        // Handle styled components - extract tag name for later use
+        let styledTag: string | undefined;
+        if (symbolKind === 'styled_component') {
+            // Extract the HTML tag from styled.div, styled.h1, etc.
+            const valueNode = findChildByFieldName(scopeNode, 'value');
+            if (valueNode?.type === 'call_expression') {
+                const functionNode = findChildByFieldName(valueNode, 'function');
+                if (functionNode?.type === 'member_expression') {
+                    const propertyNode = findChildByFieldName(functionNode, 'property');
+                    if (propertyNode) {
+                        styledTag = getNodeText(propertyNode, sourceFile.sourceCode);
+                    }
                 }
             }
         }
@@ -658,7 +2111,13 @@ const processCapture = (
             scopeRange: getNodeRange(scopeNode),
             isExported: hasExportAncestor(scopeNode) || /^\s*export\b/.test(getNodeText(scopeNode, sourceFile.sourceCode)),
             dependencies: [],
+            labels: styledTag ? ['styled'] : undefined
         };
+        
+        // Store styled tag for formatter
+        if (styledTag) {
+            (symbol as any)._styledTag = styledTag;
+        }
         
         if ((symbol.kind === 'type_alias' || symbol.kind === 'interface' || symbol.kind === 'class') && (scopeNode.type.endsWith('_declaration'))) {
             const typeParamsNode = findChildByFieldName(scopeNode, 'type_parameters');
@@ -688,8 +2147,8 @@ const processCapture = (
         // Properties (interface property_signature or class field definitions)
         if (symbol.kind === 'property') {
             // interface/class fields
-            const match = scopeText.match(/:\s*([^;\n]+)/);
-            if (match) {
+            const match = scopeText.match(/:\s*([^;\n]+)/); 
+            if (match && match[1]) {
                 symbol.typeAnnotation = `#${normalizeType(match[1])}`;
             }
             // detect readonly/static from text
@@ -709,10 +2168,10 @@ const processCapture = (
 
         // Type alias value (right-hand side after '=')
         if (symbol.kind === 'type_alias') {
-            const m = scopeText.match(/=\s*([^;\n]+)/);
-            if (m) {
+            const m = scopeText.match(/=\s*([^;\n]+)/); 
+            if (m && m[1]) {
                 // Remove quotes from string literal unions
-                let typeValue = normalizeType(m[1]);
+                let typeValue = normalizeType(m[1]!);
                 typeValue = typeValue.replace(/'([^']+)'/g, '$1');
                 typeValue = typeValue.replace(/"([^"]+)"/g, '$1');
                 
@@ -720,8 +2179,8 @@ const processCapture = (
                 if (typeValue.startsWith('{') && typeValue.endsWith('}')) {
                     const inner = typeValue.slice(1, -1).trim();
                     const mappedMatch = inner.match(/\[\s*([^:]+)\s*in\s*([^:]+)\s*\]\s*:\s*(.*)/);
-                    if (mappedMatch) {
-                        const [_, key, inType, valueType] = mappedMatch;
+                    if (mappedMatch && mappedMatch[1] && mappedMatch[2] && mappedMatch[3]) {
+                        const [, key, inType, valueType] = mappedMatch;
                         typeValue = `${key.trim()} in ${inType.trim()}:${valueType.trim()}`;
                     }
                 }
@@ -735,13 +2194,15 @@ const processCapture = (
             const paramsMatch = scopeText.match(/\(([^)]*)\)/);
             const returnMatch = scopeText.match(/\)\s*:\s*([^\{\n]+)/);
             const params = paramsMatch ? paramsMatch[1] : '';
-            const paramsWithTypes = params
-                .split(',')
-                .map(p => p.trim())
-                .filter(p => p.length > 0)
-                .map(p => p.replace(/:\s*([^,]+)/, (_s, t) => `: #${normalizeType(t)}`))
-                .join(', ');
-            const returnType = returnMatch ? `: #${normalizeType(returnMatch[1])}` : '';
+            const paramsWithTypes = params ? params
+                  .split(',')
+                  .map(p => p.trim())
+                  .filter(p => p.length > 0)
+                  .map(p => p.replace(/:\s*([^,]+)/, (_s, t) => `: #${normalizeType(t)}`))
+                  .join(', ') : '';
+            
+            const returnType = (returnMatch && returnMatch[1]) ? `: #${normalizeType(returnMatch[1])}` : '';
+            
             symbol.signature = `(${paramsWithTypes})${returnType}`;
 
             // Async detection (textual) and throws detection
@@ -791,9 +2252,13 @@ export const analyze = (sourceFile: SourceFile): SourceFile => {
     const { ast, language, sourceCode } = sourceFile;
     if (!ast || !language.parser || !language.loadedLanguage) return sourceFile;
 
-    const directives = sourceCode.match(/^['"](use (?:server|client))['"];/gm);
+    const directives = sourceCode.match(/^\s*['"](use (?:server|client))['"];?\s*$/gm);
     if(directives) {
-        sourceFile.languageDirectives = directives.map(d => d.replace(/['";]/g, ''));
+        sourceFile.languageDirectives = directives.map(d => {
+            const cleaned = d.replace(/['";]/g, '').trim();
+            // Normalize directives: 'use server' -> 'server', 'use client' -> 'client'
+            return cleaned.replace(/^use /, '');
+        });
     }
     if (sourceCode.includes('AUTO-GENERATED') || sourceCode.includes('eslint-disable')) {
         sourceFile.isGenerated = true;
@@ -947,10 +2412,10 @@ const findParentSymbol = (range: Range, symbols: CodeSymbol[]): CodeSymbol | nul
         .sort((a, b) => (a.scopeRange.end.line - a.scopeRange.start.line) - (b.scopeRange.end.line - b.scopeRange.start.line))
         [0] || null;
 };
-````
+```
 
 ## File: src/queries/typescript.ts
-````typescript
+```typescript
 export const typescriptQueries = `
 ; Interface definitions
 (interface_declaration
@@ -1031,6 +2496,20 @@ export const typescriptQueries = `
 (call_expression
   function: (identifier) @rel.call)
 
+; Template literal variable references
+(template_substitution
+  (identifier) @rel.references)
+
+; Styled components (styled.div, styled.h1, etc.)
+(variable_declarator
+  name: (identifier) @symbol.styled_component.def
+  value: (call_expression
+    function: (member_expression
+      object: (identifier) @_styled
+      property: (property_identifier) @_tag)
+    arguments: (template_string))
+  (#eq? @_styled "styled")) @scope.styled_component.def
+
 ; (Removed overly broad CommonJS/object key captures that polluted TS fixtures)
 
 ; Import statements
@@ -1064,9 +2543,12 @@ export const typescriptQueries = `
   function: (identifier) @rel.call)
 
 ; Method calls
+; Only capture the object being called, not the property
 (call_expression
   function: (member_expression
-    property: (property_identifier) @rel.call))
+    object: (_) @rel.call
+  )
+)
 
 ; Constructor calls (new expressions)
 (new_expression
@@ -1121,8 +2603,7 @@ export const typescriptQueries = `
 ((method_definition) @mod.async (#match? @mod.async "^async "))
 `;
 
-export const typescriptReactQueries = `
-${typescriptQueries}
+export const typescriptReactQueries = typescriptQueries + `
 
 ; JSX component definitions (uppercase)
 (jsx_opening_element
@@ -1142,6 +2623,15 @@ ${typescriptQueries}
   name: (identifier) @symbol.jsx_element.def
   (#match? @symbol.jsx_element.def "^[a-z]")) @scope.jsx_element.def
 
+; Arrow functions in JSX expressions (render props)
+(jsx_expression
+  (arrow_function) @symbol.function.def) @scope.function.def
+
+; React fragments (empty JSX elements)
+(jsx_element
+  (jsx_opening_element) @symbol.jsx_element.def
+  (#not-has-child? @symbol.jsx_element.def identifier)) @scope.jsx_element.def
+
 ; JSX component references (uppercase)
 (jsx_opening_element
   name: (identifier) @rel.references
@@ -1151,4 +2641,4 @@ ${typescriptQueries}
   name: (identifier) @rel.references
   (#match? @rel.references "^[A-Z]"))
 `;
-````
+```

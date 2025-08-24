@@ -23,13 +23,20 @@
     }
   },
   "include": [
-    "docs/fix.plan.md",
-     "test/ts/fixtures/09.dep-graph-circular.fixture.yaml",
-     "src/analyzer.ts",
-     "src/graph-resolver.ts",
-     "src/queries/typescript.ts",
-     "src/types.ts",
-     "scripts/ast.ts"
+    "package.json",
+    "tsconfig.json",
+    "src",
+
+
+    "packages/scn-ts-web-demo/index.html",
+    "packages/scn-ts-web-demo/package.json",
+    "packages/scn-ts-web-demo/postcss.config.js",
+    "packages/scn-ts-web-demo/tailwind.config.js",
+    "packages/scn-ts-web-demo/tsconfig.json",
+    "packages/scn-ts-web-demo/tsconfig.node.json",
+    "packages/scn-ts-web-demo/vite.config.ts",
+    "packages/scn-ts-web-demo/src"
+
   ],
   "ignore": {
     "useGitignore": true,

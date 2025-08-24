@@ -1,5 +1,5 @@
 import type { LanguageConfig } from './types';
-import path from 'node:path';
+import path from './utils/path';
 import { typescriptQueries, typescriptReactQueries } from './queries/typescript';
 import { cssQueries } from './queries/css';
 import { goQueries } from './queries/go';

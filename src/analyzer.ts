@@ -39,8 +39,8 @@ const getSymbolName = (node: SyntaxNode, sourceCode: string): string => {
             if (cleanParams.includes('{') && cleanParams.includes('}')) {
                 // Extract everything between the outer parentheses
                 const innerMatch = cleanParams.match(/\(\s*\{\s*([^}]+)\s*\}\s*\)/);
-                if (innerMatch) {
-                    const destructured = innerMatch[1].split(',').map(p => p.trim()).join(', ');
+                if (innerMatch && innerMatch[1]) {
+                    const destructured = innerMatch[1]!.split(',').map(p => p.trim()).join(', ');
                     return `<anonymous>({ ${destructured} })`;
                 }
             }
@@ -51,7 +51,6 @@ const getSymbolName = (node: SyntaxNode, sourceCode: string): string => {
     
     // Handle styled components
     if ((node as any)._styledTag) {
-        const tagName = (node as any)._styledTag;
         const componentName = getIdentifier(node.parent || node, sourceCode);
         return `${componentName}`;
     }
@@ -233,8 +232,8 @@ const processCapture = (
         // Properties (interface property_signature or class field definitions)
         if (symbol.kind === 'property') {
             // interface/class fields
-            const match = scopeText.match(/:\s*([^;\n]+)/);
-            if (match) {
+            const match = scopeText.match(/:\s*([^;\n]+)/); 
+            if (match && match[1]) {
                 symbol.typeAnnotation = `#${normalizeType(match[1])}`;
             }
             // detect readonly/static from text
@@ -254,10 +253,10 @@ const processCapture = (
 
         // Type alias value (right-hand side after '=')
         if (symbol.kind === 'type_alias') {
-            const m = scopeText.match(/=\s*([^;\n]+)/);
-            if (m) {
+            const m = scopeText.match(/=\s*([^;\n]+)/); 
+            if (m && m[1]) {
                 // Remove quotes from string literal unions
-                let typeValue = normalizeType(m[1]);
+                let typeValue = normalizeType(m[1]!);
                 typeValue = typeValue.replace(/'([^']+)'/g, '$1');
                 typeValue = typeValue.replace(/"([^"]+)"/g, '$1');
                 
@@ -265,8 +264,8 @@ const processCapture = (
                 if (typeValue.startsWith('{') && typeValue.endsWith('}')) {
                     const inner = typeValue.slice(1, -1).trim();
                     const mappedMatch = inner.match(/\[\s*([^:]+)\s*in\s*([^:]+)\s*\]\s*:\s*(.*)/);
-                    if (mappedMatch) {
-                        const [_, key, inType, valueType] = mappedMatch;
+                    if (mappedMatch && mappedMatch[1] && mappedMatch[2] && mappedMatch[3]) {
+                        const [, key, inType, valueType] = mappedMatch;
                         typeValue = `${key.trim()} in ${inType.trim()}:${valueType.trim()}`;
                     }
                 }
@@ -280,13 +279,15 @@ const processCapture = (
             const paramsMatch = scopeText.match(/\(([^)]*)\)/);
             const returnMatch = scopeText.match(/\)\s*:\s*([^\{\n]+)/);
             const params = paramsMatch ? paramsMatch[1] : '';
-            const paramsWithTypes = params
-                .split(',')
-                .map(p => p.trim())
-                .filter(p => p.length > 0)
-                .map(p => p.replace(/:\s*([^,]+)/, (_s, t) => `: #${normalizeType(t)}`))
-                .join(', ');
-            const returnType = returnMatch ? `: #${normalizeType(returnMatch[1])}` : '';
+            const paramsWithTypes = params ? params
+                  .split(',')
+                  .map(p => p.trim())
+                  .filter(p => p.length > 0)
+                  .map(p => p.replace(/:\s*([^,]+)/, (_s, t) => `: #${normalizeType(t)}`))
+                  .join(', ') : '';
+            
+            const returnType = (returnMatch && returnMatch[1]) ? `: #${normalizeType(returnMatch[1])}` : '';
+            
             symbol.signature = `(${paramsWithTypes})${returnType}`;
 
             // Async detection (textual) and throws detection

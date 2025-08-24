@@ -1,5 +1,5 @@
 import type { SourceFile, PathResolver, Relationship } from './types';
-import path from 'node:path';
+import path from './utils/path';
 
 type FileMap = Map<string, SourceFile>;
 type SymbolMap = Map<number, Map<string, string>>;

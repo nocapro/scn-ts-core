@@ -1,6 +1,8 @@
 import type { Parser, Tree, Language } from 'web-tree-sitter';
 import type { TsConfig, PathResolver } from './utils/tsconfig';
-export type { PathResolver };
+export type { TsConfig, PathResolver };
+
+export type LogLevel = 'error' | 'warn' | 'info' | 'debug' | 'silent';
 
 /**
  * Represents a file to be processed.

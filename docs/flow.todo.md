@@ -1,9 +1,37 @@
+scn-ts-core should be ready for this
+
+import {
+  initializeParser,
+  logger,
+  analyzeProject,
+  FileContent,
+  LogHandler,
+  generateScn,
+} from '';//todo
+
+
+    "package.json",
+    "tsconfig.json",
+    "src",
+
+
+    "packages/scn-ts-web-demo/index.html",
+    "packages/scn-ts-web-demo/package.json",
+    "packages/scn-ts-web-demo/postcss.config.js",
+    "packages/scn-ts-web-demo/tailwind.config.js",
+    "packages/scn-ts-web-demo/tsconfig.json",
+    "packages/scn-ts-web-demo/tsconfig.node.json",
+    "packages/scn-ts-web-demo/vite.config.ts",
+    "packages/scn-ts-web-demo/src"
+
+===
+
+
 if you given 2.1 fix plan
 
 what would scripts/ast.ts edit to run for explore the parse in to support the context of task above?
 
 beware, do not fix 2.1 yet. just modify ast.ts first!
-
 
 
 === DONE

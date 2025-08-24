@@ -1,6 +1,6 @@
 import type { ParserInitOptions, LanguageConfig } from './types';
 import { Parser, Language, type Tree } from 'web-tree-sitter';
-import path from 'node:path';
+import path from './utils/path';
 import { languages } from './languages';
 
 let initializePromise: Promise<void> | null = null;

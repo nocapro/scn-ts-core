@@ -36,7 +36,7 @@ export type SymbolKind =
   | 'variable' | 'property' | 'enum' | 'enum_member' | 'type_alias' | 'module'
   | 'decorator' | 'parameter' | 'type_parameter' | 'import_specifier' | 're_export'
   // React
-  | 'react_component' | 'react_hook' | 'react_hoc' | 'jsx_attribute' | 'jsx_element'
+  | 'react_component' | 'react_hook' | 'react_hoc' | 'jsx_attribute' | 'jsx_element' | 'styled_component'
   // CSS
   | 'css_class' | 'css_id' | 'css_tag' | 'css_at_rule' | 'css_property' | 'css_variable'
   // Generic / Meta

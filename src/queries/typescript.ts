@@ -82,6 +82,16 @@ export const typescriptQueries = `
 (template_substitution
   (identifier) @rel.references)
 
+; Styled components (styled.div, styled.h1, etc.)
+(variable_declarator
+  name: (identifier) @symbol.styled_component.def
+  value: (call_expression
+    function: (member_expression
+      object: (identifier) @_styled
+      property: (property_identifier) @_tag)
+    arguments: (template_string))
+  (#eq? @_styled "styled")) @scope.styled_component.def
+
 ; (Removed overly broad CommonJS/object key captures that polluted TS fixtures)
 
 ; Import statements

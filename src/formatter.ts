@@ -5,7 +5,7 @@ const ICONS: Record<string, string> = {
     class: '◇', interface: '{}', function: '~', method: '~',
     constructor: '~',
     variable: '@', property: '@', enum: '☰', enum_member: '@',
-    type_alias: '=:', react_component: '◇', jsx_element: '⛶',
+    type_alias: '=:', react_component: '◇', jsx_element: '⛶', styled_component: '~',
     css_class: '¶', css_id: '¶', css_tag: '¶', css_at_rule: '¶',
     go_package: '◇',
     rust_struct: '◇', rust_trait: '{}', rust_impl: '+',
@@ -35,10 +35,16 @@ const formatSymbolIdDisplay = (file: SourceFile, symbol: CodeSymbol): string | n
 };
 
 const formatSymbol = (symbol: CodeSymbol, allFiles: SourceFile[]): string[] => {
-    const icon = ICONS[symbol.kind] || ICONS.default;
+    let icon = ICONS[symbol.kind] || ICONS.default;
     const prefix = symbol.isExported ? '+' : '-';
     let name = symbol.name === '<anonymous>' ? '' : symbol.name;
     if (symbol.kind === 'variable' && name.trim() === 'default') name = '';
+    
+    // Handle styled components: ~div ComponentName, ~h1 ComponentName, etc.
+    if (symbol.kind === 'styled_component' && (symbol as any)._styledTag) {
+        const tagName = (symbol as any)._styledTag;
+        icon = `~${tagName}`;
+    }
 
     const mods = [
         symbol.isAbstract && 'abstract',

@@ -48,6 +48,14 @@ const getSymbolName = (node: SyntaxNode, sourceCode: string): string => {
         }
         return '<anonymous>()';
     }
+    
+    // Handle styled components
+    if ((node as any)._styledTag) {
+        const tagName = (node as any)._styledTag;
+        const componentName = getIdentifier(node.parent || node, sourceCode);
+        return `${componentName}`;
+    }
+    
     return getIdentifier(node.parent || node, sourceCode);
 };
 
@@ -164,6 +172,22 @@ const processCapture = (
             }
         }
         
+        // Handle styled components - extract tag name for later use
+        let styledTag: string | undefined;
+        if (symbolKind === 'styled_component') {
+            // Extract the HTML tag from styled.div, styled.h1, etc.
+            const valueNode = findChildByFieldName(scopeNode, 'value');
+            if (valueNode?.type === 'call_expression') {
+                const functionNode = findChildByFieldName(valueNode, 'function');
+                if (functionNode?.type === 'member_expression') {
+                    const propertyNode = findChildByFieldName(functionNode, 'property');
+                    if (propertyNode) {
+                        styledTag = getNodeText(propertyNode, sourceFile.sourceCode);
+                    }
+                }
+            }
+        }
+        
         const symbol: CodeSymbol = {
             id: `${range.start.line + 1}:${range.start.column}`,
             fileId: sourceFile.id,
@@ -173,7 +197,13 @@ const processCapture = (
             scopeRange: getNodeRange(scopeNode),
             isExported: hasExportAncestor(scopeNode) || /^\s*export\b/.test(getNodeText(scopeNode, sourceFile.sourceCode)),
             dependencies: [],
+            labels: styledTag ? ['styled'] : undefined
         };
+        
+        // Store styled tag for formatter
+        if (styledTag) {
+            (symbol as any)._styledTag = styledTag;
+        }
         
         if ((symbol.kind === 'type_alias' || symbol.kind === 'interface' || symbol.kind === 'class') && (scopeNode.type.endsWith('_declaration'))) {
             const typeParamsNode = findChildByFieldName(scopeNode, 'type_parameters');
@@ -306,9 +336,13 @@ export const analyze = (sourceFile: SourceFile): SourceFile => {
     const { ast, language, sourceCode } = sourceFile;
     if (!ast || !language.parser || !language.loadedLanguage) return sourceFile;
 
-    const directives = sourceCode.match(/^['"](use (?:server|client))['"];/gm);
+    const directives = sourceCode.match(/^\s*['"](use (?:server|client))['"];?\s*$/gm);
     if(directives) {
-        sourceFile.languageDirectives = directives.map(d => d.replace(/['";]/g, ''));
+        sourceFile.languageDirectives = directives.map(d => {
+            const cleaned = d.replace(/['";]/g, '').trim();
+            // Normalize directives: 'use server' -> 'server', 'use client' -> 'client'
+            return cleaned.replace(/^use /, '');
+        });
     }
     if (sourceCode.includes('AUTO-GENERATED') || sourceCode.includes('eslint-disable')) {
         sourceFile.isGenerated = true;

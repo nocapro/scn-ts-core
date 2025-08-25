@@ -105,7 +105,7 @@ export const typescriptQueries = `
 ; Type references in type annotations, extends clauses, etc.
 (type_identifier) @rel.references
 
-; `satisfies` expressions
+; satisfies expressions
 (satisfies_expression
   (type_identifier) @rel.references)
 

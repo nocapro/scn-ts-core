@@ -685,6 +685,73 @@ export default defineConfig({
 })
 ```
 
+## File: src/utils/graph.ts
+```typescript
+import type { SourceFile } from '../types';
+
+export const topologicalSort = (sourceFiles: SourceFile[]): SourceFile[] => {
+    const adj = new Map<number, Set<number>>();
+    const inDegree = new Map<number, number>();
+    const idToFile = new Map<number, SourceFile>();
+
+    for (const file of sourceFiles) {
+        adj.set(file.id, new Set());
+        inDegree.set(file.id, 0);
+        idToFile.set(file.id, file);
+    }
+
+    for (const file of sourceFiles) {
+        for (const symbol of file.symbols) {
+            for (const dep of symbol.dependencies) {
+                // Create a directed edge from the dependency to the current file
+                if (dep.resolvedFileId !== undefined && dep.resolvedFileId !== file.id) {
+                    if (!adj.get(dep.resolvedFileId)?.has(file.id)) {
+                         adj.get(dep.resolvedFileId)!.add(file.id);
+                         inDegree.set(file.id, (inDegree.get(file.id) || 0) + 1);
+                    }
+                }
+            }
+        }
+    }
+
+    const queue: number[] = [];
+    for (const [id, degree] of inDegree.entries()) {
+        if (degree === 0) {
+            queue.push(id);
+        }
+    }
+    queue.sort((a,b) => a - b);
+
+    const sorted: SourceFile[] = [];
+    while (queue.length > 0) {
+        const u = queue.shift()!;
+        sorted.push(idToFile.get(u)!);
+
+        const neighbors = Array.from(adj.get(u) || []).sort((a,b) => a-b);
+        for (const v of neighbors) {
+            inDegree.set(v, (inDegree.get(v) || 1) - 1);
+            if (inDegree.get(v) === 0) {
+                queue.push(v);
+            }
+        }
+        queue.sort((a,b) => a - b);
+    }
+
+    if (sorted.length < sourceFiles.length) {
+        const sortedIds = new Set(sorted.map(f => f.id));
+        sourceFiles.forEach(f => {
+            if (!sortedIds.has(f.id)) {
+                sorted.push(f);
+            }
+        });
+    }
+
+    // The fixtures expect a specific order that seems to be a standard topological sort,
+    // not a reverse one. Let's stick with the standard sort.
+    return sorted;
+};
+```
+
 ## File: src/utils/path.ts
 ```typescript
 // A simplified path utility for browser environments that assumes POSIX-style paths.
@@ -819,71 +886,37 @@ class Logger {
 export const logger = new Logger();
 ```
 
-## File: src/utils/graph.ts
-```typescript
-import type { SourceFile } from '../types';
+## File: tsconfig.json
+```json
+{
+  "compilerOptions": {
+    // Environment setup & latest features
+    "lib": ["ESNext"],
+    "target": "ESNext",
+    "module": "Preserve",
+    "moduleDetection": "force",
+    "jsx": "react-jsx",
+    "allowJs": true,
 
-export const topologicalSort = (sourceFiles: SourceFile[]): SourceFile[] => {
-    const adj = new Map<number, Set<number>>();
-    const inDegree = new Map<number, number>();
-    const idToFile = new Map<number, SourceFile>();
+    // Bundler mode
+    "moduleResolution": "bundler",
+    "allowImportingTsExtensions": true,
+    "verbatimModuleSyntax": true,
+    "noEmit": true,
 
-    for (const file of sourceFiles) {
-        adj.set(file.id, new Set());
-        inDegree.set(file.id, 0);
-        idToFile.set(file.id, file);
-    }
+    // Best practices
+    "strict": true,
+    "skipLibCheck": true,
+    "noFallthroughCasesInSwitch": true,
+    "noUncheckedIndexedAccess": true,
+    "noImplicitOverride": true,
 
-    for (const file of sourceFiles) {
-        for (const symbol of file.symbols) {
-            for (const dep of symbol.dependencies) {
-                // Create a directed edge from the dependency to the current file
-                if (dep.resolvedFileId !== undefined && dep.resolvedFileId !== file.id) {
-                    if (!adj.get(dep.resolvedFileId)?.has(file.id)) {
-                         adj.get(dep.resolvedFileId)!.add(file.id);
-                         inDegree.set(file.id, (inDegree.get(file.id) || 0) + 1);
-                    }
-                }
-            }
-        }
-    }
-
-    const queue: number[] = [];
-    for (const [id, degree] of inDegree.entries()) {
-        if (degree === 0) {
-            queue.push(id);
-        }
-    }
-    queue.sort((a,b) => a - b);
-
-    const sorted: SourceFile[] = [];
-    while (queue.length > 0) {
-        const u = queue.shift()!;
-        sorted.push(idToFile.get(u)!);
-
-        const neighbors = Array.from(adj.get(u) || []).sort((a,b) => a-b);
-        for (const v of neighbors) {
-            inDegree.set(v, (inDegree.get(v) || 1) - 1);
-            if (inDegree.get(v) === 0) {
-                queue.push(v);
-            }
-        }
-        queue.sort((a,b) => a - b);
-    }
-
-    if (sorted.length < sourceFiles.length) {
-        const sortedIds = new Set(sorted.map(f => f.id));
-        sourceFiles.forEach(f => {
-            if (!sortedIds.has(f.id)) {
-                sorted.push(f);
-            }
-        });
-    }
-
-    // The fixtures expect a specific order that seems to be a standard topological sort,
-    // not a reverse one. Let's stick with the standard sort.
-    return sorted;
-};
+    // Some stricter flags (disabled by default)
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noPropertyAccessFromIndexSignature": false
+  }
+}
 ```
 
 ## File: src/utils/tsconfig.ts
@@ -1048,37 +1081,38 @@ export const analyzeProject = async ({
 };
 ```
 
-## File: tsconfig.json
-```json
-{
-  "compilerOptions": {
-    // Environment setup & latest features
-    "lib": ["ESNext"],
-    "target": "ESNext",
-    "module": "Preserve",
-    "moduleDetection": "force",
-    "jsx": "react-jsx",
-    "allowJs": true,
+## File: src/utils/ast.ts
+```typescript
+import type { Range } from '../types';
+import type { Node as SyntaxNode } from 'web-tree-sitter';
 
-    // Bundler mode
-    "moduleResolution": "bundler",
-    "allowImportingTsExtensions": true,
-    "verbatimModuleSyntax": true,
-    "noEmit": true,
+export const getNodeText = (node: SyntaxNode, sourceCode: string): string => {
+    return sourceCode.substring(node.startIndex, node.endIndex);
+};
 
-    // Best practices
-    "strict": true,
-    "skipLibCheck": true,
-    "noFallthroughCasesInSwitch": true,
-    "noUncheckedIndexedAccess": true,
-    "noImplicitOverride": true,
+export const getNodeRange = (node: SyntaxNode): Range => {
+    return {
+        start: { line: node.startPosition.row, column: node.startPosition.column },
+        end: { line: node.endPosition.row, column: node.endPosition.column },
+    };
+};
 
-    // Some stricter flags (disabled by default)
-    "noUnusedLocals": true,
-    "noUnusedParameters": true,
-    "noPropertyAccessFromIndexSignature": false
-  }
+export const findChild = (node: SyntaxNode, type: string | string[]): SyntaxNode | null => {
+    const types = Array.isArray(type) ? type : [type];
+    return node.children.find((c): c is SyntaxNode => !!c && types.includes(c.type)) || null;
 }
+
+export const findChildByFieldName = (node: SyntaxNode, fieldName: string): SyntaxNode | null => {
+    return node.childForFieldName(fieldName);
+};
+
+export const getIdentifier = (node: SyntaxNode, sourceCode: string, defaultName: string = '<anonymous>'): string => {
+    if (node.type === 'member_expression') {
+        return getNodeText(node, sourceCode);
+    }
+    const nameNode = findChildByFieldName(node, 'name') ?? findChild(node, ['identifier', 'property_identifier']);
+    return nameNode ? getNodeText(nameNode, sourceCode) : defaultName;
+};
 ```
 
 ## File: src/languages.ts
@@ -1182,93 +1216,6 @@ export const getLanguageForFile = (filePath: string): LanguageConfig | undefined
 };
 ```
 
-## File: src/utils/ast.ts
-```typescript
-import type { Range } from '../types';
-import type { Node as SyntaxNode } from 'web-tree-sitter';
-
-export const getNodeText = (node: SyntaxNode, sourceCode: string): string => {
-    return sourceCode.substring(node.startIndex, node.endIndex);
-};
-
-export const getNodeRange = (node: SyntaxNode): Range => {
-    return {
-        start: { line: node.startPosition.row, column: node.startPosition.column },
-        end: { line: node.endPosition.row, column: node.endPosition.column },
-    };
-};
-
-export const findChild = (node: SyntaxNode, type: string | string[]): SyntaxNode | null => {
-    const types = Array.isArray(type) ? type : [type];
-    return node.children.find((c): c is SyntaxNode => !!c && types.includes(c.type)) || null;
-}
-
-export const findChildByFieldName = (node: SyntaxNode, fieldName: string): SyntaxNode | null => {
-    return node.childForFieldName(fieldName);
-};
-
-export const getIdentifier = (node: SyntaxNode, sourceCode: string, defaultName: string = '<anonymous>'): string => {
-    if (node.type === 'member_expression') {
-        return getNodeText(node, sourceCode);
-    }
-    const nameNode = findChildByFieldName(node, 'name') ?? findChild(node, ['identifier', 'property_identifier']);
-    return nameNode ? getNodeText(nameNode, sourceCode) : defaultName;
-};
-```
-
-## File: src/parser.ts
-```typescript
-import type { ParserInitOptions, LanguageConfig } from './types';
-import { Parser, Language, type Tree } from 'web-tree-sitter';
-import path from './utils/path';
-import { languages } from './languages';
-
-let initializePromise: Promise<void> | null = null;
-let isInitialized = false;
-
-const doInitialize = async (options: ParserInitOptions): Promise<void> => {
-    await Parser.init({
-        locateFile: (scriptName: string, _scriptDirectory: string) => {
-            return path.join(options.wasmBaseUrl, scriptName);
-        }
-    });
-
-    const languageLoaders = languages
-        .filter(lang => lang.wasmPath)
-        .map(async (lang: LanguageConfig) => {
-            const wasmPath = path.join(options.wasmBaseUrl, lang.wasmPath);
-            try {
-                const loadedLang = await Language.load(wasmPath);
-                const parser = new Parser();
-                parser.setLanguage(loadedLang);
-                lang.parser = parser;
-                lang.loadedLanguage = loadedLang;
-            } catch (error) {
-                console.error(`Failed to load parser for ${lang.name} from ${wasmPath}`, error);
-                throw error;
-            }
-        });
-    
-    await Promise.all(languageLoaders);
-    isInitialized = true;
-};
-
-export const initializeParser = (options: ParserInitOptions): Promise<void> => {
-    if (initializePromise) {
-        return initializePromise;
-    }
-    initializePromise = doInitialize(options);
-    return initializePromise;
-};
-
-export const parse = (sourceCode: string, lang: LanguageConfig): Tree | null => {
-    if (!isInitialized || !lang.parser) {
-        return null;
-    }
-    return lang.parser.parse(sourceCode);
-};
-```
-
 ## File: src/queries/go.ts
 ```typescript
 export const goQueries = `
@@ -1330,6 +1277,76 @@ export const rustQueries = `
 ((trait_item (visibility_modifier) @mod.export))
 ((function_item (visibility_modifier) @mod.export))
 `;
+```
+
+## File: src/parser.ts
+```typescript
+import type { ParserInitOptions, LanguageConfig } from './types';
+import { Parser, Language, type Tree } from 'web-tree-sitter';
+import path from './utils/path';
+import { languages } from './languages';
+
+let initializePromise: Promise<void> | null = null;
+let isInitialized = false;
+
+const doInitialize = async (options: ParserInitOptions): Promise<void> => {
+    await Parser.init({
+        locateFile: (scriptName: string, _scriptDirectory: string) => {
+            return path.join(options.wasmBaseUrl, scriptName);
+        }
+    });
+
+    const languageLoaders = languages
+        .filter(lang => lang.wasmPath)
+        .map(async (lang: LanguageConfig) => {
+            const wasmPath = path.join(options.wasmBaseUrl, lang.wasmPath);
+            try {
+                const loadedLang = await Language.load(wasmPath);
+                const parser = new Parser();
+                parser.setLanguage(loadedLang);
+                lang.parser = parser;
+                lang.loadedLanguage = loadedLang;
+            } catch (error) {
+                console.error(`Failed to load parser for ${lang.name} from ${wasmPath}`, error);
+                throw error;
+            }
+        });
+    
+    await Promise.all(languageLoaders);
+    isInitialized = true;
+};
+
+export const initializeParser = (options: ParserInitOptions): Promise<void> => {
+    if (initializePromise) {
+        return initializePromise;
+    }
+    initializePromise = doInitialize(options);
+    return initializePromise;
+};
+
+export const parse = (sourceCode: string, lang: LanguageConfig): Tree | null => {
+    if (!isInitialized || !lang.parser) {
+        return null;
+    }
+    return lang.parser.parse(sourceCode);
+};
+```
+
+## File: package.json
+```json
+{
+  "name": "scn-ts-core",
+  "module": "index.ts",
+  "type": "module",
+  "private": true,
+  "devDependencies": {
+    "@types/bun": "latest",
+    "web-tree-sitter": "0.25.6"
+  },
+  "peerDependencies": {
+    "typescript": "^5"
+  }
+}
 ```
 
 ## File: src/graph-resolver.ts
@@ -1422,23 +1439,6 @@ export const resolveGraph = (sourceFiles: SourceFile[], pathResolver: PathResolv
     }
     return sourceFiles;
 };
-```
-
-## File: package.json
-```json
-{
-  "name": "scn-ts-core",
-  "module": "index.ts",
-  "type": "module",
-  "private": true,
-  "devDependencies": {
-    "@types/bun": "latest",
-    "web-tree-sitter": "0.25.6"
-  },
-  "peerDependencies": {
-    "typescript": "^5"
-  }
-}
 ```
 
 ## File: src/queries/css.ts

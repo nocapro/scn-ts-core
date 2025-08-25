@@ -1,4 +1,4 @@
-import { generateScn, initializeParser, type ScnTsConfig, type InputFile } from '../src/main';
+import { generateScnFromConfig, initializeParser, type ScnTsConfig, type InputFile } from '../src/main';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { expect } from 'bun:test';
@@ -80,7 +80,7 @@ export async function runTestForFixture(fixturePath: string): Promise<void> {
     _test_id: fixture.id,
   };
 
-  const scnOutput = await generateScn(config);
+  const scnOutput = await generateScnFromConfig(config);
 
   if (scnOutput.trim() !== fixture.expected) {
       console.error(`\n--- MISMATCH IN FIXTURE: ${fixture.id} ---\n`);

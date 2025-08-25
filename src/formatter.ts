@@ -35,7 +35,7 @@ const formatSymbolIdDisplay = (file: SourceFile, symbol: CodeSymbol): string | n
 };
 
 const formatSymbol = (symbol: CodeSymbol, allFiles: SourceFile[]): string[] => {
-    let icon = ICONS[symbol.kind] || ICONS.default;
+    let icon = ICONS[symbol.kind] || ICONS.default || '?';
     const prefix = symbol.isExported ? '+' : '-';
     let name = symbol.name === '<anonymous>' ? '' : symbol.name;
     if (symbol.kind === 'variable' && name.trim() === 'default') name = '';

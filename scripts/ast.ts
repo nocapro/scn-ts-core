@@ -103,14 +103,15 @@ const userProxy = new Proxy(user, {
     
     // Run analysis
     console.log('ANALYSIS:');
-    const { generateScn } = await import('../src/main');
+    const { analyzeProject, generateScn } = await import('../src/main');
     try {
-      const scnOutput = await generateScn({
+      const analyzedFiles = await analyzeProject({
         files: [{
           path: sample.file,
           content: sample.code
         }]
       });
+      const scnOutput = generateScn(analyzedFiles);
       console.log('SCN Output:');
       console.log(scnOutput);
     } catch (error) {

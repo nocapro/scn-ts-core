@@ -1,6 +1,6 @@
 import { getLanguageForFile } from './languages';
 import { initializeParser as init, parse } from './parser';
-import type { ParserInitOptions, SourceFile, InputFile, TsConfig, LogLevel } from './types';
+import type { ParserInitOptions, SourceFile, InputFile, TsConfig, LogLevel, ScnTsConfig } from './types';
 import { analyze } from './analyzer';
 import { formatScn } from './formatter';
 import path from './utils/path';
@@ -20,7 +20,25 @@ export type FileContent = InputFile;
 
 // Exports for web demo
 export { logger };
-export { formatScn as generateScn }; // App.tsx uses `generateScn` to format the graph
+
+/**
+ * Generate SCN from analyzed source files
+ */
+export const generateScn = (analyzedFiles: SourceFile[]): string => {
+    return formatScn(analyzedFiles);
+};
+
+/**
+ * Legacy API: Generate SCN from config (for backward compatibility)
+ */
+export const generateScnFromConfig = async (config: ScnTsConfig): Promise<string> => {
+    const analyzedFiles = await analyzeProject({
+        files: config.files,
+        tsconfig: config.tsconfig,
+        root: config.root
+    });
+    return formatScn(analyzedFiles);
+};
 
 interface AnalyzeProjectOptions {
     files: InputFile[];

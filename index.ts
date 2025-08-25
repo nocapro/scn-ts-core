@@ -2,6 +2,7 @@ export {
     initializeParser,
     analyzeProject,
     generateScn,
+    generateScnFromConfig,
     logger,
 } from './src/main';
 

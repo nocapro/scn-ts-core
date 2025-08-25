@@ -1,0 +1,786 @@
+uuid: eac1c210-90c7-43df-ac56-d7607a783783
+projectId: scn-ts-core
+createdAt: '2025-08-24T22:50:08.900Z'
+linesAdded: 6
+linesRemoved: 5
+gitCommitMsg: 'fix: resolve typescript errors across project'
+promptSummary: Fix multiple TypeScript errors reported by `tsc`.
+reasoning:
+  - >-
+    I've analyzed the TypeScript errors and identified several issues related to
+    project configuration, type safety, and a syntax issue in a template string.
+    Here are the fixes to resolve all reported errors.
+  - >-
+    First, I'll correct the entry point for the `scn-ts-core` package in its
+    `package.json`. The `module` field was pointing to a non-existent
+    `index.ts`. I'll change it to `src/main.ts`, which is the actual main export
+    file. This will fix the import errors in `scn-ts-web-demo`.
+  - >-
+    Next, I'll update the root `tsconfig.json`. For TypeScript project
+    references to work correctly, the referenced project's `tsconfig.json` must
+    have `"composite": true`. I'll also add `"DOM"` to the `lib` array. This
+    will provide DOM typings (like `document` and `HTMLTextAreaElement`) to the
+    entire project, resolving errors in the web demo app about missing DOM APIs.
+  - >-
+    The TypeScript project reference path in the web demo's `tsconfig.json` is
+    incorrect. It points to `../scn-ts-core`, which doesn't exist. I'll correct
+    it to `../../` to point to the root directory, allowing `tsc` to find the
+    main `tsconfig.json` for `scn-ts-core`.
+  - >-
+    In `src/formatter.ts`, the `icon` variable was inferred as `string |
+    undefined` because TypeScript can't guarantee that `ICONS.default` exists on
+    a `Record<string, string>`. I'll add a fallback to ensure the type is always
+    `string`, satisfying the type requirement for the `segments` array.
+  - >-
+    Finally, a template literal in `src/queries/typescript.ts` contained
+    backticks within a comment, which seems to be confusing the TypeScript
+    parser and causing a strange type error. I will remove the decorative
+    backticks from the comment to resolve this parsing issue.
+  - These changes should resolve all the reported TypeScript compilation errors.
+operations:
+  - type: write
+    path: package.json
+    content: |-
+      <<<<<<< SEARCH
+        "module": "index.ts",
+      =======
+        "module": "src/main.ts",
+      >>>>>>> REPLACE
+    patchStrategy: multi-search-replace
+  - type: write
+    path: tsconfig.json
+    content: |-
+      --- tsconfig.json
+      +++ tsconfig.json
+      @@ -1,6 +1,7 @@
+       {
+         "compilerOptions": {
+      +    "composite": true,
+           // Environment setup & latest features
+      -    "lib": ["ESNext"],
+      +    "lib": ["ESNext", "DOM"],
+           "target": "ESNext",
+           "module": "Preserve",
+           "moduleDetection": "force",
+    patchStrategy: new-unified
+  - type: write
+    path: packages/scn-ts-web-demo/tsconfig.json
+    content: |-
+      <<<<<<< SEARCH
+        "references": [
+          { "path": "../scn-ts-core" }
+        ]
+      =======
+        "references": [
+          { "path": "../../" }
+        ]
+      >>>>>>> REPLACE
+    patchStrategy: multi-search-replace
+  - type: write
+    path: src/formatter.ts
+    content: |-
+      --- src/formatter.ts
+      +++ src/formatter.ts
+      @@ -45,7 +45,7 @@
+       };
+       
+       const formatSymbol = (symbol: CodeSymbol, allFiles: SourceFile[]): string[] => {
+      -    let icon = ICONS[symbol.kind] || ICONS.default;
+      +    let icon = ICONS[symbol.kind] || ICONS.default || '?';
+           const prefix = symbol.isExported ? '+' : '-';
+           let name = symbol.name === '<anonymous>' ? '' : symbol.name;
+           if (symbol.kind === 'variable' && name.trim() === 'default') name = '';
+    patchStrategy: new-unified
+  - type: write
+    path: src/queries/typescript.ts
+    content: |-
+      <<<<<<< SEARCH
+      ; `satisfies` expressions
+      =======
+      ; satisfies expressions
+      >>>>>>> REPLACE
+    patchStrategy: multi-search-replace
+snapshot:
+  package.json: |
+    {
+      "name": "scn-ts-core",
+      "module": "index.ts",
+      "type": "module",
+      "private": true,
+      "devDependencies": {
+        "@types/bun": "latest",
+        "web-tree-sitter": "0.25.6"
+      },
+      "peerDependencies": {
+        "typescript": "^5"
+      }
+    }
+  tsconfig.json: |
+    {
+      "compilerOptions": {
+        // Environment setup & latest features
+        "lib": ["ESNext"],
+        "target": "ESNext",
+        "module": "Preserve",
+        "moduleDetection": "force",
+        "jsx": "react-jsx",
+        "allowJs": true,
+
+        // Bundler mode
+        "moduleResolution": "bundler",
+        "allowImportingTsExtensions": true,
+        "verbatimModuleSyntax": true,
+        "noEmit": true,
+
+        // Best practices
+        "strict": true,
+        "skipLibCheck": true,
+        "noFallthroughCasesInSwitch": true,
+        "noUncheckedIndexedAccess": true,
+        "noImplicitOverride": true,
+
+        // Some stricter flags (disabled by default)
+        "noUnusedLocals": true,
+        "noUnusedParameters": true,
+        "noPropertyAccessFromIndexSignature": false
+      }
+    }
+  packages/scn-ts-web-demo/tsconfig.json: |
+    {
+      "compilerOptions": {
+        "composite": true,
+        "target": "ES2020",
+        "useDefineForClassFields": true,
+        "lib": ["ES2020", "DOM", "DOM.Iterable"],
+        "module": "ESNext",
+        "skipLibCheck": true,
+
+        /* Bundler mode */
+        "moduleResolution": "bundler",
+        "resolveJsonModule": true,
+        "isolatedModules": true,
+        "outDir": "dist",
+        "jsx": "react-jsx",
+        "baseUrl": ".",
+        "paths": {
+          "@/*": ["src/*"]
+        },
+
+        /* Linting */
+        "strict": true,
+        "noUnusedLocals": true,
+        "noUnusedParameters": true,
+        "noFallthroughCasesInSwitch": true
+      },
+      "include": ["src"],
+      "references": [
+        { "path": "../scn-ts-core" }
+      ]
+    }
+  src/formatter.ts: >-
+    import type { CodeSymbol, SourceFile } from './types';
+
+    import { topologicalSort } from './utils/graph';
+
+
+    const ICONS: Record<string, string> = {
+        class: '◇', interface: '{}', function: '~', method: '~',
+        constructor: '~',
+        variable: '@', property: '@', enum: '☰', enum_member: '@',
+        type_alias: '=:', react_component: '◇', jsx_element: '⛶', styled_component: '~',
+        css_class: '¶', css_id: '¶', css_tag: '¶', css_at_rule: '¶',
+        go_package: '◇',
+        rust_struct: '◇', rust_trait: '{}', rust_impl: '+',
+        error: '[error]', default: '?',
+    };
+
+
+    // Compute display index per file based on eligible symbols (exclude
+    properties and constructors)
+
+    const isIdEligible = (symbol: CodeSymbol): boolean => {
+        if (symbol.kind === 'property' || symbol.kind === 'constructor') return false;
+        if (symbol.kind === 'variable') return symbol.isExported || symbol.name === 'module.exports' || symbol.name === 'default';
+        if (symbol.kind === 'method') return !!symbol.isExported;
+        return true;
+    };
+
+
+    const getDisplayIndex = (file: SourceFile, symbol: CodeSymbol): number |
+    null => {
+        const ordered = file.symbols
+            .filter(isIdEligible)
+            .sort((a, b) => a.range.start.line - b.range.start.line || a.range.start.column - b.range.start.column);
+        const index = ordered.findIndex(s => s === symbol);
+        return index === -1 ? null : index + 1;
+    };
+
+
+    const formatSymbolIdDisplay = (file: SourceFile, symbol: CodeSymbol): string
+    | null => {
+        const idx = getDisplayIndex(file, symbol);
+        if (idx == null) return null;
+        return `(${file.id}.${idx})`;
+    };
+
+
+    const formatSymbol = (symbol: CodeSymbol, allFiles: SourceFile[]): string[]
+    => {
+        let icon = ICONS[symbol.kind] || ICONS.default;
+        const prefix = symbol.isExported ? '+' : '-';
+        let name = symbol.name === '<anonymous>' ? '' : symbol.name;
+        if (symbol.kind === 'variable' && name.trim() === 'default') name = '';
+        
+        // Handle styled components: ~div ComponentName, ~h1 ComponentName, etc.
+        if (symbol.kind === 'styled_component' && (symbol as any)._styledTag) {
+            const tagName = (symbol as any)._styledTag;
+            icon = `~${tagName}`;
+        }
+
+        const mods = [
+            symbol.isAbstract && 'abstract',
+            symbol.isStatic && 'static',
+        ].filter(Boolean).join(' ');
+        const modStr = mods ? ` [${mods}]` : '';
+
+        const suffixParts: string[] = [];
+        if (symbol.signature) name += symbol.name === '<anonymous>' ? symbol.signature : `${symbol.signature}`;
+        if (symbol.typeAnnotation) name += `: ${symbol.typeAnnotation}`;
+        if (symbol.typeAliasValue) name += ` ${symbol.typeAliasValue}`;
+        // Merge async + throws into a single token '...!'
+        const asyncToken = symbol.isAsync ? '...' : '';
+        const throwsToken = symbol.throws ? '!' : '';
+        const asyncThrows = (asyncToken + throwsToken) || '';
+        if (asyncThrows) suffixParts.push(asyncThrows);
+        if (symbol.isPure) suffixParts.push('o');
+        if (symbol.labels && symbol.labels.length > 0) suffixParts.push(...symbol.labels.map(l => `[${l}]`));
+        const suffix = suffixParts.join(' ');
+
+        // Build ID portion conditionally
+        const file = allFiles.find(f => f.id === symbol.fileId)!;
+        const idPart = formatSymbolIdDisplay(file, symbol);
+        const idText = (symbol.kind === 'property' || symbol.kind === 'constructor') ? null : (idPart ?? null);
+        const segments: string[] = [prefix, icon];
+        if (idText) segments.push(idText);
+        if (name) segments.push(name.trim());
+        if (modStr) segments.push(modStr);
+        if (suffix) segments.push(suffix);
+        const line = `  ${segments.filter(Boolean).join(' ')}`;
+        const result = [line];
+
+        const outgoing = new Map<number, Set<string>>();
+        const unresolvedDeps: string[] = [];
+        symbol.dependencies.forEach(dep => {
+            if (dep.resolvedFileId !== undefined && dep.resolvedFileId !== symbol.fileId) {
+                if (!outgoing.has(dep.resolvedFileId)) outgoing.set(dep.resolvedFileId, new Set());
+                if (dep.resolvedSymbolId) {
+                    const targetFile = allFiles.find(f => f.id === dep.resolvedFileId);
+                    const targetSymbol = targetFile?.symbols.find(s => s.id === dep.resolvedSymbolId);
+                    if (targetSymbol) {
+                        const displayId = formatSymbolIdDisplay(targetFile!, targetSymbol);
+                        let text = displayId ?? `(${targetFile!.id}.0)`;
+                        if (dep.kind === 'goroutine') {
+                            text += ' [goroutine]';
+                        }
+                        outgoing.get(dep.resolvedFileId)!.add(text);
+                    }
+                } else {
+                    let text = `(${dep.resolvedFileId}.0)`;
+                    if (dep.kind === 'dynamic_import') text += ' [dynamic]';
+                    outgoing.get(dep.resolvedFileId)!.add(text);
+                }
+            } else if (dep.resolvedFileId === undefined) {
+                if (dep.kind === 'macro') {
+                    unresolvedDeps.push(`${dep.targetName} [macro]`);
+                }
+            }
+        });
+
+        const outgoingParts: string[] = [];
+        if (outgoing.size > 0) {
+            const resolvedParts = Array.from(outgoing.entries())
+                .sort((a, b) => a[0] - b[0])
+                .map(([fileId, symbolIds]) => {
+                    const items = Array.from(symbolIds).sort();
+                    return items.length > 0 ? `${items.join(', ')}` : `(${fileId}.0)`;
+                });
+            outgoingParts.push(...resolvedParts);
+        }
+        outgoingParts.push(...unresolvedDeps);
+
+        if (outgoingParts.length > 0) {
+            result.push(`    -> ${outgoingParts.join(', ')}`);
+        }
+        
+        const incoming = new Map<number, Set<string>>();
+        allFiles.forEach(file => {
+            file.symbols.forEach(s => {
+                s.dependencies.forEach(d => {
+                    if (d.resolvedFileId === symbol.fileId && d.resolvedSymbolId === symbol.id && s !== symbol) {
+                        if(!incoming.has(file.id)) incoming.set(file.id, new Set());
+                        // Suppress same-file incoming for properties
+                        if (file.id === symbol.fileId && symbol.kind === 'property') return;
+                        const disp = formatSymbolIdDisplay(file, s) ?? `(${file.id}.0)`;
+                        incoming.get(file.id)!.add(disp);
+                    }
+                });
+            });
+            // Include file-level imports to this file as incoming for exported symbols
+            // but only if there is no symbol-level incoming from that file already
+            if (file.id !== symbol.fileId && symbol.isExported) {
+                file.fileRelationships?.forEach(rel => {
+                    if (rel.resolvedFileId === symbol.fileId) {
+                        const already = incoming.get(file.id);
+                        if (!already || already.size === 0) {
+                            if(!incoming.has(file.id)) incoming.set(file.id, new Set());
+                            incoming.get(file.id)!.add(`(${file.id}.0)`);
+                        }
+                    }
+                });
+            }
+        });
+
+        if (incoming.size > 0) {
+            const parts = Array.from(incoming.entries()).map(([_fileId, symbolIds]) => Array.from(symbolIds).join(', '));
+            result.push(`    <- ${parts.join(', ')}`);
+        }
+
+        return result;
+    };
+
+
+
+    const isWithin = (inner: CodeSymbol, outer: CodeSymbol): boolean => {
+        const a = inner.range;
+        const b = outer.scopeRange;
+        return (
+            (a.start.line > b.start.line || (a.start.line === b.start.line && a.start.column >= b.start.column)) &&
+            (a.end.line < b.end.line || (a.end.line === b.end.line && a.end.column <= b.end.column))
+        );
+    };
+
+
+    const buildChildrenMap = (symbols: CodeSymbol[]): Map<string, CodeSymbol[]>
+    => {
+        const parents = symbols.filter(s => s.kind === 'class' || s.kind === 'interface' || s.kind === 'react_component');
+        const map = new Map<string, CodeSymbol[]>();
+        for (const parent of parents) map.set(parent.id, []);
+        for (const sym of symbols) {
+            if (sym.kind === 'class' || sym.kind === 'interface' || sym.kind === 'react_component') continue;
+            const parent = parents
+                .filter(p => isWithin(sym, p))
+                .sort((a, b) => (a.scopeRange.end.line - a.scopeRange.start.line) - (b.scopeRange.end.line - b.scopeRange.start.line))[0];
+            if (parent) {
+                map.get(parent.id)!.push(sym);
+            }
+        }
+        // Sort children by position
+        for (const [, arr] of map.entries()) {
+            arr.sort((a, b) => a.range.start.line - b.range.start.line || a.range.start.column - b.range.start.column);
+        }
+        return map;
+    };
+
+
+    const formatFile = (file: SourceFile, allFiles: SourceFile[]): string => {
+        if (file.parseError) return `§ (${file.id}) ${file.relativePath} [error]`;
+        if (!file.sourceCode.trim()) return `§ (${file.id}) ${file.relativePath}`;
+
+        const directives = [
+            file.isGenerated && 'generated',
+            ...(file.languageDirectives || [])
+        ].filter(Boolean);
+        const directiveStr = directives.length > 0 ? ` [${directives.join(' ')}]` : '';
+        const header = `§ (${file.id}) ${file.relativePath}${directiveStr}`;
+
+        const headerLines: string[] = [header];
+
+        // File-level outgoing/incoming dependencies
+        const outgoing: string[] = [];
+        if (file.fileRelationships) {
+            const outgoingFiles = new Set<number>();
+            file.fileRelationships.forEach(rel => {
+                // Only show true file-level imports on the header
+                if ((rel.kind === 'import' || rel.kind === 'dynamic_import') && rel.resolvedFileId && rel.resolvedFileId !== file.id) {
+                    let text = `(${rel.resolvedFileId}.0)`;
+                    if (rel.kind === 'dynamic_import') text += ' [dynamic]';
+                    outgoingFiles.add(rel.resolvedFileId);
+                    outgoing.push(text);
+                }
+            });
+            if (outgoing.length > 0) headerLines.push(`  -> ${Array.from(new Set(outgoing)).sort().join(', ')}`);
+        }
+
+        // Incoming: any other file that has a file-level relationship pointing here
+        const incoming: string[] = [];
+        allFiles.forEach(other => {
+            if (other.id === file.id) return;
+            other.fileRelationships?.forEach(rel => {
+                if (rel.resolvedFileId === file.id) incoming.push(`(${other.id}.0)`);
+            });
+        });
+        if (incoming.length > 0) headerLines.push(`  <- ${Array.from(new Set(incoming)).sort().join(', ')}`);
+
+        // If file has no exported symbols, only show symbols that are "entry points" for analysis,
+        // which we define as having outgoing dependencies.
+        const hasExports = file.symbols.some(s => s.isExported);
+        let symbolsToPrint = hasExports
+            ? file.symbols.slice()
+            : file.symbols.filter(s => s.dependencies.length > 0);
+
+        // Group properties/methods under their class/interface parent
+        const childrenMap = buildChildrenMap(symbolsToPrint);
+        const childIds = new Set<string>(Array.from(childrenMap.values()).flat().map(s => s.id));
+        const topLevel = symbolsToPrint.filter(s => !childIds.has(s.id));
+
+        const symbolLines: string[] = [];
+        for (const sym of topLevel) {
+            const lines = formatSymbol(sym, allFiles);
+            symbolLines.push(...lines);
+            if (childrenMap.has(sym.id)) {
+                const kids = childrenMap.get(sym.id)!;
+                for (const kid of kids) {
+                    const kLines = formatSymbol(kid, allFiles).map(l => `  ${l}`);
+                    symbolLines.push(...kLines);
+                }
+            }
+        }
+
+        // If we hid symbols (or there were none to begin with for an entry file),
+        // aggregate outgoing dependencies from all symbols onto the file header
+        if (symbolsToPrint.length === 0) {
+            const aggOutgoing = new Map<number, Set<string>>();
+            const unresolvedDeps: string[] = [];
+
+            const processDep = (dep: import('./types').Relationship) => {
+                if (dep.resolvedFileId && dep.resolvedFileId !== file.id) {
+                    if (!aggOutgoing.has(dep.resolvedFileId)) aggOutgoing.set(dep.resolvedFileId, new Set());
+                    let text = `(${dep.resolvedFileId}.0)`; // Default to file-level
+                    if (dep.resolvedSymbolId) {
+                        const targetFile = allFiles.find(f => f.id === dep.resolvedFileId)!;
+                        const targetSymbol = targetFile.symbols.find(ts => ts.id === dep.resolvedSymbolId);
+                        if (targetSymbol) {
+                            text = formatSymbolIdDisplay(targetFile, targetSymbol) ?? `(${dep.resolvedFileId}.0)`;
+                        }
+                    }
+                    if (dep.kind === 'dynamic_import') text += ' [dynamic]';
+                    aggOutgoing.get(dep.resolvedFileId)!.add(text);
+                } else if (dep.resolvedFileId === undefined && dep.kind === 'macro') {
+                    unresolvedDeps.push(`${dep.targetName} [macro]`);
+                }
+            };
+
+            file.symbols.forEach(s => s.dependencies.forEach(processDep));
+            file.fileRelationships?.forEach(processDep);
+
+            const outgoingParts: string[] = [];
+            if (aggOutgoing.size > 0) {
+                const resolvedParts = Array.from(aggOutgoing.entries())
+                    .sort((a, b) => a[0] - b[0])
+                    .flatMap(([, symbolIds]) => Array.from(symbolIds).sort());
+                outgoingParts.push(...resolvedParts);
+            }
+            outgoingParts.push(...unresolvedDeps);
+
+            if (outgoingParts.length > 0) {
+                // Some fixtures expect separate -> lines per dependency.
+                // This preserves that behavior.
+                for (const part of outgoingParts) {
+                    headerLines.push(`  -> ${part}`);
+                }
+            }
+        }
+        return [...headerLines, ...symbolLines].join('\n');
+    };
+
+
+    export const formatScn = (analyzedFiles: SourceFile[]): string => {
+        const sortedFiles = topologicalSort(analyzedFiles);
+        return sortedFiles.map(file => formatFile(file, analyzedFiles)).join('\n\n');
+    };
+  src/queries/typescript.ts: >
+    export const typescriptQueries = `
+
+    ; Interface definitions
+
+    (interface_declaration
+      name: (type_identifier) @symbol.interface.def) @scope.interface.def
+
+    ; Type alias definitions  
+
+    (type_alias_declaration
+      name: (type_identifier) @symbol.type_alias.def) @scope.type_alias.def
+
+    ; Class definitions
+
+    (class_declaration
+      name: (type_identifier) @symbol.class.def) @scope.class.def
+
+    ; Abstract class definitions
+
+    (abstract_class_declaration
+      name: (type_identifier) @symbol.class.def) @scope.class.def
+
+    ; Function definitions
+
+    (function_declaration
+      name: (identifier) @symbol.function.def) @scope.function.def
+
+    ; Method definitions (capture name and formal parameters as scope)
+
+    (method_definition name: (property_identifier) @symbol.method.def)
+    @scope.method.def
+
+
+    ; Method signatures (interfaces, abstract class methods)
+
+    (method_signature
+      name: (property_identifier) @symbol.method.def) @scope.method.def
+
+    ; Constructor definitions
+
+    (method_definition name: (property_identifier) @symbol.constructor.def
+      (#eq? @symbol.constructor.def "constructor")) @scope.constructor.def
+
+    ; Property signatures in interfaces (should be public by default)
+
+    (property_signature
+      (property_identifier) @symbol.property.def)
+
+    ; Class field definitions (TypeScript grammar uses public_field_definition)
+
+    (public_field_definition
+      name: (property_identifier) @symbol.property.def)
+
+    ; Variable declarations
+
+    (variable_declarator
+      name: (identifier) @symbol.variable.def)
+
+    ; Common patterns to support JS features in fixtures
+
+    ; IIFE: (function(){ ... })()
+
+    (call_expression
+      function: (parenthesized_expression
+        (function_expression) @symbol.function.def
+      )
+    ) @scope.function.def
+
+
+    ; IIFE with assignment: const result = (function(){ ... })()
+
+    (expression_statement
+      (assignment_expression
+        left: (identifier) @symbol.variable.def
+        right: (call_expression
+          function: (parenthesized_expression
+            (function_expression) @symbol.function.def
+          )
+        )
+      )
+    )
+
+
+    ; Window assignments: window.Widget = Widget
+
+    (expression_statement
+      (assignment_expression
+        left: (member_expression
+          object: (identifier) @__obj
+          property: (property_identifier) @symbol.variable.def
+        )
+        right: _ @symbol.variable.ref
+      )
+      (#eq? @__obj "window")
+    )
+
+
+    ; Tagged template usage -> capture identifier before template as call
+
+    (call_expression
+      function: (identifier) @rel.call)
+
+    ; Template literal variable references
+
+    (template_substitution
+      (identifier) @rel.references)
+
+    ; Styled components (styled.div, styled.h1, etc.)
+
+    (variable_declarator
+      name: (identifier) @symbol.styled_component.def
+      value: (call_expression
+        function: (member_expression
+          object: (identifier) @_styled
+          property: (property_identifier) @_tag)
+        arguments: (template_string))
+      (#eq? @_styled "styled")) @scope.styled_component.def
+
+    ; (Removed overly broad CommonJS/object key captures that polluted TS
+    fixtures)
+
+
+    ; Import statements
+
+    (import_statement
+      source: (string) @rel.import)
+
+    ; Named imports - these create references to the imported symbols
+
+    (import_specifier
+      name: (identifier) @rel.references)
+
+    ; Type references in type annotations, extends clauses, etc.
+
+    (type_identifier) @rel.references
+
+
+    ; `satisfies` expressions
+
+    (satisfies_expression
+      (type_identifier) @rel.references)
+
+    ; Identifiers used in expressions
+
+    (binary_expression
+      left: (identifier) @rel.references
+      right: (identifier) @rel.references
+    )
+
+
+    ; template literal types
+
+    (template_type
+      (type_identifier) @rel.references)
+
+
+    ; Call expressions
+
+    (call_expression
+      function: (identifier) @rel.call)
+
+    ; Method calls
+
+    ; Only capture the object being called, not the property
+
+    (call_expression
+      function: (member_expression
+        object: (_) @rel.call
+      )
+    )
+
+
+    ; Constructor calls (new expressions)
+
+    (new_expression
+      constructor: (identifier) @rel.call)
+
+    ; Property access
+
+    (member_expression
+      property: (property_identifier) @rel.references)
+
+    ; CommonJS require as import at file-level: require("./path")
+
+    ((call_expression
+       function: (identifier) @__fn
+       arguments: (arguments (string) @rel.import))
+      (#eq? @__fn "require"))
+
+    ; CommonJS module.exports assignment
+
+    (expression_statement
+      (assignment_expression
+        left: (member_expression
+          object: (identifier) @__obj
+          property: (property_identifier) @symbol.variable.def
+        )
+        right: _
+      )
+      (#eq? @__obj "module")
+    )
+
+
+    ; CommonJS exports.property assignment
+
+    (expression_statement
+      (assignment_expression
+        left: (member_expression
+          object: (member_expression
+            object: (identifier) @__obj
+            property: (property_identifier) @__prop
+          )
+          property: (property_identifier) @symbol.variable.def
+        )
+        right: _
+      )
+      (#eq? @__obj "module")
+      (#eq? @__prop "exports")
+    )
+
+
+    ; Export modifiers
+
+    (export_statement) @mod.export
+
+
+    ; Accessibility modifiers
+
+    (accessibility_modifier) @mod.accessibility
+
+
+    ; Async functions/methods (text match)
+
+    ((function_declaration) @mod.async (#match? @mod.async "^async "))
+
+    ((method_definition) @mod.async (#match? @mod.async "^async "))
+
+    `;
+
+
+    export const typescriptReactQueries = typescriptQueries + `
+
+
+    ; JSX component definitions (uppercase)
+
+    (jsx_opening_element
+      name: (identifier) @symbol.react_component.def
+      (#match? @symbol.react_component.def "^[A-Z]")) @scope.react_component.def
+
+    (jsx_self_closing_element
+      name: (identifier) @symbol.react_component.def
+      (#match? @symbol.react_component.def "^[A-Z]")) @scope.react_component.def
+
+    ; JSX element definitions (lowercase tags)
+
+    (jsx_opening_element
+      name: (identifier) @symbol.jsx_element.def
+      (#match? @symbol.jsx_element.def "^[a-z]")) @scope.jsx_element.def
+
+    (jsx_self_closing_element
+      name: (identifier) @symbol.jsx_element.def
+      (#match? @symbol.jsx_element.def "^[a-z]")) @scope.jsx_element.def
+
+    ; Arrow functions in JSX expressions (render props)
+
+    (jsx_expression
+      (arrow_function) @symbol.function.def) @scope.function.def
+
+    ; React fragments (empty JSX elements)
+
+    (jsx_element
+      (jsx_opening_element) @symbol.jsx_element.def
+      (#not-has-child? @symbol.jsx_element.def identifier)) @scope.jsx_element.def
+
+    ; JSX component references (uppercase)
+
+    (jsx_opening_element
+      name: (identifier) @rel.references
+      (#match? @rel.references "^[A-Z]"))
+
+    (jsx_self_closing_element
+      name: (identifier) @rel.references
+      (#match? @rel.references "^[A-Z]"))
+    `;
+approved: true

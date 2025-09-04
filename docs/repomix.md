@@ -462,27 +462,30 @@ function App() {
       </header>
 
       <main className="flex-grow flex flex-col gap-4 p-4 overflow-hidden">
-        <div className="flex-grow grid grid-cols-1 lg:grid-cols-2 gap-4 overflow-hidden min-h-0">
-        <Card className="flex flex-col overflow-hidden">
-          <CardHeader>
-            <CardTitle className="flex justify-between items-center">
-              <span>Input Files (JSON)</span>
-              <span className="text-sm font-normal text-muted-foreground">{tokenCounts.input.toLocaleString()} tokens</span>
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="flex-grow">
-            <Textarea
-              value={filesInput}
-              onChange={(e) => setFilesInput(e.currentTarget.value)}
-              className="h-full w-full font-mono text-xs resize-none"
-              placeholder="Paste an array of FileContent objects here..."
-            />
-          </CardContent>
-        </Card>
+        <div className="flex-grow grid grid-cols-1 lg:grid-cols-3 gap-4 overflow-hidden min-h-0">
+          {/* Column 1: Input & Options */}
+          <div className="lg:col-span-1 flex flex-col gap-4 overflow-hidden min-h-0">
+            <Card className="flex flex-col overflow-hidden flex-grow">
+              <CardHeader>
+                <CardTitle className="flex justify-between items-center">
+                  <span>Input Files (JSON)</span>
+                  <span className="text-sm font-normal text-muted-foreground">{tokenCounts.input.toLocaleString()} tokens</span>
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="flex-grow">
+                <Textarea
+                  value={filesInput}
+                  onChange={(e) => setFilesInput(e.currentTarget.value)}
+                  className="h-full w-full font-mono text-xs resize-none"
+                  placeholder="Paste an array of FileContent objects here..."
+                />
+              </CardContent>
+            </Card>
+            <OutputOptions options={formattingOptions} setOptions={setFormattingOptions} />
+          </div>
 
-        <div className="flex flex-col gap-4 overflow-hidden min-h-0">
-          <OutputOptions options={formattingOptions} setOptions={setFormattingOptions} />
-          <Card className="flex flex-col overflow-hidden flex-grow min-h-0">
+          {/* Column 2 & 3: Output */}
+          <Card className="lg:col-span-2 flex flex-col overflow-hidden min-h-0">
             <CardHeader>
               <div className="flex justify-between items-center">
                 <CardTitle>Output (SCN)</CardTitle>
@@ -497,7 +500,6 @@ function App() {
               </pre>
             </CardContent>
           </Card>
-        </div>
         </div>
         <div className="flex-shrink-0 h-1/3 max-h-[25rem] border rounded-lg overflow-hidden">
           <LogViewer logs={logs} />

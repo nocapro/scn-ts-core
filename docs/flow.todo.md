@@ -1,3 +1,7 @@
+web; input , format options, log should be as sidebar... so the output is the main dominant area. also remove header
+
+===
+
 is scnable
 
 === DONE

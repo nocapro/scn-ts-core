@@ -1,0 +1,375 @@
+uuid: a30058b7-6685-4bd9-9acb-665a0c3bbcf1
+projectId: scn-ts-core
+createdAt: '2025-09-04T17:30:25.857Z'
+linesAdded: 23
+linesRemoved: 21
+gitCommitMsg: 'refactor(web-demo): improve layout to emphasize output panel'
+promptSummary: Refactor the web demo layout to make the output area the dominant element.
+reasoning:
+  - >-
+    ok, quick layout refactor to make the output pane the star of the show.
+    classic 2/3 split. input + options on the left, output takes up the rest.
+    logs stay at the bottom. should make the ux way better for inspecting the
+    generated scn.
+  - here's the patch for `App.tsx`.
+operations:
+  - type: write
+    path: packages/scn-ts-web-demo/src/App.tsx
+    content: >-
+      --- packages/scn-ts-web-demo/src/App.tsx
+
+      +++ packages/scn-ts-web-demo/src/App.tsx
+
+      @@ -120,44 +120,45 @@
+             </header>
+       
+             <main className="flex-grow flex flex-col gap-4 p-4 overflow-hidden">
+      -        <div className="flex-grow grid grid-cols-1 lg:grid-cols-2 gap-4
+      overflow-hidden min-h-0">
+
+      -        <Card className="flex flex-col overflow-hidden">
+
+      -          <CardHeader>
+
+      -            <CardTitle className="flex justify-between items-center">
+
+      -              <span>Input Files (JSON)</span>
+
+      -              <span className="text-sm font-normal
+      text-muted-foreground">{tokenCounts.input.toLocaleString()} tokens</span>
+
+      -            </CardTitle>
+
+      -          </CardHeader>
+
+      -          <CardContent className="flex-grow">
+
+      -            <Textarea
+
+      -              value={filesInput}
+
+      -              onChange={(e) => setFilesInput(e.currentTarget.value)}
+
+      -              className="h-full w-full font-mono text-xs resize-none"
+
+      -              placeholder="Paste an array of FileContent objects here..."
+
+      -            />
+
+      -          </CardContent>
+
+      -        </Card>
+
+      -
+
+      -        <div className="flex flex-col gap-4 overflow-hidden min-h-0">
+
+      -          <OutputOptions options={formattingOptions}
+      setOptions={setFormattingOptions} />
+
+      -          <Card className="flex flex-col overflow-hidden flex-grow
+      min-h-0">
+
+      +        <div className="flex-grow grid grid-cols-1 lg:grid-cols-3 gap-4
+      overflow-hidden min-h-0">
+
+      +          {/* Column 1: Input & Options */}
+
+      +          <div className="lg:col-span-1 flex flex-col gap-4
+      overflow-hidden min-h-0">
+
+      +            <Card className="flex flex-col overflow-hidden flex-grow">
+
+      +              <CardHeader>
+
+      +                <CardTitle className="flex justify-between items-center">
+
+      +                  <span>Input Files (JSON)</span>
+
+      +                  <span className="text-sm font-normal
+      text-muted-foreground">{tokenCounts.input.toLocaleString()} tokens</span>
+
+      +                </CardTitle>
+
+      +              </CardHeader>
+
+      +              <CardContent className="flex-grow">
+
+      +                <Textarea
+
+      +                  value={filesInput}
+
+      +                  onChange={(e) => setFilesInput(e.currentTarget.value)}
+
+      +                  className="h-full w-full font-mono text-xs resize-none"
+
+      +                  placeholder="Paste an array of FileContent objects
+      here..."
+
+      +                />
+
+      +              </CardContent>
+
+      +            </Card>
+
+      +            <OutputOptions options={formattingOptions}
+      setOptions={setFormattingOptions} />
+
+      +          </div>
+
+      +
+
+      +          {/* Column 2 & 3: Output */}
+
+      +          <Card className="lg:col-span-2 flex flex-col overflow-hidden
+      min-h-0">
+                   <CardHeader>
+                     <div className="flex justify-between items-center">
+                       <CardTitle>Output (SCN)</CardTitle>
+                       <span className="text-sm font-normal text-muted-foreground tabular-nums">{tokenCounts.output.toLocaleString()} tokens</span>
+                     </div>
+                   </CardHeader>
+      -            <CardContent className="flex-grow overflow-auto">
+
+      -              <pre className="text-xs whitespace-pre-wrap font-mono
+      h-full w-full">
+
+      -                <code className="h-full w-full">
+
+      -                  {scnOutput || (isLoading ? "Generating..." : "Output
+      will appear here.")}
+
+      -                </code>
+
+      -              </pre>
+
+      -            </CardContent>
+
+      -          </Card>
+
+      +            <CardContent className="flex-grow overflow-auto">
+
+      +              <pre className="text-xs whitespace-pre-wrap font-mono
+      h-full w-full">
+
+      +                <code className="h-full w-full">
+
+      +                  {scnOutput || (isLoading ? "Generating..." : "Output
+      will appear here.")}
+
+      +                </code>
+
+      +              </pre>
+
+      +            </CardContent>
+
+      +          </Card>
+               </div>
+      -        </div>
+               <div className="flex-shrink-0 h-1/3 max-h-[25rem] border rounded-lg overflow-hidden">
+                 <LogViewer logs={logs} />
+               </div>
+    patchStrategy: new-unified
+snapshot:
+  packages/scn-ts-web-demo/src/App.tsx: >
+    import { useState, useEffect, useCallback, useRef } from 'react';
+
+    import { get_encoding, type Tiktoken } from 'tiktoken';
+
+    import {
+      initializeParser,
+      logger,
+      analyzeProject,
+      generateScn,
+    } from '../../../index';
+
+    import type { FileContent, LogHandler, SourceFile, FormattingOptions } from
+    '../../../index';
+
+    import { defaultFilesJSON } from './default-files';
+
+    import { Button } from './components/ui/button';
+
+    import { Card, CardContent, CardHeader, CardTitle } from
+    './components/ui/card';
+
+    import { Textarea } from './components/ui/textarea';
+
+    import LogViewer from './components/LogViewer';
+
+    import OutputOptions from './components/OutputOptions';
+
+    import { Play, Loader } from 'lucide-react';
+
+    import type { LogEntry, ProgressData } from './types';
+
+
+    function App() {
+      const [isInitialized, setIsInitialized] = useState(false);
+      const [isLoading, setIsLoading] = useState(false);
+      const [filesInput, setFilesInput] = useState(defaultFilesJSON);
+      const [scnOutput, setScnOutput] = useState('');
+      const [analysisResult, setAnalysisResult] = useState<SourceFile[] | null>(null);
+      const [formattingOptions, setFormattingOptions] = useState<FormattingOptions>({
+        showOutgoing: true,
+        showIncoming: true,
+        showIcons: true,
+        showVisibility: true,
+        showModifiers: true,
+        showTags: true,
+        showSymbolIds: true,
+      });
+      const [progress, setProgress] = useState<ProgressData | null>(null);
+      const [logs, setLogs] = useState<LogEntry[]>([]);
+      const [encoder, setEncoder] = useState<Tiktoken | null>(null);
+      const [tokenCounts, setTokenCounts] = useState({ input: 0, output: 0 });
+
+      useEffect(() => {
+        const init = async () => {
+          try {
+            await initializeParser({ wasmBaseUrl: '/wasm/' });
+            const enc = get_encoding("cl100k_base");
+            setEncoder(enc);
+            setIsInitialized(true);
+            setLogs(prev => [...prev, { level: 'info', message: 'Parser and tokenizer initialized.', timestamp: Date.now() }]);
+          } catch (error) {
+            const message = error instanceof Error ? error.message : String(error);
+            setLogs(prev => [...prev, { level: 'error', message: `Failed to initialize: ${message}`, timestamp: Date.now() }]);
+          }
+        };
+        init();
+      }, []);
+
+      useEffect(() => {
+        if (!encoder) return;
+        try {
+          const inputTokens = encoder.encode(filesInput).length;
+          const outputTokens = encoder.encode(scnOutput).length;
+          setTokenCounts({ input: inputTokens, output: outputTokens });
+        } catch (e) {
+          console.error("Tokenization error:", e);
+          setTokenCounts({ input: 0, output: 0 });
+        }
+      }, [filesInput, scnOutput, encoder]);
+
+      useEffect(() => {
+        if (analysisResult) {
+          const scn = generateScn(analysisResult, formattingOptions);
+          setScnOutput(scn);
+        }
+      }, [analysisResult, formattingOptions]);
+
+      const handleAnalyze = useCallback(async () => {
+        if (!isInitialized) {
+          setLogs(prev => [...prev, { level: 'warn', message: 'Parser not ready.', timestamp: Date.now() }]);
+          return;
+        }
+
+        setIsLoading(true);
+        setLogs([]);
+        setScnOutput('');
+        setAnalysisResult(null);
+        setProgress(null);
+
+        const logHandler: LogHandler = (level, ...args) => {
+          const message = args.map(arg => typeof arg === 'object' ? JSON.stringify(arg) : String(arg)).join(' ');
+          setLogs(prev => [...prev, { level, message, timestamp: Date.now() }]);
+        };
+        logger.setLogHandler(logHandler);
+        logger.setLevel('debug');
+
+        const onProgress = (progressData: ProgressData) => {
+          setProgress(progressData);
+          logger.info(`[${Math.round(progressData.percentage)}%] ${progressData.message}`);
+        };
+
+        try {
+          let files: FileContent[] = [];
+          try {
+            files = JSON.parse(filesInput);
+            if (!Array.isArray(files)) throw new Error("Input is not an array.");
+          } catch (error) {
+            throw new Error(`Invalid JSON input: ${error instanceof Error ? error.message : String(error)}`);
+          }
+
+          const rankedGraph = await analyzeProject({ files, onProgress, logLevel: 'debug' });
+          setAnalysisResult(rankedGraph);
+          logger.info('Analysis complete.');
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          logger.error('Analysis failed:', message);
+        } finally {
+          setIsLoading(false);
+          setProgress(null);
+          logger.setLogHandler(null);
+        }
+      }, [filesInput, isInitialized]);
+
+      return (
+        <div className="h-screen w-screen flex flex-col bg-background text-foreground">
+          <header className="flex-shrink-0 flex items-center justify-between p-4 border-b">
+            <h1 className="text-xl font-bold tracking-tight">SCN-TS Web Demo</h1>
+            <Button onClick={handleAnalyze} disabled={isLoading || !isInitialized} className="w-32 justify-center">
+              {isLoading ? (
+                <>
+                  <Loader className="mr-2 h-4 w-4 animate-spin" />
+                  <span>{progress ? `${Math.round(progress.percentage)}%` : 'Analyzing...'}</span>
+                </>
+              ) : (
+                <>
+                  <Play className="mr-2 h-4 w-4" />
+                  <span>Analyze</span>
+                </>
+              )}
+            </Button>
+          </header>
+
+          <main className="flex-grow flex flex-col gap-4 p-4 overflow-hidden">
+            <div className="flex-grow grid grid-cols-1 lg:grid-cols-2 gap-4 overflow-hidden min-h-0">
+            <Card className="flex flex-col overflow-hidden">
+              <CardHeader>
+                <CardTitle className="flex justify-between items-center">
+                  <span>Input Files (JSON)</span>
+                  <span className="text-sm font-normal text-muted-foreground">{tokenCounts.input.toLocaleString()} tokens</span>
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="flex-grow">
+                <Textarea
+                  value={filesInput}
+                  onChange={(e) => setFilesInput(e.currentTarget.value)}
+                  className="h-full w-full font-mono text-xs resize-none"
+                  placeholder="Paste an array of FileContent objects here..."
+                />
+              </CardContent>
+            </Card>
+
+            <div className="flex flex-col gap-4 overflow-hidden min-h-0">
+              <OutputOptions options={formattingOptions} setOptions={setFormattingOptions} />
+              <Card className="flex flex-col overflow-hidden flex-grow min-h-0">
+                <CardHeader>
+                  <div className="flex justify-between items-center">
+                    <CardTitle>Output (SCN)</CardTitle>
+                    <span className="text-sm font-normal text-muted-foreground tabular-nums">{tokenCounts.output.toLocaleString()} tokens</span>
+                  </div>
+                </CardHeader>
+                <CardContent className="flex-grow overflow-auto">
+                  <pre className="text-xs whitespace-pre-wrap font-mono h-full w-full">
+                    <code className="h-full w-full">
+                      {scnOutput || (isLoading ? "Generating..." : "Output will appear here.")}
+                    </code>
+                  </pre>
+                </CardContent>
+              </Card>
+            </div>
+            </div>
+            <div className="flex-shrink-0 h-1/3 max-h-[25rem] border rounded-lg overflow-hidden">
+              <LogViewer logs={logs} />
+            </div>
+          </main>
+        </div>
+      );
+    }
+
+
+    export default App;
+approved: true

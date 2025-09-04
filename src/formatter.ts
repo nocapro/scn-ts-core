@@ -25,20 +25,31 @@ const formatSymbolIdDisplay = (file: SourceFile, symbol: CodeSymbol): string | n
 };
 
 const formatSymbol = (symbol: CodeSymbol, allFiles: SourceFile[], options: FormattingOptions): string[] => {
-    let icon = ICONS[symbol.kind] || ICONS.default || '?';
-    const prefix = symbol.isExported ? SCN_SYMBOLS.EXPORTED_PREFIX : SCN_SYMBOLS.PRIVATE_PREFIX;
+    const {
+        showOutgoing = true,
+        showIncoming = true,
+        showIcons = true,
+        showVisibility = true,
+        showModifiers = true,
+        showTags = true,
+        showSymbolIds = true,
+    } = options;
+    let icon = showIcons ? (ICONS[symbol.kind] || ICONS.default || '?') : '';
+    const prefix = showVisibility ? (symbol.isExported ? SCN_SYMBOLS.EXPORTED_PREFIX : SCN_SYMBOLS.PRIVATE_PREFIX) : '';
     let name = symbol.name === '<anonymous>' ? '' : symbol.name;
     if (symbol.kind === 'variable' && name.trim() === 'default') name = '';
     
     // Handle styled components: ~div ComponentName, ~h1 ComponentName, etc.
-    if (symbol.kind === 'styled_component' && (symbol as any)._styledTag) {
+    if (showIcons && symbol.kind === 'styled_component' && (symbol as any)._styledTag) {
         const tagName = (symbol as any)._styledTag;
         icon = `~${tagName}`;
     }
 
     const mods: string[] = [];
-    if (symbol.isAbstract) mods.push(SCN_SYMBOLS.TAG_ABSTRACT.slice(1, -1));
-    if (symbol.isStatic) mods.push(SCN_SYMBOLS.TAG_STATIC.slice(1, -1));
+    if (showTags) {
+        if (symbol.isAbstract) mods.push(SCN_SYMBOLS.TAG_ABSTRACT.slice(1, -1));
+        if (symbol.isStatic) mods.push(SCN_SYMBOLS.TAG_STATIC.slice(1, -1));
+    }
     const modStr = mods.length > 0 ? ` [${mods.join(' ')}]` : '';
 
     const suffixParts: string[] = [];
@@ -46,17 +57,19 @@ const formatSymbol = (symbol: CodeSymbol, allFiles: SourceFile[], options: Forma
     if (symbol.typeAnnotation) name += `: ${symbol.typeAnnotation}`;
     if (symbol.typeAliasValue) name += ` ${symbol.typeAliasValue}`;
     // Merge async + throws into a single token
-    const asyncToken = symbol.isAsync ? SCN_SYMBOLS.ASYNC : '';
-    const throwsToken = symbol.throws ? SCN_SYMBOLS.THROWS : '';
-    const asyncThrows = (asyncToken + throwsToken) || '';
-    if (asyncThrows) suffixParts.push(asyncThrows);
-    if (symbol.isPure) suffixParts.push(SCN_SYMBOLS.PURE);
-    if (symbol.labels && symbol.labels.length > 0) suffixParts.push(...symbol.labels.map(l => `[${l}]`));
+    if (showModifiers) {
+        const asyncToken = symbol.isAsync ? SCN_SYMBOLS.ASYNC : '';
+        const throwsToken = symbol.throws ? SCN_SYMBOLS.THROWS : '';
+        const asyncThrows = (asyncToken + throwsToken) || '';
+        if (asyncThrows) suffixParts.push(asyncThrows);
+        if (symbol.isPure) suffixParts.push(SCN_SYMBOLS.PURE);
+    }
+    if (showTags && symbol.labels && symbol.labels.length > 0) suffixParts.push(...symbol.labels.map(l => `[${l}]`));
     const suffix = suffixParts.join(' ');
 
     // Build ID portion conditionally
     const file = allFiles.find(f => f.id === symbol.fileId)!;
-    const idPart = formatSymbolIdDisplay(file, symbol);
+    const idPart = showSymbolIds ? formatSymbolIdDisplay(file, symbol) : null;
     const idText = (symbol.kind === 'property' || symbol.kind === 'constructor') ? null : (idPart ?? null);
     const segments: string[] = [prefix, icon];
     if (idText) segments.push(idText);
@@ -65,8 +78,6 @@ const formatSymbol = (symbol: CodeSymbol, allFiles: SourceFile[], options: Forma
     if (suffix) segments.push(suffix);
     const line = `  ${segments.filter(Boolean).join(' ')}`;
     const result = [line];
-
-    const { showOutgoing = true, showIncoming = true } = options;
 
     const outgoing = new Map<number, Set<string>>();
     const unresolvedDeps: string[] = [];
@@ -77,7 +88,7 @@ const formatSymbol = (symbol: CodeSymbol, allFiles: SourceFile[], options: Forma
                 const targetFile = allFiles.find(f => f.id === dep.resolvedFileId);
                 const targetSymbol = targetFile?.symbols.find(s => s.id === dep.resolvedSymbolId);
                 if (targetSymbol) {
-                    const displayId = formatSymbolIdDisplay(targetFile!, targetSymbol);
+                    const displayId = showSymbolIds ? formatSymbolIdDisplay(targetFile!, targetSymbol) : null;
                     let text = displayId ?? `(${targetFile!.id}.0)`;
                     if (dep.kind === 'goroutine') {
                         text += ` ${SCN_SYMBOLS.TAG_GOROUTINE}`;
@@ -112,7 +123,9 @@ const formatSymbol = (symbol: CodeSymbol, allFiles: SourceFile[], options: Forma
         result.push(`    ${SCN_SYMBOLS.OUTGOING_ARROW} ${outgoingParts.join(', ')}`);
     }
     
-    if (!showIncoming) return result;
+    if (!showIncoming) {
+        return result;
+    }
 
     const incoming = new Map<number, Set<string>>();
     allFiles.forEach(file => {
@@ -122,7 +135,7 @@ const formatSymbol = (symbol: CodeSymbol, allFiles: SourceFile[], options: Forma
                     if(!incoming.has(file.id)) incoming.set(file.id, new Set());
                     // Suppress same-file incoming for properties
                     if (file.id === symbol.fileId && symbol.kind === 'property') return;
-                    const disp = formatSymbolIdDisplay(file, s) ?? `(${file.id}.0)`;
+                    const disp = showSymbolIds ? (formatSymbolIdDisplay(file, s) ?? `(${file.id}.0)`) : `(${file.id}.0)`;
                     incoming.get(file.id)!.add(disp);
                 }
             });
@@ -184,16 +197,20 @@ const formatFile = (file: SourceFile, allFiles: SourceFile[], options: Formattin
     if (file.parseError) return `${SCN_SYMBOLS.FILE_PREFIX} (${file.id}) ${file.relativePath} [error]`;
     if (!file.sourceCode.trim()) return `${SCN_SYMBOLS.FILE_PREFIX} (${file.id}) ${file.relativePath}`;
 
-    const directives = [
+    const {
+        showOutgoing = true,
+        showIncoming = true,
+        showTags = true,
+    } = options;
+
+    const directives = showTags ? [
         file.isGenerated && SCN_SYMBOLS.TAG_GENERATED.slice(1, -1),
         ...(file.languageDirectives || [])
-    ].filter(Boolean);
+    ].filter(Boolean) : [];
     const directiveStr = directives.length > 0 ? ` [${directives.join(' ')}]` : '';
     const header = `${SCN_SYMBOLS.FILE_PREFIX} (${file.id}) ${file.relativePath}${directiveStr}`;
 
     const headerLines: string[] = [header];
-
-    const { showOutgoing = true, showIncoming = true } = options;
 
     // File-level outgoing/incoming dependencies
     const outgoing: string[] = [];
@@ -251,7 +268,7 @@ const formatFile = (file: SourceFile, allFiles: SourceFile[], options: Formattin
 
     // If we hid symbols (or there were none to begin with for an entry file),
     // aggregate outgoing dependencies from all symbols onto the file header
-    if (showOutgoing && symbolsToPrint.length === 0) {
+    if (showOutgoing && symbolLines.length === 0 && (file.symbols.length > 0 || (file.fileRelationships && file.fileRelationships.length > 0))) {
         const aggOutgoing = new Map<number, Set<string>>();
         const unresolvedDeps: string[] = [];
 
@@ -263,7 +280,7 @@ const formatFile = (file: SourceFile, allFiles: SourceFile[], options: Formattin
                     const targetFile = allFiles.find(f => f.id === dep.resolvedFileId)!;
                     const targetSymbol = targetFile.symbols.find(ts => ts.id === dep.resolvedSymbolId);
                     if (targetSymbol) {
-                        text = formatSymbolIdDisplay(targetFile, targetSymbol) ?? `(${dep.resolvedFileId}.0)`;
+                        text = options.showSymbolIds ? (formatSymbolIdDisplay(targetFile, targetSymbol) ?? `(${dep.resolvedFileId}.0)`) : `(${dep.resolvedFileId}.0)`;
                     }
                 }
                 if (dep.kind === 'dynamic_import') text += ` ${SCN_SYMBOLS.TAG_DYNAMIC}`;

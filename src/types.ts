@@ -25,8 +25,13 @@ export interface AnalyzeProjectOptions {
  * Options to control the SCN output format.
  */
 export interface FormattingOptions {
-    showOutgoing?: boolean; // default true
-    showIncoming?: boolean; // default true
+    showOutgoing?: boolean;
+    showIncoming?: boolean;
+    showIcons?: boolean;
+    showVisibility?: boolean; // +/- prefixes
+    showModifiers?: boolean; // ..., !, o
+    showTags?: boolean;      // [generated], [styled], etc.
+    showSymbolIds?: boolean; // (1.2) identifiers
 }
 
 /**

@@ -1,4 +1,4 @@
-import type { CodeSymbol, SourceFile } from './types';
+import type { CodeSymbol, SourceFile, FormattingOptions } from './types';
 import { topologicalSort } from './utils/graph';
 import { ICONS, SCN_SYMBOLS } from './constants';
 
@@ -24,7 +24,7 @@ const formatSymbolIdDisplay = (file: SourceFile, symbol: CodeSymbol): string | n
     return `(${file.id}.${idx})`;
 };
 
-const formatSymbol = (symbol: CodeSymbol, allFiles: SourceFile[]): string[] => {
+const formatSymbol = (symbol: CodeSymbol, allFiles: SourceFile[], options: FormattingOptions): string[] => {
     let icon = ICONS[symbol.kind] || ICONS.default || '?';
     const prefix = symbol.isExported ? SCN_SYMBOLS.EXPORTED_PREFIX : SCN_SYMBOLS.PRIVATE_PREFIX;
     let name = symbol.name === '<anonymous>' ? '' : symbol.name;
@@ -66,6 +66,8 @@ const formatSymbol = (symbol: CodeSymbol, allFiles: SourceFile[]): string[] => {
     const line = `  ${segments.filter(Boolean).join(' ')}`;
     const result = [line];
 
+    const { showOutgoing = true, showIncoming = true } = options;
+
     const outgoing = new Map<number, Set<string>>();
     const unresolvedDeps: string[] = [];
     symbol.dependencies.forEach(dep => {
@@ -106,10 +108,12 @@ const formatSymbol = (symbol: CodeSymbol, allFiles: SourceFile[]): string[] => {
     }
     outgoingParts.push(...unresolvedDeps);
 
-    if (outgoingParts.length > 0) {
+    if (showOutgoing && outgoingParts.length > 0) {
         result.push(`    ${SCN_SYMBOLS.OUTGOING_ARROW} ${outgoingParts.join(', ')}`);
     }
     
+    if (!showIncoming) return result;
+
     const incoming = new Map<number, Set<string>>();
     allFiles.forEach(file => {
         file.symbols.forEach(s => {
@@ -176,7 +180,7 @@ const buildChildrenMap = (symbols: CodeSymbol[]): Map<string, CodeSymbol[]> => {
     return map;
 };
 
-const formatFile = (file: SourceFile, allFiles: SourceFile[]): string => {
+const formatFile = (file: SourceFile, allFiles: SourceFile[], options: FormattingOptions): string => {
     if (file.parseError) return `${SCN_SYMBOLS.FILE_PREFIX} (${file.id}) ${file.relativePath} [error]`;
     if (!file.sourceCode.trim()) return `${SCN_SYMBOLS.FILE_PREFIX} (${file.id}) ${file.relativePath}`;
 
@@ -188,6 +192,8 @@ const formatFile = (file: SourceFile, allFiles: SourceFile[]): string => {
     const header = `${SCN_SYMBOLS.FILE_PREFIX} (${file.id}) ${file.relativePath}${directiveStr}`;
 
     const headerLines: string[] = [header];
+
+    const { showOutgoing = true, showIncoming = true } = options;
 
     // File-level outgoing/incoming dependencies
     const outgoing: string[] = [];
@@ -202,19 +208,22 @@ const formatFile = (file: SourceFile, allFiles: SourceFile[]): string => {
                 outgoing.push(text);
             }
         });
-        if (outgoing.length > 0) headerLines.push(`  ${SCN_SYMBOLS.OUTGOING_ARROW} ${Array.from(new Set(outgoing)).sort().join(', ')}`);
+        if (showOutgoing && outgoing.length > 0) {
+            headerLines.push(`  ${SCN_SYMBOLS.OUTGOING_ARROW} ${Array.from(new Set(outgoing)).sort().join(', ')}`);
+        }
     }
 
     // Incoming: any other file that has a file-level relationship pointing here
     const incoming: string[] = [];
-    allFiles.forEach(other => {
-        if (other.id === file.id) return;
-        other.fileRelationships?.forEach(rel => {
-            if (rel.resolvedFileId === file.id) incoming.push(`(${other.id}.0)`);
+    if (showIncoming) {
+        allFiles.forEach(other => {
+            if (other.id === file.id) return;
+            other.fileRelationships?.forEach(rel => {
+                if (rel.resolvedFileId === file.id) incoming.push(`(${other.id}.0)`);
+            });
         });
-    });
-    if (incoming.length > 0) headerLines.push(`  ${SCN_SYMBOLS.INCOMING_ARROW} ${Array.from(new Set(incoming)).sort().join(', ')}`);
-
+        if (incoming.length > 0) headerLines.push(`  ${SCN_SYMBOLS.INCOMING_ARROW} ${Array.from(new Set(incoming)).sort().join(', ')}`);
+    }
     // If file has no exported symbols, only show symbols that are "entry points" for analysis,
     // which we define as having outgoing dependencies.
     const hasExports = file.symbols.some(s => s.isExported);
@@ -229,12 +238,12 @@ const formatFile = (file: SourceFile, allFiles: SourceFile[]): string => {
 
     const symbolLines: string[] = [];
     for (const sym of topLevel) {
-        const lines = formatSymbol(sym, allFiles);
+        const lines = formatSymbol(sym, allFiles, options);
         symbolLines.push(...lines);
         if (childrenMap.has(sym.id)) {
             const kids = childrenMap.get(sym.id)!;
             for (const kid of kids) {
-                const kLines = formatSymbol(kid, allFiles).map(l => `  ${l}`);
+                const kLines = formatSymbol(kid, allFiles, options).map(l => `  ${l}`);
                 symbolLines.push(...kLines);
             }
         }
@@ -242,7 +251,7 @@ const formatFile = (file: SourceFile, allFiles: SourceFile[]): string => {
 
     // If we hid symbols (or there were none to begin with for an entry file),
     // aggregate outgoing dependencies from all symbols onto the file header
-    if (symbolsToPrint.length === 0) {
+    if (showOutgoing && symbolsToPrint.length === 0) {
         const aggOutgoing = new Map<number, Set<string>>();
         const unresolvedDeps: string[] = [];
 
@@ -287,7 +296,7 @@ const formatFile = (file: SourceFile, allFiles: SourceFile[]): string => {
     return [...headerLines, ...symbolLines].join('\n');
 };
 
-export const formatScn = (analyzedFiles: SourceFile[]): string => {
+export const formatScn = (analyzedFiles: SourceFile[], options: FormattingOptions = {}): string => {
     const sortedFiles = topologicalSort(analyzedFiles);
-    return sortedFiles.map(file => formatFile(file, analyzedFiles)).join('\n\n');
+    return sortedFiles.map(file => formatFile(file, analyzedFiles, options)).join('\n\n');
 };

@@ -142,7 +142,7 @@ const CardHeader = React.forwardRef<
 CardHeader.displayName = "CardHeader"
 
 const CardTitle = React.forwardRef<
-  HTMLParagraphElement,
+  HTMLHeadingElement,
   React.HTMLAttributes<HTMLHeadingElement>
 >(({ className, ...props }, ref) => (
   <h3
@@ -251,6 +251,7 @@ export function cn(...inputs: ClassValue[]) {
 ## File: packages/scn-ts-web-demo/src/App.tsx
 ```typescript
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { get_encoding, type Tiktoken } from 'tiktoken';
 import {
   initializeParser,
   logger,
@@ -273,20 +274,36 @@ function App() {
   const [scnOutput, setScnOutput] = useState('');
   const [progress, setProgress] = useState<ProgressData | null>(null);
   const [logs, setLogs] = useState<LogEntry[]>([]);
+  const [encoder, setEncoder] = useState<Tiktoken | null>(null);
+  const [tokenCounts, setTokenCounts] = useState({ input: 0, output: 0 });
 
   useEffect(() => {
     const init = async () => {
       try {
         await initializeParser({ wasmBaseUrl: '/wasm/' });
+        const enc = get_encoding("cl100k_base");
+        setEncoder(enc);
         setIsInitialized(true);
-        setLogs(prev => [...prev, { level: 'info', message: 'Parser initialized.', timestamp: Date.now() }]);
+        setLogs(prev => [...prev, { level: 'info', message: 'Parser and tokenizer initialized.', timestamp: Date.now() }]);
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
-        setLogs(prev => [...prev, { level: 'error', message: `Failed to initialize parser: ${message}`, timestamp: Date.now() }]);
+        setLogs(prev => [...prev, { level: 'error', message: `Failed to initialize: ${message}`, timestamp: Date.now() }]);
       }
     };
     init();
   }, []);
+
+  useEffect(() => {
+    if (!encoder) return;
+    try {
+      const inputTokens = encoder.encode(filesInput).length;
+      const outputTokens = encoder.encode(scnOutput).length;
+      setTokenCounts({ input: inputTokens, output: outputTokens });
+    } catch (e) {
+      console.error("Tokenization error:", e);
+      setTokenCounts({ input: 0, output: 0 });
+    }
+  }, [filesInput, scnOutput, encoder]);
 
   const handleAnalyze = useCallback(async () => {
     if (!isInitialized) {
@@ -356,7 +373,10 @@ function App() {
       <main className="flex-grow grid grid-cols-1 lg:grid-cols-2 gap-4 p-4 overflow-hidden">
         <Card className="flex flex-col overflow-hidden">
           <CardHeader>
-            <CardTitle>Input Files (JSON)</CardTitle>
+            <CardTitle className="flex justify-between items-center">
+              <span>Input Files (JSON)</span>
+              <span className="text-sm font-normal text-muted-foreground">{tokenCounts.input.toLocaleString()} tokens</span>
+            </CardTitle>
           </CardHeader>
           <CardContent className="flex-grow">
             <Textarea
@@ -370,7 +390,10 @@ function App() {
 
         <Card className="flex flex-col overflow-hidden">
           <CardHeader>
-            <CardTitle>Output (SCN)</CardTitle>
+            <CardTitle className="flex justify-between items-center">
+              <span>Output (SCN)</span>
+              <span className="text-sm font-normal text-muted-foreground">{tokenCounts.output.toLocaleString()} tokens</span>
+            </CardTitle>
           </CardHeader>
           <CardContent className="flex-grow overflow-auto">
             <pre className="text-xs whitespace-pre-wrap font-mono h-full w-full">
@@ -849,7 +872,8 @@ export interface ProgressData {
     "lucide-react": "^0.379.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
-    "tailwind-merge": "^2.3.0"
+    "tailwind-merge": "^2.3.0",
+    "tiktoken": "^1.0.14"
   },
   "devDependencies": {
     "@types/node": "^20.12.12",
@@ -861,7 +885,9 @@ export interface ProgressData {
     "postcss": "^8.4.38",
     "tailwindcss": "^3.4.3",
     "typescript": "^5.4.5",
-    "vite": "^5.2.12"
+    "vite": "^5.2.12",
+    "vite-plugin-top-level-await": "^1.4.1",
+    "vite-plugin-wasm": "^3.3.0"
   }
 }
 ```
@@ -983,10 +1009,16 @@ export default {
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import path from 'path'
+import wasm from 'vite-plugin-wasm'
+import topLevelAwait from 'vite-plugin-top-level-await'
 
 // https://vitejs.dev/config/
 export default defineConfig({
-  plugins: [react()],
+  plugins: [
+    wasm(),
+    topLevelAwait(),
+    react()
+  ],
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "src"),
@@ -995,7 +1027,7 @@ export default defineConfig({
   optimizeDeps: {
     // Exclude packages that have special loading mechanisms (like wasm)
     // to prevent Vite from pre-bundling them and causing issues.
-    exclude: ['web-tree-sitter'],
+    exclude: ['web-tree-sitter', 'tiktoken'],
     // Force pre-bundling of our monorepo packages. As linked dependencies,
     // Vite doesn't optimize it by default. We need to include it so Vite
     // discovers its deep CJS dependencies (like graphology) and converts
@@ -1013,42 +1045,6 @@ export default defineConfig({
     },
   },
 })
-```
-
-## File: src/constants.ts
-```typescript
-export const ICONS: Record<string, string> = {
-    class: '◇', interface: '{}', function: '~', method: '~',
-    constructor: '~',
-    variable: '@', property: '@', enum: '☰', enum_member: '@',
-    type_alias: '=:', react_component: '◇', jsx_element: '⛶', styled_component: '~',
-    css_class: '¶', css_id: '¶', css_tag: '¶', css_at_rule: '¶',
-    go_package: '◇',
-    rust_struct: '◇', rust_trait: '{}', rust_impl: '+',
-    error: '[error]', default: '?',
-};
-
-export const SCN_SYMBOLS = {
-    FILE_PREFIX: '§',
-    EXPORTED_PREFIX: '+',
-    PRIVATE_PREFIX: '-',
-    OUTGOING_ARROW: '->',
-    INCOMING_ARROW: '<-',
-    ASYNC: '...',
-    THROWS: '!',
-    PURE: 'o',
-    TAG_GENERATED: '[generated]',
-    TAG_DYNAMIC: '[dynamic]',
-    TAG_GOROUTINE: '[goroutine]',
-    TAG_MACRO: '[macro]',
-    TAG_SYMBOL: '[symbol]',
-    TAG_PROXY: '[proxy]',
-    TAG_ABSTRACT: '[abstract]',
-    TAG_STATIC: '[static]',
-    TAG_STYLED: '[styled]',
-};
-
-export const RESOLVE_EXTENSIONS = ['.ts', '.tsx', '.js', '.jsx', '.css', '.go', '.rs', '.py', '.java', '.graphql', ''];
 ```
 
 ## File: src/utils/graph.ts
@@ -1193,6 +1189,42 @@ export default {
 };
 ```
 
+## File: src/constants.ts
+```typescript
+export const ICONS: Record<string, string> = {
+    class: '◇', interface: '{}', function: '~', method: '~',
+    constructor: '~',
+    variable: '@', property: '@', enum: '☰', enum_member: '@',
+    type_alias: '=:', react_component: '◇', jsx_element: '⛶', styled_component: '~',
+    css_class: '¶', css_id: '¶', css_tag: '¶', css_at_rule: '¶',
+    go_package: '◇',
+    rust_struct: '◇', rust_trait: '{}', rust_impl: '+',
+    error: '[error]', default: '?',
+};
+
+export const SCN_SYMBOLS = {
+    FILE_PREFIX: '§',
+    EXPORTED_PREFIX: '+',
+    PRIVATE_PREFIX: '-',
+    OUTGOING_ARROW: '->',
+    INCOMING_ARROW: '<-',
+    ASYNC: '...',
+    THROWS: '!',
+    PURE: 'o',
+    TAG_GENERATED: '[generated]',
+    TAG_DYNAMIC: '[dynamic]',
+    TAG_GOROUTINE: '[goroutine]',
+    TAG_MACRO: '[macro]',
+    TAG_SYMBOL: '[symbol]',
+    TAG_PROXY: '[proxy]',
+    TAG_ABSTRACT: '[abstract]',
+    TAG_STATIC: '[static]',
+    TAG_STYLED: '[styled]',
+};
+
+export const RESOLVE_EXTENSIONS = ['.ts', '.tsx', '.js', '.jsx', '.css', '.go', '.rs', '.py', '.java', '.graphql', ''];
+```
+
 ## File: src/logger.ts
 ```typescript
 import type { LogLevel, LogHandler } from './types';
@@ -1248,44 +1280,6 @@ class Logger {
 }
 
 export const logger = new Logger();
-```
-
-## File: src/utils/tsconfig.ts
-```typescript
-import path from './path';
-import type { TsConfig } from '../types';
-
-const createPathResolver = (baseUrl: string, paths: Record<string, string[]>) => {
-    const aliasEntries = Object.entries(paths).map(([alias, resolutions]) => {
-        return {
-            pattern: new RegExp(`^${alias.replace('*', '(.*)')}$`),
-            resolutions,
-        };
-    });
-
-    return (importPath: string): string | null => {
-        for (const { pattern, resolutions } of aliasEntries) {
-            const match = importPath.match(pattern);
-            if (match && resolutions[0]) {
-                const captured = match[1] || '';
-                // Return the first resolved path.
-                const resolvedPath = resolutions[0].replace('*', captured);
-                return path.join(baseUrl, resolvedPath).replace(/\\/g, '/');
-            }
-        }
-        return null; // Not an alias
-    };
-};
-
-export type PathResolver = ReturnType<typeof createPathResolver>;
-
-export const getPathResolver = (tsconfig?: TsConfig | null): PathResolver => {
-    const baseUrl = tsconfig?.compilerOptions?.baseUrl || '.';
-    const paths = tsconfig?.compilerOptions?.paths ?? {};
-    // The baseUrl from tsconfig is relative to the tsconfig file itself (the root).
-    // The final paths we create should be relative to the root to match our file list.
-    return createPathResolver(baseUrl, paths);
-};
 ```
 
 ## File: tsconfig.json
@@ -1353,6 +1347,44 @@ export const getIdentifier = (node: SyntaxNode, sourceCode: string, defaultName:
     }
     const nameNode = findChildByFieldName(node, 'name') ?? findChild(node, ['identifier', 'property_identifier']);
     return nameNode ? getNodeText(nameNode, sourceCode) : defaultName;
+};
+```
+
+## File: src/utils/tsconfig.ts
+```typescript
+import path from './path';
+import type { TsConfig } from '../types';
+
+const createPathResolver = (baseUrl: string, paths: Record<string, string[]>) => {
+    const aliasEntries = Object.entries(paths).map(([alias, resolutions]) => {
+        return {
+            pattern: new RegExp(`^${alias.replace('*', '(.*)')}$`),
+            resolutions,
+        };
+    });
+
+    return (importPath: string): string | null => {
+        for (const { pattern, resolutions } of aliasEntries) {
+            const match = importPath.match(pattern);
+            if (match && resolutions[0]) {
+                const captured = match[1] || '';
+                // Return the first resolved path.
+                const resolvedPath = resolutions[0].replace('*', captured);
+                return path.join(baseUrl, resolvedPath).replace(/\\/g, '/');
+            }
+        }
+        return null; // Not an alias
+    };
+};
+
+export type PathResolver = ReturnType<typeof createPathResolver>;
+
+export const getPathResolver = (tsconfig?: TsConfig | null): PathResolver => {
+    const baseUrl = tsconfig?.compilerOptions?.baseUrl || '.';
+    const paths = tsconfig?.compilerOptions?.paths ?? {};
+    // The baseUrl from tsconfig is relative to the tsconfig file itself (the root).
+    // The final paths we create should be relative to the root to match our file list.
+    return createPathResolver(baseUrl, paths);
 };
 ```
 
@@ -1455,6 +1487,69 @@ export const getLanguageForFile = (filePath: string): LanguageConfig | undefined
     const extension = path.extname(filePath);
     return languageMap.get(extension);
 };
+```
+
+## File: src/queries/go.ts
+```typescript
+export const goQueries = `
+(package_clause
+  (package_identifier) @symbol.go_package.def) @scope.go_package.def
+
+(function_declaration
+ name: (identifier) @symbol.function.def) @scope.function.def
+
+(go_statement
+  (call_expression
+    function: (_) @rel.goroutine))
+
+(call_expression
+  function: (_) @rel.call)
+
+(import_spec
+  path: (interpreted_string_literal) @rel.import.source)
+`;
+```
+
+## File: src/queries/rust.ts
+```typescript
+export const rustQueries = `
+(struct_item
+  name: (type_identifier) @symbol.rust_struct.def) @scope.rust_struct.def
+
+(trait_item
+  name: (type_identifier) @symbol.rust_trait.def) @scope.rust_trait.def
+  
+(impl_item) @symbol.rust_impl.def @scope.rust_impl.def
+
+(impl_item
+  trait: (type_identifier) @rel.implements
+  type: (type_identifier) @rel.references
+)
+
+(attribute_item
+  (attribute . (token_tree (identifier) @rel.macro)))
+
+(function_item
+  name: (identifier) @symbol.function.def) @scope.function.def
+
+(impl_item
+  body: (declaration_list
+    (function_item
+      name: (identifier) @symbol.method.def) @scope.method.def))
+
+; For parameters like '&impl Trait'
+(parameter type: (reference_type (_ (type_identifier) @rel.references)))
+; For simple trait parameters
+(parameter type: (type_identifier) @rel.references)
+
+(call_expression
+  function: (field_expression
+    field: (field_identifier) @rel.call))
+
+((struct_item (visibility_modifier) @mod.export))
+((trait_item (visibility_modifier) @mod.export))
+((function_item (visibility_modifier) @mod.export))
+`;
 ```
 
 ## File: src/main.ts
@@ -1584,69 +1679,6 @@ export const analyzeProject = async ({
 };
 ```
 
-## File: src/queries/go.ts
-```typescript
-export const goQueries = `
-(package_clause
-  (package_identifier) @symbol.go_package.def) @scope.go_package.def
-
-(function_declaration
- name: (identifier) @symbol.function.def) @scope.function.def
-
-(go_statement
-  (call_expression
-    function: (_) @rel.goroutine))
-
-(call_expression
-  function: (_) @rel.call)
-
-(import_spec
-  path: (interpreted_string_literal) @rel.import.source)
-`;
-```
-
-## File: src/queries/rust.ts
-```typescript
-export const rustQueries = `
-(struct_item
-  name: (type_identifier) @symbol.rust_struct.def) @scope.rust_struct.def
-
-(trait_item
-  name: (type_identifier) @symbol.rust_trait.def) @scope.rust_trait.def
-  
-(impl_item) @symbol.rust_impl.def @scope.rust_impl.def
-
-(impl_item
-  trait: (type_identifier) @rel.implements
-  type: (type_identifier) @rel.references
-)
-
-(attribute_item
-  (attribute . (token_tree (identifier) @rel.macro)))
-
-(function_item
-  name: (identifier) @symbol.function.def) @scope.function.def
-
-(impl_item
-  body: (declaration_list
-    (function_item
-      name: (identifier) @symbol.method.def) @scope.method.def))
-
-; For parameters like '&impl Trait'
-(parameter type: (reference_type (_ (type_identifier) @rel.references)))
-; For simple trait parameters
-(parameter type: (type_identifier) @rel.references)
-
-(call_expression
-  function: (field_expression
-    field: (field_identifier) @rel.call))
-
-((struct_item (visibility_modifier) @mod.export))
-((trait_item (visibility_modifier) @mod.export))
-((function_item (visibility_modifier) @mod.export))
-`;
-```
-
 ## File: src/parser.ts
 ```typescript
 import type { ParserInitOptions, LanguageConfig } from './types';
@@ -1698,6 +1730,37 @@ export const parse = (sourceCode: string, lang: LanguageConfig): Tree | null => 
     }
     return lang.parser.parse(sourceCode);
 };
+```
+
+## File: package.json
+```json
+{
+  "name": "scn-ts-core",
+  "module": "src/main.ts",
+  "type": "module",
+  "private": true,
+  "devDependencies": {
+    "@types/bun": "latest",
+    "web-tree-sitter": "0.25.6"
+  },
+  "peerDependencies": {
+    "typescript": "^5"
+  }
+}
+```
+
+## File: src/queries/css.ts
+```typescript
+export const cssQueries = `
+(rule_set) @symbol.css_class.def @scope.css_class.def
+(at_rule) @symbol.css_at_rule.def @scope.css_at_rule.def
+(declaration (property_name) @symbol.css_variable.def
+  (#match? @symbol.css_variable.def "^--"))
+(call_expression 
+  (function_name) @__fn
+  (arguments (plain_value) @rel.references)
+  (#eq? @__fn "var"))
+`;
 ```
 
 ## File: src/graph-resolver.ts
@@ -1790,37 +1853,6 @@ export const resolveGraph = (sourceFiles: SourceFile[], pathResolver: PathResolv
     }
     return sourceFiles;
 };
-```
-
-## File: package.json
-```json
-{
-  "name": "scn-ts-core",
-  "module": "src/main.ts",
-  "type": "module",
-  "private": true,
-  "devDependencies": {
-    "@types/bun": "latest",
-    "web-tree-sitter": "0.25.6"
-  },
-  "peerDependencies": {
-    "typescript": "^5"
-  }
-}
-```
-
-## File: src/queries/css.ts
-```typescript
-export const cssQueries = `
-(rule_set) @symbol.css_class.def @scope.css_class.def
-(at_rule) @symbol.css_at_rule.def @scope.css_at_rule.def
-(declaration (property_name) @symbol.css_variable.def
-  (#match? @symbol.css_variable.def "^--"))
-(call_expression 
-  (function_name) @__fn
-  (arguments (plain_value) @rel.references)
-  (#eq? @__fn "var"))
-`;
 ```
 
 ## File: src/types.ts

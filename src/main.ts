@@ -1,6 +1,6 @@
 import { getLanguageForFile } from './languages';
 import { initializeParser as init, parse } from './parser';
-import type { ParserInitOptions, SourceFile, InputFile, ScnTsConfig, AnalyzeProjectOptions } from './types';
+import type { ParserInitOptions, SourceFile, InputFile, ScnTsConfig, AnalyzeProjectOptions, FormattingOptions } from './types';
 import { analyze } from './analyzer';
 import { formatScn } from './formatter';
 import path from './utils/path';
@@ -14,7 +14,7 @@ import { logger } from './logger';
 export const initializeParser = (options: ParserInitOptions): Promise<void> => init(options);
 
 // Types for web demo
-export type { ParserInitOptions, SourceFile, LogLevel, InputFile, TsConfig, ScnTsConfig, AnalyzeProjectOptions, LogHandler } from './types';
+export type { ParserInitOptions, SourceFile, LogLevel, InputFile, TsConfig, ScnTsConfig, AnalyzeProjectOptions, LogHandler, FormattingOptions } from './types';
 export type FileContent = InputFile;
 
 // Exports for web demo
@@ -23,8 +23,8 @@ export { logger };
 /**
  * Generate SCN from analyzed source files
  */
-export const generateScn = (analyzedFiles: SourceFile[]): string => {
-    return formatScn(analyzedFiles);
+export const generateScn = (analyzedFiles: SourceFile[], options?: FormattingOptions): string => {
+    return formatScn(analyzedFiles, options);
 };
 
 /**
@@ -34,9 +34,9 @@ export const generateScnFromConfig = async (config: ScnTsConfig): Promise<string
     const analyzedFiles = await analyzeProject({
         files: config.files,
         tsconfig: config.tsconfig,
-        root: config.root
+        root: config.root,
     });
-    return formatScn(analyzedFiles);
+    return formatScn(analyzedFiles, config.formattingOptions);
 };
 
 /**

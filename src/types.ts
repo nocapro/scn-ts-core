@@ -22,6 +22,14 @@ export interface AnalyzeProjectOptions {
 }
 
 /**
+ * Options to control the SCN output format.
+ */
+export interface FormattingOptions {
+    showOutgoing?: boolean; // default true
+    showIncoming?: boolean; // default true
+}
+
+/**
  * Represents a file to be processed.
  */
 export interface InputFile {
@@ -35,6 +43,7 @@ export interface InputFile {
 export interface ScnTsConfig {
   files: InputFile[];
   tsconfig?: TsConfig;
+  formattingOptions?: FormattingOptions;
   root?: string; // Optional: A virtual root path for resolution. Defaults to '/'.
   _test_id?: string; // Special property for test runner to identify fixtures
 }

@@ -1,6 +1,8 @@
 uuid: 4a648d79-2470-4f93-8b89-a54b38d728fd
 projectId: scn-ts-core
 createdAt: '2025-09-04T17:01:04.729Z'
+linesAdded: 10
+linesRemoved: 2
 gitCommitMsg: 'fix(web-demo): configure vite for wasm and top-level await'
 promptSummary: Fix Vite WASM error after adding tiktoken.
 reasoning:
@@ -130,4 +132,4 @@ snapshot:
         },
       },
     })
-approved: false
+approved: true

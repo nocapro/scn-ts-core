@@ -224,6 +224,7 @@ export default LogViewer;
 import * as React from 'react';
 import type { FormattingOptions } from '../types';
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
+import { ChevronDown, ChevronRight } from 'lucide-react';
 
 interface OutputOptionsProps {
   options: FormattingOptions;
@@ -270,6 +271,22 @@ const optionLabels: Record<keyof FormattingOptions, string> = {
 
 
 const OutputOptions: React.FC<OutputOptionsProps> = ({ options, setOptions }) => {
+  const [expandedGroups, setExpandedGroups] = React.useState<Set<string>>(
+    () => new Set(Object.keys(optionGroups))
+  );
+
+  const toggleGroup = (groupName: string) => {
+    setExpandedGroups(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(groupName)) {
+        newSet.delete(groupName);
+      } else {
+        newSet.add(groupName);
+      }
+      return newSet;
+    });
+  };
+
   const handleChange = (option: keyof FormattingOptions) => (e: React.ChangeEvent<HTMLInputElement>) => {
     setOptions(prev => ({ ...prev, [option]: e.target.checked }));
   };
@@ -290,35 +307,45 @@ const OutputOptions: React.FC<OutputOptionsProps> = ({ options, setOptions }) =>
       <CardHeader className="py-3">
         <CardTitle className="text-base">Formatting Options</CardTitle>
       </CardHeader>
-      <CardContent className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-2 xl:grid-cols-3 gap-y-3 gap-x-4 pt-0 pb-4">
+      <CardContent className="pt-0 pb-4 px-4 space-y-1">
         {Object.entries(optionGroups).map(([groupName, keys]) => {
           const allChecked = keys.every(key => options[key] ?? true);
+          const isExpanded = expandedGroups.has(groupName);
 
           return (
-            <React.Fragment key={groupName}>
-              <div className="col-span-full flex items-center space-x-2 mt-2 border-b border-border pb-1 mb-1">
+            <div key={groupName}>
+              <div
+                className="flex items-center justify-between py-1 rounded-md hover:bg-accent/50 cursor-pointer select-none -mx-2 px-2"
+                onClick={() => toggleGroup(groupName)}
+              >
+                <div className="flex items-center space-x-1.5">
+                  {isExpanded ? <ChevronDown className="h-4 w-4 flex-shrink-0" /> : <ChevronRight className="h-4 w-4 flex-shrink-0" />}
+                  <span className="font-semibold text-sm">{groupName}</span>
+                </div>
                 <input
                   type="checkbox"
                   id={`group-${groupName.replace(/\s+/g, '-')}`}
+                  title={`Toggle all in ${groupName}`}
                   checked={allChecked}
                   onChange={handleGroupChange(keys)}
-                  className="h-4 w-4 rounded border-muted-foreground/50 bg-transparent text-primary focus:ring-primary"
+                  onClick={(e) => e.stopPropagation()} // Prevent row click from firing
+                  className="h-4 w-4 rounded border-muted-foreground/50 bg-transparent text-primary focus:ring-primary cursor-pointer"
                 />
-                <label htmlFor={`group-${groupName.replace(/\s+/g, '-')}`} className="cursor-pointer select-none text-sm font-semibold text-foreground">
-                  {groupName}
-                </label>
               </div>
-
-              {keys.map(key => (
-                <OptionCheckbox
-                  key={key}
-                  id={key}
-                  label={optionLabels[key]}
-                  checked={options[key] ?? true}
-                  onChange={handleChange(key)}
-                />
-              ))}
-            </React.Fragment>
+              {isExpanded && (
+                <div className="pl-6 space-y-1.5 py-1">
+                  {keys.map(key => (
+                    <OptionCheckbox
+                      key={key}
+                      id={key}
+                      label={optionLabels[key]}
+                      checked={options[key] ?? true}
+                      onChange={handleChange(key)}
+                    />
+                  ))}
+                </div>
+              )}
+            </div>
           );
         })}
       </CardContent>

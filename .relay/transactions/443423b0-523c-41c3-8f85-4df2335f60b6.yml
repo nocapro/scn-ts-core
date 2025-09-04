@@ -1,0 +1,363 @@
+uuid: 443423b0-523c-41c3-8f85-4df2335f60b6
+projectId: scn-ts-core
+createdAt: '2025-09-04T18:18:08.949Z'
+linesAdded: 82
+linesRemoved: 46
+gitCommitMsg: 'refactor(web-demo): enhance OutputOptions with nested groups'
+promptSummary: >-
+  Refactor OutputOptions component to support highly nested option groups with
+  toggle controls at the prefix.
+reasoning:
+  - >-
+    Alright, I'm on it. Refactoring the `OutputOptions` component to support
+    nested groups and move the controls to the front. This will make the UI more
+    intuitive and powerful.
+  - 'Here''s my plan:'
+  - >-
+    1.  I'll overhaul
+    `packages/scn-ts-web-demo/src/components/OutputOptions.tsx`.
+  - >-
+    2.  I'll introduce a recursive data structure, `optionTree`, to allow for
+    arbitrary nesting of formatting options.
+  - >-
+    3.  I'll implement a recursive rendering function to build the UI from this
+    tree structure.
+  - >-
+    4.  I'll update the group header layout to place the expand/collapse chevron
+    and the group-toggle checkbox at the beginning of the row, as you requested.
+  - >-
+    This should give you that sweet, hierarchical control over the output
+    formatting. Let's get this done.
+operations:
+  - type: write
+    path: packages/scn-ts-web-demo/src/components/OutputOptions.tsx
+    content: >-
+      import * as React from 'react';
+
+      import type { FormattingOptions } from '../types';
+
+      import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
+
+      import { ChevronDown, ChevronRight } from 'lucide-react';
+
+
+      interface OutputOptionsProps {
+        options: FormattingOptions;
+        setOptions: React.Dispatch<React.SetStateAction<FormattingOptions>>;
+      }
+
+
+      const OptionCheckbox: React.FC<{
+        id: keyof FormattingOptions;
+        label: string;
+        checked: boolean;
+        onChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
+      }> = ({ id, label, checked, onChange }) => (
+        <div className="flex items-center space-x-1.5">
+          <input
+            type="checkbox"
+            id={id}
+            checked={checked}
+            onChange={onChange}
+            className="h-4 w-4 rounded border-muted-foreground/50 bg-transparent text-primary focus:ring-primary"
+          />
+          <label htmlFor={id} className="cursor-pointer select-none text-sm text-muted-foreground">
+            {label}
+          </label>
+        </div>
+      );
+
+
+      type OptionKey = keyof FormattingOptions;
+
+      type OptionItem = OptionKey | { name: string; children: OptionItem[] };
+
+
+      const optionTree: OptionItem[] = [
+        {
+          name: 'Display Elements',
+          children: [
+            'showIcons',
+            {
+              name: 'Indicators',
+              children: ['showExportedIndicator', 'showPrivateIndicator'],
+            },
+            'showModifiers',
+            'showTags',
+            'showSymbolIds',
+          ],
+        },
+        {
+          name: 'Relationships',
+          children: ['showOutgoing', 'showIncoming'],
+        },
+        {
+          name: 'Structure',
+          children: ['groupMembers'],
+        },
+      ];
+
+
+      const optionLabels: Record<keyof FormattingOptions, string> = {
+        showIcons: 'Icons',
+        showExportedIndicator: 'Exported (+)',
+        showPrivateIndicator: 'Private (-)',
+        showModifiers: 'Modifiers',
+        showTags: 'Tags',
+        showSymbolIds: 'Symbol IDs',
+        showOutgoing: 'Outgoing',
+        showIncoming: 'Incoming',
+        groupMembers: 'Group Members',
+      };
+
+
+      function getAllKeys(item: OptionItem): OptionKey[] {
+        if (typeof item === 'string') {
+          return [item];
+        }
+        return item.children.flatMap(getAllKeys);
+      }
+
+
+      const OutputOptions: React.FC<OutputOptionsProps> = ({ options, setOptions
+      }) => {
+        const [expandedGroups, setExpandedGroups] = React.useState<Set<string>>(
+          () => new Set(['Display Elements', 'Indicators', 'Relationships', 'Structure'])
+        );
+
+        const toggleGroup = (groupName: string) => {
+          setExpandedGroups(prev => {
+            const newSet = new Set(prev);
+            if (newSet.has(groupName)) {
+              newSet.delete(groupName);
+            } else {
+              newSet.add(groupName);
+            }
+            return newSet;
+          });
+        };
+
+        const handleChange = (option: keyof FormattingOptions) => (e: React.ChangeEvent<HTMLInputElement>) => {
+          setOptions(prev => ({ ...prev, [option]: e.target.checked }));
+        };
+
+        const handleGroupChange = (keys: ReadonlyArray<keyof FormattingOptions>) => (e: React.ChangeEvent<HTMLInputElement>) => {
+          const isChecked = e.target.checked;
+          setOptions(prev => {
+            const newOptions = { ...prev };
+            for (const key of keys) {
+              newOptions[key] = isChecked;
+            }
+            return newOptions;
+          });
+        };
+
+        const renderItem = (item: OptionItem, level: number): React.ReactNode => {
+          if (typeof item === 'string') {
+            const key = item;
+            return (
+              <div key={key} style={{ paddingLeft: `${level * 1.5}rem` }}>
+                <OptionCheckbox
+                  id={key}
+                  label={optionLabels[key]}
+                  checked={options[key] ?? true}
+                  onChange={handleChange(key)}
+                />
+              </div>
+            );
+          }
+
+          const { name, children } = item;
+          const isExpanded = expandedGroups.has(name);
+          const allKeys = getAllKeys(item);
+          const allChecked = allKeys.every(key => options[key] ?? true);
+
+          return (
+            <div key={name}>
+              <div
+                className="flex items-center space-x-1.5 py-1 rounded-md hover:bg-accent/50 cursor-pointer select-none -mx-2 px-2"
+                style={{ paddingLeft: `calc(${level * 1.5}rem + 0.5rem)` }}
+                onClick={() => toggleGroup(name)}
+              >
+                {isExpanded ? <ChevronDown className="h-4 w-4 flex-shrink-0" /> : <ChevronRight className="h-4 w-4 flex-shrink-0" />}
+                <input
+                  type="checkbox"
+                  id={`group-${name.replace(/\s+/g, '-')}`}
+                  title={`Toggle all in ${name}`}
+                  checked={allChecked}
+                  onChange={handleGroupChange(allKeys)}
+                  onClick={(e) => e.stopPropagation()} // Prevent row click from firing
+                  className="h-4 w-4 rounded border-muted-foreground/50 bg-transparent text-primary focus:ring-primary cursor-pointer"
+                />
+                <span className="font-semibold text-sm">{name}</span>
+              </div>
+              {isExpanded && (
+                <div className="pt-1.5 space-y-1.5">
+                  {children.map(child => renderItem(child, level + 1))}
+                </div>
+              )}
+            </div>
+          );
+        };
+
+        return (
+          <Card>
+            <CardHeader className="py-3">
+              <CardTitle className="text-base">Formatting Options</CardTitle>
+            </CardHeader>
+            <CardContent className="pt-0 pb-4 px-4 space-y-1">
+              {optionTree.map(item => renderItem(item, 0))}
+            </CardContent>
+          </Card>
+        );
+      };
+
+
+      export default OutputOptions;
+    patchStrategy: replace
+snapshot:
+  packages/scn-ts-web-demo/src/components/OutputOptions.tsx: >-
+    import * as React from 'react';
+
+    import type { FormattingOptions } from '../types';
+
+    import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
+
+    import { ChevronDown, ChevronRight } from 'lucide-react';
+
+
+    interface OutputOptionsProps {
+      options: FormattingOptions;
+      setOptions: React.Dispatch<React.SetStateAction<FormattingOptions>>;
+    }
+
+
+    const OptionCheckbox: React.FC<{
+      id: keyof FormattingOptions;
+      label: string;
+      checked: boolean;
+      onChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
+    }> = ({ id, label, checked, onChange }) => (
+      <div className="flex items-center space-x-1.5">
+        <input
+          type="checkbox"
+          id={id}
+          checked={checked}
+          onChange={onChange}
+          className="h-4 w-4 rounded border-muted-foreground/50 bg-transparent text-primary focus:ring-primary"
+        />
+        <label htmlFor={id} className="cursor-pointer select-none text-sm text-muted-foreground">
+          {label}
+        </label>
+      </div>
+    );
+
+
+    const optionGroups = {
+      'Display Elements': ['showIcons', 'showExportedIndicator', 'showPrivateIndicator', 'showModifiers', 'showTags', 'showSymbolIds'],
+      'Relationships': ['showOutgoing', 'showIncoming'],
+      'Structure': ['groupMembers'],
+    } as const;
+
+
+    const optionLabels: Record<keyof FormattingOptions, string> = {
+      showIcons: 'Icons',
+      showExportedIndicator: 'Exported (+)',
+      showPrivateIndicator: 'Private (-)',
+      showModifiers: 'Modifiers',
+      showTags: 'Tags',
+      showSymbolIds: 'Symbol IDs',
+      showOutgoing: 'Outgoing',
+      showIncoming: 'Incoming',
+      groupMembers: 'Group Members',
+    };
+
+
+
+    const OutputOptions: React.FC<OutputOptionsProps> = ({ options, setOptions
+    }) => {
+      const [expandedGroups, setExpandedGroups] = React.useState<Set<string>>(
+        () => new Set(Object.keys(optionGroups))
+      );
+
+      const toggleGroup = (groupName: string) => {
+        setExpandedGroups(prev => {
+          const newSet = new Set(prev);
+          if (newSet.has(groupName)) {
+            newSet.delete(groupName);
+          } else {
+            newSet.add(groupName);
+          }
+          return newSet;
+        });
+      };
+
+      const handleChange = (option: keyof FormattingOptions) => (e: React.ChangeEvent<HTMLInputElement>) => {
+        setOptions(prev => ({ ...prev, [option]: e.target.checked }));
+      };
+
+      const handleGroupChange = (keys: ReadonlyArray<keyof FormattingOptions>) => (e: React.ChangeEvent<HTMLInputElement>) => {
+        const isChecked = e.target.checked;
+        setOptions(prev => {
+          const newOptions = { ...prev };
+          for (const key of keys) {
+            newOptions[key] = isChecked;
+          }
+          return newOptions;
+        });
+      };
+
+      return (
+        <Card>
+          <CardHeader className="py-3">
+            <CardTitle className="text-base">Formatting Options</CardTitle>
+          </CardHeader>
+          <CardContent className="pt-0 pb-4 px-4 space-y-1">
+            {Object.entries(optionGroups).map(([groupName, keys]) => {
+              const allChecked = keys.every(key => options[key] ?? true);
+              const isExpanded = expandedGroups.has(groupName);
+
+              return (
+                <div key={groupName}>
+                  <div
+                    className="flex items-center justify-between py-1 rounded-md hover:bg-accent/50 cursor-pointer select-none -mx-2 px-2"
+                    onClick={() => toggleGroup(groupName)}
+                  >
+                    <div className="flex items-center space-x-1.5">
+                      {isExpanded ? <ChevronDown className="h-4 w-4 flex-shrink-0" /> : <ChevronRight className="h-4 w-4 flex-shrink-0" />}
+                      <span className="font-semibold text-sm">{groupName}</span>
+                    </div>
+                    <input
+                      type="checkbox"
+                      id={`group-${groupName.replace(/\s+/g, '-')}`}
+                      title={`Toggle all in ${groupName}`}
+                      checked={allChecked}
+                      onChange={handleGroupChange(keys)}
+                      onClick={(e) => e.stopPropagation()} // Prevent row click from firing
+                      className="h-4 w-4 rounded border-muted-foreground/50 bg-transparent text-primary focus:ring-primary cursor-pointer"
+                    />
+                  </div>
+                  {isExpanded && (
+                    <div className="pl-6 space-y-1.5 py-1">
+                      {keys.map(key => (
+                        <OptionCheckbox
+                          key={key}
+                          id={key}
+                          label={optionLabels[key]}
+                          checked={options[key] ?? true}
+                          onChange={handleChange(key)}
+                        />
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </CardContent>
+        </Card>
+      );
+    };
+
+
+    export default OutputOptions;
+approved: true

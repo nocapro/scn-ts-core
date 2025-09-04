@@ -1,0 +1,452 @@
+uuid: a1f8a847-f3c5-442a-a92c-6338b0930f3c
+projectId: scn-ts-core
+createdAt: '2025-09-04T16:58:10.531Z'
+linesAdded: 31
+linesRemoved: 7
+gitCommitMsg: 'feat(web-demo): add input and output token counters'
+promptSummary: Add a token counter for input and output to the web demo.
+reasoning:
+  - >-
+    ok, i'm on it. adding a token counter to the web demo is a solid idea for
+    providing more context on the input/output size. here are the changes.
+  - First, I'll add `tiktoken` as a dependency to the web demo's `package.json`.
+  - >-
+    Next, since `tiktoken` uses wasm, it's a good practice to exclude it from
+    Vite's dependency optimization, similar to `web-tree-sitter`. I'll update
+    the `vite.config.ts`.
+  - >-
+    While I was at it, I noticed a minor type mismatch in the `CardTitle`
+    component. The `ref` was typed as `HTMLParagraphElement` but the component
+    renders an `<h3>`. I'll fix that.
+  - >-
+    Finally, I'll update the main `App.tsx` component to initialize the
+    tokenizer, count tokens for the input and output, and display them in the
+    UI.
+operations:
+  - type: write
+    path: packages/scn-ts-web-demo/package.json
+    content: |-
+      <<<<<<< SEARCH
+          "tailwind-merge": "^2.3.0"
+        },
+      =======
+          "tailwind-merge": "^2.3.0",
+          "tiktoken": "^1.0.14"
+        },
+      >>>>>>> REPLACE
+    patchStrategy: multi-search-replace
+  - type: write
+    path: packages/scn-ts-web-demo/vite.config.ts
+    content: |-
+      <<<<<<< SEARCH
+          // Exclude packages that have special loading mechanisms (like wasm)
+          // to prevent Vite from pre-bundling them and causing issues.
+          exclude: ['web-tree-sitter'],
+      =======
+          // Exclude packages that have special loading mechanisms (like wasm)
+          // to prevent Vite from pre-bundling them and causing issues.
+          exclude: ['web-tree-sitter', 'tiktoken'],
+      >>>>>>> REPLACE
+    patchStrategy: multi-search-replace
+  - type: write
+    path: packages/scn-ts-web-demo/src/components/ui/card.tsx
+    content: |-
+      <<<<<<< SEARCH
+      const CardTitle = React.forwardRef<
+        HTMLParagraphElement,
+        React.HTMLAttributes<HTMLHeadingElement>
+      >(({ className, ...props }, ref) => (
+      =======
+      const CardTitle = React.forwardRef<
+        HTMLHeadingElement,
+        React.HTMLAttributes<HTMLHeadingElement>
+      >(({ className, ...props }, ref) => (
+      >>>>>>> REPLACE
+    patchStrategy: multi-search-replace
+  - type: write
+    path: packages/scn-ts-web-demo/src/App.tsx
+    content: >-
+      --- packages/scn-ts-web-demo/src/App.tsx
+
+      +++ packages/scn-ts-web-demo/src/App.tsx
+
+      @@ -1,4 +1,5 @@
+       import { useState, useEffect, useCallback, useRef } from 'react';
+      +import { get_encoding, type Tiktoken } from 'tiktoken';
+       import {
+         initializeParser,
+         logger,
+      @@ -15,19 +16,33 @@
+         const [filesInput, setFilesInput] = useState(defaultFilesJSON);
+         const [scnOutput, setScnOutput] = useState('');
+         const [progress, setProgress] = useState<ProgressData | null>(null);
+         const [logs, setLogs] = useState<LogEntry[]>([]);
+      +  const [encoder, setEncoder] = useState<Tiktoken | null>(null);
+
+      +  const [tokenCounts, setTokenCounts] = useState({ input: 0, output: 0
+      });
+       
+         useEffect(() => {
+           const init = async () => {
+             try {
+               await initializeParser({ wasmBaseUrl: '/wasm/' });
+      +        const enc = get_encoding("cl100k_base");
+
+      +        setEncoder(enc);
+               setIsInitialized(true);
+      -        setLogs(prev => [...prev, { level: 'info', message: 'Parser
+      initialized.', timestamp: Date.now() }]);
+
+      +        setLogs(prev => [...prev, { level: 'info', message: 'Parser and
+      tokenizer initialized.', timestamp: Date.now() }]);
+             } catch (error) {
+               const message = error instanceof Error ? error.message : String(error);
+      -        setLogs(prev => [...prev, { level: 'error', message: `Failed to
+      initialize parser: ${message}`, timestamp: Date.now() }]);
+
+      +        setLogs(prev => [...prev, { level: 'error', message: `Failed to
+      initialize: ${message}`, timestamp: Date.now() }]);
+             }
+           };
+           init();
+         }, []);
+       
+      +  useEffect(() => {
+
+      +    if (!encoder) return;
+
+      +    try {
+
+      +      const inputTokens = encoder.encode(filesInput).length;
+
+      +      const outputTokens = encoder.encode(scnOutput).length;
+
+      +      setTokenCounts({ input: inputTokens, output: outputTokens });
+
+      +    } catch (e) {
+
+      +      console.error("Tokenization error:", e);
+
+      +      setTokenCounts({ input: 0, output: 0 });
+
+      +    }
+
+      +  }, [filesInput, scnOutput, encoder]);
+
+      +
+         const handleAnalyze = useCallback(async () => {
+           if (!isInitialized) {
+             setLogs(prev => [...prev, { level: 'warn', message: 'Parser not ready.', timestamp: Date.now() }]);
+      @@ -101,7 +116,10 @@
+             <main className="flex-grow grid grid-cols-1 lg:grid-cols-2 gap-4 p-4 overflow-hidden">
+               <Card className="flex flex-col overflow-hidden">
+                 <CardHeader>
+      -            <CardTitle>Input Files (JSON)</CardTitle>
+
+      +            <CardTitle className="flex justify-between items-center">
+
+      +              <span>Input Files (JSON)</span>
+
+      +              <span className="text-sm font-normal
+      text-muted-foreground">{tokenCounts.input.toLocaleString()} tokens</span>
+
+      +            </CardTitle>
+                 </CardHeader>
+                 <CardContent className="flex-grow">
+                   <Textarea
+      @@ -115,7 +133,10 @@
+       
+               <Card className="flex flex-col overflow-hidden">
+                 <CardHeader>
+      -            <CardTitle>Output (SCN)</CardTitle>
+
+      +            <CardTitle className="flex justify-between items-center">
+
+      +              <span>Output (SCN)</span>
+
+      +              <span className="text-sm font-normal
+      text-muted-foreground">{tokenCounts.output.toLocaleString()} tokens</span>
+
+      +            </CardTitle>
+                 </CardHeader>
+                 <CardContent className="flex-grow overflow-auto">
+                   <pre className="text-xs whitespace-pre-wrap font-mono h-full w-full">
+    patchStrategy: new-unified
+snapshot:
+  packages/scn-ts-web-demo/package.json: |
+    {
+      "name": "scn-ts-web-demo",
+      "private": true,
+      "version": "0.1.0",
+      "type": "module",
+      "scripts": {
+        "dev": "vite",
+        "build": "tsc && vite build",
+        "check": "tsc --noEmit",
+        "preview": "vite preview",
+        "prepare": "node scripts/prepare-wasm.cjs"
+      },
+      "dependencies": {
+        "@radix-ui/react-slot": "^1.0.2",
+        "class-variance-authority": "^0.7.0",
+        "clsx": "^2.1.1",
+        "lucide-react": "^0.379.0",
+        "react": "^18.3.1",
+        "react-dom": "^18.3.1",
+        "tailwind-merge": "^2.3.0"
+      },
+      "devDependencies": {
+        "@types/node": "^20.12.12",
+        "@types/react": "^18.3.3",
+        "@types/react-dom": "^18.3.0",
+        "@vitejs/plugin-react": "^4.3.0",
+        "autoprefixer": "^10.4.19",
+        "eslint": "^8.57.0",
+        "postcss": "^8.4.38",
+        "tailwindcss": "^3.4.3",
+        "typescript": "^5.4.5",
+        "vite": "^5.2.12"
+      }
+    }
+  packages/scn-ts-web-demo/vite.config.ts: |
+    import { defineConfig } from 'vite'
+    import react from '@vitejs/plugin-react'
+    import path from 'path'
+
+    // https://vitejs.dev/config/
+    export default defineConfig({
+      plugins: [react()],
+      resolve: {
+        alias: {
+          "@": path.resolve(__dirname, "src"),
+        },
+      },
+      optimizeDeps: {
+        // Exclude packages that have special loading mechanisms (like wasm)
+        // to prevent Vite from pre-bundling them and causing issues.
+        exclude: ['web-tree-sitter'],
+        // Force pre-bundling of our monorepo packages. As linked dependencies,
+        // Vite doesn't optimize it by default. We need to include it so Vite
+        // discovers its deep CJS dependencies (like graphology) and converts
+        // them to ESM for the dev server. We specifically `exclude` 'web-tree-sitter'
+        // above to prevent Vite from interfering with its unique WASM loading mechanism.
+        include: ['scn-ts-core'],
+      },
+      server: {
+        headers: {
+          // These headers are required for SharedArrayBuffer, which is used by
+          // web-tree-sitter and is good practice for applications using wasm
+          // with threading or advanced memory features.
+          'Cross-Origin-Embedder-Policy': 'require-corp',
+          'Cross-Origin-Opener-Policy': 'same-origin',
+        },
+      },
+    })
+  packages/scn-ts-web-demo/src/components/ui/card.tsx: |-
+    import * as React from "react"
+    import { cn } from "../../lib/utils"
+
+    const Card = React.forwardRef<
+      HTMLDivElement,
+      React.HTMLAttributes<HTMLDivElement>
+    >(({ className, ...props }, ref) => (
+      <div
+        ref={ref}
+        className={cn(
+          "rounded-lg border bg-card text-card-foreground shadow-sm",
+          className
+        )}
+        {...props}
+      />
+    ))
+    Card.displayName = "Card"
+
+    const CardHeader = React.forwardRef<
+      HTMLDivElement,
+      React.HTMLAttributes<HTMLDivElement>
+    >(({ className, ...props }, ref) => (
+      <div
+        ref={ref}
+        className={cn("flex flex-col space-y-1.5 p-6", className)}
+        {...props}
+      />
+    ))
+    CardHeader.displayName = "CardHeader"
+
+    const CardTitle = React.forwardRef<
+      HTMLParagraphElement,
+      React.HTMLAttributes<HTMLHeadingElement>
+    >(({ className, ...props }, ref) => (
+      <h3
+        ref={ref}
+        className={cn("text-lg font-semibold leading-none tracking-tight", className)}
+        {...props}
+      />
+    ))
+    CardTitle.displayName = "CardTitle"
+
+
+    const CardContent = React.forwardRef<
+      HTMLDivElement,
+      React.HTMLAttributes<HTMLDivElement>
+    >(({ className, ...props }, ref) => (
+      <div ref={ref} className={cn("p-6 pt-0", className)} {...props} />
+    ))
+    CardContent.displayName = "CardContent"
+
+
+    export { Card, CardHeader, CardTitle, CardContent }
+  packages/scn-ts-web-demo/src/App.tsx: >
+    import { useState, useEffect, useCallback, useRef } from 'react';
+
+    import {
+      initializeParser,
+      logger,
+      analyzeProject,
+      generateScn,
+    } from '../../../index';
+
+    import type { FileContent, LogHandler } from '../../../index';
+
+    import { defaultFilesJSON } from './default-files';
+
+    import { Button } from './components/ui/button';
+
+    import { Card, CardContent, CardHeader, CardTitle } from
+    './components/ui/card';
+
+    import { Textarea } from './components/ui/textarea';
+
+    import LogViewer from './components/LogViewer';
+
+    import { Play, Loader } from 'lucide-react';
+
+    import type { LogEntry, ProgressData } from './types';
+
+
+    function App() {
+      const [isInitialized, setIsInitialized] = useState(false);
+      const [isLoading, setIsLoading] = useState(false);
+      const [filesInput, setFilesInput] = useState(defaultFilesJSON);
+      const [scnOutput, setScnOutput] = useState('');
+      const [progress, setProgress] = useState<ProgressData | null>(null);
+      const [logs, setLogs] = useState<LogEntry[]>([]);
+
+      useEffect(() => {
+        const init = async () => {
+          try {
+            await initializeParser({ wasmBaseUrl: '/wasm/' });
+            setIsInitialized(true);
+            setLogs(prev => [...prev, { level: 'info', message: 'Parser initialized.', timestamp: Date.now() }]);
+          } catch (error) {
+            const message = error instanceof Error ? error.message : String(error);
+            setLogs(prev => [...prev, { level: 'error', message: `Failed to initialize parser: ${message}`, timestamp: Date.now() }]);
+          }
+        };
+        init();
+      }, []);
+
+      const handleAnalyze = useCallback(async () => {
+        if (!isInitialized) {
+          setLogs(prev => [...prev, { level: 'warn', message: 'Parser not ready.', timestamp: Date.now() }]);
+          return;
+        }
+
+        setIsLoading(true);
+        setLogs([]);
+        setScnOutput('');
+        setProgress(null);
+
+        const logHandler: LogHandler = (level, ...args) => {
+          const message = args.map(arg => typeof arg === 'object' ? JSON.stringify(arg) : String(arg)).join(' ');
+          setLogs(prev => [...prev, { level, message, timestamp: Date.now() }]);
+        };
+        logger.setLogHandler(logHandler);
+        logger.setLevel('debug');
+
+        const onProgress = (progressData: ProgressData) => {
+          setProgress(progressData);
+          logger.info(`[${Math.round(progressData.percentage)}%] ${progressData.message}`);
+        };
+
+        try {
+          let files: FileContent[] = [];
+          try {
+            files = JSON.parse(filesInput);
+            if (!Array.isArray(files)) throw new Error("Input is not an array.");
+          } catch (error) {
+            throw new Error(`Invalid JSON input: ${error instanceof Error ? error.message : String(error)}`);
+          }
+
+          const rankedGraph = await analyzeProject({ files, onProgress, logLevel: 'debug' });
+          const scn = generateScn(rankedGraph);
+          setScnOutput(scn);
+          logger.info('Analysis complete.');
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          logger.error('Analysis failed:', message);
+        } finally {
+          setIsLoading(false);
+          setProgress(null);
+          logger.setLogHandler(null);
+        }
+      }, [filesInput, isInitialized]);
+
+      return (
+        <div className="h-screen w-screen flex flex-col bg-background text-foreground">
+          <header className="flex-shrink-0 flex items-center justify-between p-4 border-b">
+            <h1 className="text-xl font-bold tracking-tight">SCN-TS Web Demo</h1>
+            <Button onClick={handleAnalyze} disabled={isLoading || !isInitialized} className="w-32 justify-center">
+              {isLoading ? (
+                <>
+                  <Loader className="mr-2 h-4 w-4 animate-spin" />
+                  <span>{progress ? `${Math.round(progress.percentage)}%` : 'Analyzing...'}</span>
+                </>
+              ) : (
+                <>
+                  <Play className="mr-2 h-4 w-4" />
+                  <span>Analyze</span>
+                </>
+              )}
+            </Button>
+          </header>
+
+          <main className="flex-grow grid grid-cols-1 lg:grid-cols-2 gap-4 p-4 overflow-hidden">
+            <Card className="flex flex-col overflow-hidden">
+              <CardHeader>
+                <CardTitle>Input Files (JSON)</CardTitle>
+              </CardHeader>
+              <CardContent className="flex-grow">
+                <Textarea
+                  value={filesInput}
+                  onChange={(e) => setFilesInput(e.currentTarget.value)}
+                  className="h-full w-full font-mono text-xs resize-none"
+                  placeholder="Paste an array of FileContent objects here..."
+                />
+              </CardContent>
+            </Card>
+
+            <Card className="flex flex-col overflow-hidden">
+              <CardHeader>
+                <CardTitle>Output (SCN)</CardTitle>
+              </CardHeader>
+              <CardContent className="flex-grow overflow-auto">
+                <pre className="text-xs whitespace-pre-wrap font-mono h-full w-full">
+                  <code className="h-full w-full">
+                    {scnOutput || (isLoading ? "Generating..." : "Output will appear here.")}
+                  </code>
+                </pre>
+              </CardContent>
+            </Card>
+          </main>
+
+          <footer className="flex-shrink-0 h-[200px] border-t">
+            <LogViewer logs={logs} />
+          </footer>
+        </div>
+      );
+    }
+
+
+    export default App;
+approved: true

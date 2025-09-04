@@ -1,0 +1,133 @@
+uuid: 4a648d79-2470-4f93-8b89-a54b38d728fd
+projectId: scn-ts-core
+createdAt: '2025-09-04T17:01:04.729Z'
+gitCommitMsg: 'fix(web-demo): configure vite for wasm and top-level await'
+promptSummary: Fix Vite WASM error after adding tiktoken.
+reasoning:
+  - >-
+    aight, got it. you're hitting a classic vite + wasm issue. `tiktoken` uses
+    wasm and top-level await, and vite needs a couple of plugins to handle that
+    correctly. the error message `ESM integration proposal for Wasm" is not
+    supported` is the key.
+  - >-
+    here's the fix. i'll add `vite-plugin-wasm` and
+    `vite-plugin-top-level-await` to your dev setup.
+  - first, let's add the new dev dependencies to `package.json`.
+  - >-
+    now, let's configure vite to use these plugins. they need to be added to
+    your `vite.config.ts`. this will teach vite how to handle `.wasm` imports
+    and top-level `await` statements from `tiktoken`.
+  - >-
+    run `npm install` (or `bun install`, etc.) in the `packages/scn-ts-web-demo`
+    directory to get the new packages, then restart your dev server. that should
+    clear the error.
+operations:
+  - type: write
+    path: packages/scn-ts-web-demo/package.json
+    content: |-
+      <<<<<<< SEARCH
+          "vite": "^5.2.12"
+        }
+      =======
+          "vite": "^5.2.12",
+          "vite-plugin-top-level-await": "^1.4.1",
+          "vite-plugin-wasm": "^3.3.0"
+        }
+      >>>>>>> REPLACE
+    patchStrategy: multi-search-replace
+  - type: write
+    path: packages/scn-ts-web-demo/vite.config.ts
+    content: |-
+      --- packages/scn-ts-web-demo/vite.config.ts
+      +++ packages/scn-ts-web-demo/vite.config.ts
+      @@ -1,9 +1,16 @@
+       import { defineConfig } from 'vite'
+       import react from '@vitejs/plugin-react'
+       import path from 'path'
+      +import wasm from 'vite-plugin-wasm'
+      +import topLevelAwait from 'vite-plugin-top-level-await'
+       
+       // https://vitejs.dev/config/
+       export default defineConfig({
+      -  plugins: [react()],
+      +  plugins: [
+      +    wasm(),
+      +    topLevelAwait(),
+      +    react()
+      +  ],
+         resolve: {
+           alias: {
+             "@": path.resolve(__dirname, "src"),
+    patchStrategy: new-unified
+snapshot:
+  packages/scn-ts-web-demo/package.json: |
+    {
+      "name": "scn-ts-web-demo",
+      "private": true,
+      "version": "0.1.0",
+      "type": "module",
+      "scripts": {
+        "dev": "vite",
+        "build": "tsc && vite build",
+        "check": "tsc --noEmit",
+        "preview": "vite preview",
+        "prepare": "node scripts/prepare-wasm.cjs"
+      },
+      "dependencies": {
+        "@radix-ui/react-slot": "^1.0.2",
+        "class-variance-authority": "^0.7.0",
+        "clsx": "^2.1.1",
+        "lucide-react": "^0.379.0",
+        "react": "^18.3.1",
+        "react-dom": "^18.3.1",
+        "tailwind-merge": "^2.3.0",
+        "tiktoken": "^1.0.14"
+      },
+      "devDependencies": {
+        "@types/node": "^20.12.12",
+        "@types/react": "^18.3.3",
+        "@types/react-dom": "^18.3.0",
+        "@vitejs/plugin-react": "^4.3.0",
+        "autoprefixer": "^10.4.19",
+        "eslint": "^8.57.0",
+        "postcss": "^8.4.38",
+        "tailwindcss": "^3.4.3",
+        "typescript": "^5.4.5",
+        "vite": "^5.2.12"
+      }
+    }
+  packages/scn-ts-web-demo/vite.config.ts: |
+    import { defineConfig } from 'vite'
+    import react from '@vitejs/plugin-react'
+    import path from 'path'
+
+    // https://vitejs.dev/config/
+    export default defineConfig({
+      plugins: [react()],
+      resolve: {
+        alias: {
+          "@": path.resolve(__dirname, "src"),
+        },
+      },
+      optimizeDeps: {
+        // Exclude packages that have special loading mechanisms (like wasm)
+        // to prevent Vite from pre-bundling them and causing issues.
+        exclude: ['web-tree-sitter', 'tiktoken'],
+        // Force pre-bundling of our monorepo packages. As linked dependencies,
+        // Vite doesn't optimize it by default. We need to include it so Vite
+        // discovers its deep CJS dependencies (like graphology) and converts
+        // them to ESM for the dev server. We specifically `exclude` 'web-tree-sitter'
+        // above to prevent Vite from interfering with its unique WASM loading mechanism.
+        include: ['scn-ts-core'],
+      },
+      server: {
+        headers: {
+          // These headers are required for SharedArrayBuffer, which is used by
+          // web-tree-sitter and is good practice for applications using wasm
+          // with threading or advanced memory features.
+          'Cross-Origin-Embedder-Policy': 'require-corp',
+          'Cross-Origin-Opener-Policy': 'same-origin',
+        },
+      },
+    })
+approved: false

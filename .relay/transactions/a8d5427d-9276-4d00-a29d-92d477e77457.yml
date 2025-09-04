@@ -1,0 +1,334 @@
+uuid: a8d5427d-9276-4d00-a29d-92d477e77457
+projectId: scn-ts-core
+createdAt: '2025-09-04T16:31:14.737Z'
+linesAdded: 25
+linesRemoved: 17
+gitCommitMsg: 'refactor(web-demo): extract types and constants'
+promptSummary: Refactor the demo app by extracting types and constants to dedicated files.
+reasoning:
+  - >-
+    yo, wassup. anton here. just doin a quick lil refactor on the demo app,
+    pullin out some types and constants to make things cleaner. solid yak shave.
+  - >-
+    First, I'll create a new file for shared types within the demo app. This
+    will hold `LogEntry` and a new `ProgressData` type.
+  - >-
+    Next, I'll create a new file for constants. The `levelColorMap` from
+    `LogViewer` is a good candidate.
+  - >-
+    Now, let's update `LogViewer.tsx` to use these new shared files. I'm
+    removing the local definitions and importing them instead.
+  - >-
+    Finally, I'll update `App.tsx` to use the new `LogEntry` and `ProgressData`
+    types. This cleans up the component state and function signatures.
+  - aight, done. ship it.
+operations:
+  - type: write
+    path: packages/scn-ts-web-demo/src/types.ts
+    content: |-
+      import type { LogLevel } from 'scn-ts-core';
+
+      export interface LogEntry {
+        level: Exclude<LogLevel, 'silent'>;
+        message: string;
+        timestamp: number;
+      }
+
+      export interface ProgressData {
+        percentage: number;
+        message: string;
+      }
+    patchStrategy: replace
+  - type: write
+    path: packages/scn-ts-web-demo/src/constants.ts
+    content: >-
+      import type { LogLevel } from 'scn-ts-core';
+
+
+      export const levelColorMap: Record<Exclude<LogLevel, 'silent'>, string> =
+      {
+        error: 'text-red-500',
+        warn: 'text-yellow-500',
+        info: 'text-blue-400',
+        debug: 'text-gray-500',
+      };
+    patchStrategy: replace
+  - type: write
+    path: packages/scn-ts-web-demo/src/components/LogViewer.tsx
+    content: |-
+      --- packages/scn-ts-web-demo/src/components/LogViewer.tsx
+      +++ packages/scn-ts-web-demo/src/components/LogViewer.tsx
+      @@ -1,21 +1,9 @@
+       import React, { useEffect, useRef } from 'react';
+      -import type { LogLevel } from 'scn-ts-core';
+       import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
+       import { cn } from '../lib/utils';
+      -
+      -export interface LogEntry {
+      -  level: Exclude<LogLevel, 'silent'>;
+      -  message: string;
+      -  timestamp: number;
+      -}
+      -
+      -const levelColorMap: Record<Exclude<LogLevel, 'silent'>, string> = {
+      -  error: 'text-red-500',
+      -  warn: 'text-yellow-500',
+      -  info: 'text-blue-400',
+      -  debug: 'text-gray-500',
+      -};
+      +import type { LogEntry } from '../types';
+      +import { levelColorMap } from '../constants';
+       
+       const LogViewer: React.FC<{ logs: readonly LogEntry[] }> = ({ logs }) => {
+         const scrollContainerRef = useRef<HTMLDivElement>(null);
+    patchStrategy: new-unified
+  - type: write
+    path: packages/scn-ts-web-demo/src/App.tsx
+    content: >-
+      --- packages/scn-ts-web-demo/src/App.tsx
+
+      +++ packages/scn-ts-web-demo/src/App.tsx
+
+      @@ -11,15 +11,15 @@
+       import { Card, CardContent, CardHeader, CardTitle } from './components/ui/card';
+       import { Textarea } from './components/ui/textarea';
+       import LogViewer from './components/LogViewer';
+      -import type { LogEntry } from './components/LogViewer';
+       import { Play, Loader } from 'lucide-react';
+      +import type { LogEntry, ProgressData } from './types';
+       
+       function App() {
+         const [isInitialized, setIsInitialized] = useState(false);
+         const [isLoading, setIsLoading] = useState(false);
+         const [filesInput, setFilesInput] = useState(defaultFilesJSON);
+         const [scnOutput, setScnOutput] = useState('');
+      -  const [progress, setProgress] = useState<{ percentage: number; message:
+      string } | null>(null);
+
+      +  const [progress, setProgress] = useState<ProgressData | null>(null);
+         const [logs, setLogs] = useState<LogEntry[]>([]);
+       
+         useEffect(() => {
+      @@ -53,7 +53,7 @@
+           logger.setLogHandler(logHandler);
+           logger.setLevel('debug');
+       
+      -    const onProgress = (progressData: { percentage: number; message:
+      string }) => {
+
+      +    const onProgress = (progressData: ProgressData) => {
+             setProgress(progressData);
+             logger.info(`[${Math.round(progressData.percentage)}%] ${progressData.message}`);
+           };
+    patchStrategy: new-unified
+snapshot:
+  packages/scn-ts-web-demo/src/types.ts: null
+  packages/scn-ts-web-demo/src/constants.ts: null
+  packages/scn-ts-web-demo/src/components/LogViewer.tsx: |
+    import React, { useEffect, useRef } from 'react';
+    import type { LogLevel } from 'scn-ts-core';
+    import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
+    import { cn } from '../lib/utils';
+
+    export interface LogEntry {
+      level: Exclude<LogLevel, 'silent'>;
+      message: string;
+      timestamp: number;
+    }
+
+    const levelColorMap: Record<Exclude<LogLevel, 'silent'>, string> = {
+      error: 'text-red-500',
+      warn: 'text-yellow-500',
+      info: 'text-blue-400',
+      debug: 'text-gray-500',
+    };
+
+    const LogViewer: React.FC<{ logs: readonly LogEntry[] }> = ({ logs }) => {
+      const scrollContainerRef = useRef<HTMLDivElement>(null);
+
+      useEffect(() => {
+        if (scrollContainerRef.current) {
+          scrollContainerRef.current.scrollTop = scrollContainerRef.current.scrollHeight;
+        }
+      }, [logs]);
+
+      return (
+        <Card className="h-full flex flex-col border-0 rounded-none bg-transparent">
+          <CardHeader className="py-3 px-6">
+            <CardTitle>Logs</CardTitle>
+          </CardHeader>
+          <CardContent ref={scrollContainerRef} className="flex-grow overflow-auto p-0">
+            <div className="p-6 pt-0 font-mono text-xs">
+              {logs.length === 0 && <p className="text-muted-foreground">No logs yet. Click "Analyze" to start.</p>}
+              {logs.map((log, index) => (
+                <div key={index} className="flex items-start">
+                  <span className="text-muted-foreground/80 mr-4 flex-shrink-0">
+                    {new Date(log.timestamp).toLocaleTimeString()}
+                  </span>
+                  <span className={cn("font-bold w-14 flex-shrink-0", levelColorMap[log.level])}>
+                    [{log.level.toUpperCase()}]
+                  </span>
+                  <span className="whitespace-pre-wrap break-all text-foreground">{log.message}</span>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      );
+    };
+
+    export default LogViewer;
+  packages/scn-ts-web-demo/src/App.tsx: >
+    import { useState, useEffect, useCallback, useRef } from 'react';
+
+    import {
+      initializeParser,
+      logger,
+      analyzeProject,
+      generateScn,
+    } from '../../../index';
+
+    import type { FileContent, LogHandler } from '../../../index';
+
+    import { defaultFilesJSON } from './default-files';
+
+    import { Button } from './components/ui/button';
+
+    import { Card, CardContent, CardHeader, CardTitle } from
+    './components/ui/card';
+
+    import { Textarea } from './components/ui/textarea';
+
+    import LogViewer from './components/LogViewer';
+
+    import type { LogEntry } from './components/LogViewer';
+
+    import { Play, Loader } from 'lucide-react';
+
+
+    function App() {
+      const [isInitialized, setIsInitialized] = useState(false);
+      const [isLoading, setIsLoading] = useState(false);
+      const [filesInput, setFilesInput] = useState(defaultFilesJSON);
+      const [scnOutput, setScnOutput] = useState('');
+      const [progress, setProgress] = useState<{ percentage: number; message: string } | null>(null);
+      const [logs, setLogs] = useState<LogEntry[]>([]);
+
+      useEffect(() => {
+        const init = async () => {
+          try {
+            await initializeParser({ wasmBaseUrl: '/wasm/' });
+            setIsInitialized(true);
+            setLogs(prev => [...prev, { level: 'info', message: 'Parser initialized.', timestamp: Date.now() }]);
+          } catch (error) {
+            const message = error instanceof Error ? error.message : String(error);
+            setLogs(prev => [...prev, { level: 'error', message: `Failed to initialize parser: ${message}`, timestamp: Date.now() }]);
+          }
+        };
+        init();
+      }, []);
+
+      const handleAnalyze = useCallback(async () => {
+        if (!isInitialized) {
+          setLogs(prev => [...prev, { level: 'warn', message: 'Parser not ready.', timestamp: Date.now() }]);
+          return;
+        }
+
+        setIsLoading(true);
+        setLogs([]);
+        setScnOutput('');
+        setProgress(null);
+
+        const logHandler: LogHandler = (level, ...args) => {
+          const message = args.map(arg => typeof arg === 'object' ? JSON.stringify(arg) : String(arg)).join(' ');
+          setLogs(prev => [...prev, { level, message, timestamp: Date.now() }]);
+        };
+        logger.setLogHandler(logHandler);
+        logger.setLevel('debug');
+
+        const onProgress = (progressData: { percentage: number; message: string }) => {
+          setProgress(progressData);
+          logger.info(`[${Math.round(progressData.percentage)}%] ${progressData.message}`);
+        };
+
+        try {
+          let files: FileContent[] = [];
+          try {
+            files = JSON.parse(filesInput);
+            if (!Array.isArray(files)) throw new Error("Input is not an array.");
+          } catch (error) {
+            throw new Error(`Invalid JSON input: ${error instanceof Error ? error.message : String(error)}`);
+          }
+
+          const rankedGraph = await analyzeProject({ files, onProgress, logLevel: 'debug' });
+          const scn = generateScn(rankedGraph);
+          setScnOutput(scn);
+          logger.info('Analysis complete.');
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          logger.error('Analysis failed:', message);
+        } finally {
+          setIsLoading(false);
+          setProgress(null);
+          logger.setLogHandler(null);
+        }
+      }, [filesInput, isInitialized]);
+
+      return (
+        <div className="h-screen w-screen flex flex-col bg-background text-foreground">
+          <header className="flex-shrink-0 flex items-center justify-between p-4 border-b">
+            <h1 className="text-xl font-bold tracking-tight">SCN-TS Web Demo</h1>
+            <Button onClick={handleAnalyze} disabled={isLoading || !isInitialized} className="w-32 justify-center">
+              {isLoading ? (
+                <>
+                  <Loader className="mr-2 h-4 w-4 animate-spin" />
+                  <span>{progress ? `${Math.round(progress.percentage)}%` : 'Analyzing...'}</span>
+                </>
+              ) : (
+                <>
+                  <Play className="mr-2 h-4 w-4" />
+                  <span>Analyze</span>
+                </>
+              )}
+            </Button>
+          </header>
+
+          <main className="flex-grow grid grid-cols-1 lg:grid-cols-2 gap-4 p-4 overflow-hidden">
+            <Card className="flex flex-col overflow-hidden">
+              <CardHeader>
+                <CardTitle>Input Files (JSON)</CardTitle>
+              </CardHeader>
+              <CardContent className="flex-grow">
+                <Textarea
+                  value={filesInput}
+                  onChange={(e) => setFilesInput(e.currentTarget.value)}
+                  className="h-full w-full font-mono text-xs resize-none"
+                  placeholder="Paste an array of FileContent objects here..."
+                />
+              </CardContent>
+            </Card>
+
+            <Card className="flex flex-col overflow-hidden">
+              <CardHeader>
+                <CardTitle>Output (SCN)</CardTitle>
+              </CardHeader>
+              <CardContent className="flex-grow overflow-auto">
+                <pre className="text-xs whitespace-pre-wrap font-mono h-full w-full">
+                  <code className="h-full w-full">
+                    {scnOutput || (isLoading ? "Generating..." : "Output will appear here.")}
+                  </code>
+                </pre>
+              </CardContent>
+            </Card>
+          </main>
+
+          <footer className="flex-shrink-0 h-[200px] border-t">
+            <LogViewer logs={logs} />
+          </footer>
+        </div>
+      );
+    }
+
+
+    export default App;
+approved: true

@@ -59,13 +59,13 @@ const buttonVariants = cva(
   {
     variants: {
       variant: {
-        default: "bg-blue-600 text-primary-foreground hover:bg-blue-700 text-white",
+        default: "bg-primary text-primary-foreground hover:bg-primary/90",
         destructive:
-          "bg-red-500 text-destructive-foreground hover:bg-red-600",
+          "bg-destructive text-destructive-foreground hover:bg-destructive/90",
         outline:
           "border border-input bg-background hover:bg-accent hover:text-accent-foreground",
         secondary:
-          "bg-gray-200 text-secondary-foreground hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600",
+          "bg-secondary text-secondary-foreground hover:bg-secondary/80",
         ghost: "hover:bg-accent hover:text-accent-foreground",
         link: "text-primary underline-offset-4 hover:underline",
       },
@@ -117,7 +117,10 @@ const Card = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <div
     ref={ref}
-    className={cn("rounded-lg border bg-white dark:bg-gray-800 dark:border-gray-700 shadow-sm", className)}
+    className={cn(
+      "rounded-lg border bg-card text-card-foreground shadow-sm",
+      className
+    )}
     {...props}
   />
 ))
@@ -129,7 +132,7 @@ const CardHeader = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <div
     ref={ref}
-    className={cn("flex flex-col space-y-1.5 p-4", className)}
+    className={cn("flex flex-col space-y-1.5 p-6", className)}
     {...props}
   />
 ))
@@ -141,10 +144,7 @@ const CardTitle = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <h3
     ref={ref}
-    className={cn(
-      "text-lg font-semibold leading-none tracking-tight",
-      className
-    )}
+    className={cn("text-lg font-semibold leading-none tracking-tight", className)}
     {...props}
   />
 ))
@@ -155,7 +155,7 @@ const CardContent = React.forwardRef<
   HTMLDivElement,
   React.HTMLAttributes<HTMLDivElement>
 >(({ className, ...props }, ref) => (
-  <div ref={ref} className={cn("p-4 pt-0", className)} {...props} />
+  <div ref={ref} className={cn("p-6 pt-0", className)} {...props} />
 ))
 CardContent.displayName = "CardContent"
 
@@ -176,8 +176,7 @@ const Textarea = React.forwardRef<HTMLTextAreaElement, TextareaProps>(
     return (
       <textarea
         className={cn(
-          "flex min-h-[80px] w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50",
-          "dark:border-gray-600 dark:bg-gray-900",
+          "flex min-h-[80px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50",
           className
         )}
         ref={ref}
@@ -193,7 +192,7 @@ export { Textarea }
 
 ## File: packages/scn-ts-web-demo/src/components/LogViewer.tsx
 ```typescript
-import React from 'react';
+import React, { useEffect, useRef } from 'react';
 import type { LogLevel } from 'scn-ts-core';
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
 import { cn } from '../lib/utils';
@@ -212,20 +211,31 @@ const levelColorMap: Record<Exclude<LogLevel, 'silent'>, string> = {
 };
 
 const LogViewer: React.FC<{ logs: readonly LogEntry[] }> = ({ logs }) => {
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (scrollContainerRef.current) {
+      scrollContainerRef.current.scrollTop = scrollContainerRef.current.scrollHeight;
+    }
+  }, [logs]);
+
   return (
-    <Card className="h-full flex flex-col">
-      <CardHeader>
+    <Card className="h-full flex flex-col border-0 rounded-none bg-transparent">
+      <CardHeader className="py-3 px-6">
         <CardTitle>Logs</CardTitle>
       </CardHeader>
-      <CardContent className="flex-grow overflow-auto p-0">
-        <div className="p-4 font-mono text-xs">
-          {logs.length === 0 && <p className="text-gray-500">No logs yet. Click "Analyze" to start.</p>}
+      <CardContent ref={scrollContainerRef} className="flex-grow overflow-auto p-0">
+        <div className="p-6 pt-0 font-mono text-xs">
+          {logs.length === 0 && <p className="text-muted-foreground">No logs yet. Click "Analyze" to start.</p>}
           {logs.map((log, index) => (
             <div key={index} className="flex items-start">
-              <span className={cn("font-bold w-12 flex-shrink-0", levelColorMap[log.level])}>
+              <span className="text-muted-foreground/80 mr-4 flex-shrink-0">
+                {new Date(log.timestamp).toLocaleTimeString()}
+              </span>
+              <span className={cn("font-bold w-14 flex-shrink-0", levelColorMap[log.level])}>
                 [{log.level.toUpperCase()}]
               </span>
-              <span className="whitespace-pre-wrap break-all">{log.message}</span>
+              <span className="whitespace-pre-wrap break-all text-foreground">{log.message}</span>
             </div>
           ))}
         </div>
@@ -249,14 +259,14 @@ export function cn(...inputs: ClassValue[]) {
 
 ## File: packages/scn-ts-web-demo/src/App.tsx
 ```typescript
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import {
   initializeParser,
   logger,
   analyzeProject,
   generateScn,
-} from 'scn-ts-core';
-import type { FileContent, LogHandler } from 'scn-ts-core';
+} from '../../../index';
+import type { FileContent, LogHandler } from '../../../index';
 import { defaultFilesJSON } from './default-files';
 import { Button } from './components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from './components/ui/card';
@@ -334,9 +344,9 @@ function App() {
   }, [filesInput, isInitialized]);
 
   return (
-    <div className="min-h-screen flex flex-col p-4 gap-4">
-      <header className="flex-shrink-0 flex items-center justify-between">
-        <h1 className="text-2xl font-bold">SCN-TS Web Demo</h1>
+    <div className="h-screen w-screen flex flex-col bg-background text-foreground">
+      <header className="flex-shrink-0 flex items-center justify-between p-4 border-b">
+        <h1 className="text-xl font-bold tracking-tight">SCN-TS Web Demo</h1>
         <Button onClick={handleAnalyze} disabled={isLoading || !isInitialized} className="w-32 justify-center">
           {isLoading ? (
             <>
@@ -352,8 +362,8 @@ function App() {
         </Button>
       </header>
 
-      <main className="flex-grow grid grid-cols-1 lg:grid-cols-2 gap-4 h-[calc(100vh-150px)]">
-        <Card className="flex flex-col">
+      <main className="flex-grow grid grid-cols-1 lg:grid-cols-2 gap-4 p-4 overflow-hidden">
+        <Card className="flex flex-col overflow-hidden">
           <CardHeader>
             <CardTitle>Input Files (JSON)</CardTitle>
           </CardHeader>
@@ -361,19 +371,19 @@ function App() {
             <Textarea
               value={filesInput}
               onChange={(e) => setFilesInput(e.currentTarget.value)}
-              className="h-full w-full font-mono text-xs"
+              className="h-full w-full font-mono text-xs resize-none"
               placeholder="Paste an array of FileContent objects here..."
             />
           </CardContent>
         </Card>
 
         <Card className="flex flex-col overflow-hidden">
-           <CardHeader>
+          <CardHeader>
             <CardTitle>Output (SCN)</CardTitle>
           </CardHeader>
-          <CardContent className="flex-grow overflow-auto p-0">
-            <pre className="text-xs whitespace-pre font-mono p-4 h-full w-full">
-              <code>
+          <CardContent className="flex-grow overflow-auto">
+            <pre className="text-xs whitespace-pre-wrap font-mono h-full w-full">
+              <code className="h-full w-full">
                 {scnOutput || (isLoading ? "Generating..." : "Output will appear here.")}
               </code>
             </pre>
@@ -381,7 +391,7 @@ function App() {
         </Card>
       </main>
 
-      <footer className="flex-shrink-0 h-[150px]">
+      <footer className="flex-shrink-0 h-[200px] border-t">
         <LogViewer logs={logs} />
       </footer>
     </div>
@@ -487,6 +497,62 @@ export const defaultFilesJSON = JSON.stringify(files, null, 2);
 @tailwind components;
 @tailwind utilities;
 
+@layer base {
+  :root {
+    --background: 0 0% 100%;
+    --foreground: 222.2 84% 4.9%;
+    --card: 0 0% 100%;
+    --card-foreground: 222.2 84% 4.9%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 222.2 84% 4.9%;
+    --primary: 222.2 47.4% 11.2%;
+    --primary-foreground: 210 40% 98%;
+    --secondary: 210 40% 96.1%;
+    --secondary-foreground: 215.4 16.3% 46.9%;
+    --muted: 210 40% 96.1%;
+    --muted-foreground: 215.4 16.3% 46.9%;
+    --accent: 210 40% 96.1%;
+    --accent-foreground: 222.2 47.4% 11.2%;
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 210 40% 98%;
+    --border: 214.3 31.8% 91.4%;
+    --input: 214.3 31.8% 91.4%;
+    --ring: 222.2 84% 4.9%;
+    --radius: 0.5rem;
+  }
+
+  .dark {
+    --background: 222.2 84% 4.9%;
+    --foreground: 210 40% 98%;
+    --card: 222.2 84% 4.9%;
+    --card-foreground: 210 40% 98%;
+    --popover: 222.2 84% 4.9%;
+    --popover-foreground: 210 40% 98%;
+    --primary: 210 40% 98%;
+    --primary-foreground: 222.2 47.4% 11.2%;
+    --secondary: 217.2 32.6% 17.5%;
+    --secondary-foreground: 210 40% 98%;
+    --muted: 217.2 32.6% 17.5%;
+    --muted-foreground: 215 20.2% 65.1%;
+    --accent: 217.2 32.6% 17.5%;
+    --accent-foreground: 210 40% 98%;
+    --destructive: 0 62.8% 30.6%;
+    --destructive-foreground: 210 40% 98%;
+    --border: 217.2 32.6% 17.5%;
+    --input: 217.2 32.6% 17.5%;
+    --ring: 212.7 26.8% 83.9%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+}
+
 /* For custom scrollbars */
 ::-webkit-scrollbar {
   width: 8px;
@@ -496,11 +562,11 @@ export const defaultFilesJSON = JSON.stringify(files, null, 2);
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: #888;
+  background: hsl(var(--border));
   border-radius: 4px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: #555;
+  background: hsl(var(--accent-foreground));
 }
 ```
 
@@ -528,7 +594,7 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>SCN-TS Web Demo</title>
   </head>
-  <body class="bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-gray-100">
+  <body>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
@@ -593,7 +659,44 @@ export default {
     "./src/**/*.{js,ts,jsx,tsx}",
   ],
   theme: {
-    extend: {},
+    extend: {
+      colors: {
+        border: "hsl(var(--border))",
+        input: "hsl(var(--input))",
+        ring: "hsl(var(--ring))",
+        background: "hsl(var(--background))",
+        foreground: "hsl(var(--foreground))",
+        primary: {
+          DEFAULT: "hsl(var(--primary))",
+          foreground: "hsl(var(--primary-foreground))",
+        },
+        secondary: {
+          DEFAULT: "hsl(var(--secondary))",
+          foreground: "hsl(var(--secondary-foreground))",
+        },
+        destructive: {
+          DEFAULT: "hsl(var(--destructive))",
+          foreground: "hsl(var(--destructive-foreground))",
+        },
+        muted: {
+          DEFAULT: "hsl(var(--muted))",
+          foreground: "hsl(var(--muted-foreground))",
+        },
+        accent: {
+          DEFAULT: "hsl(var(--accent))",
+          foreground: "hsl(var(--accent-foreground))",
+        },
+        card: {
+          DEFAULT: "hsl(var(--card))",
+          foreground: "hsl(var(--card-foreground))",
+        },
+      },
+      borderRadius: {
+        lg: `var(--radius)`,
+        md: `calc(var(--radius) - 2px)`,
+        sm: `calc(var(--radius) - 4px)`,
+      },
+    },
   },
   plugins: [],
 }
@@ -629,7 +732,7 @@ export default {
   },
   "include": ["src"],
   "references": [
-    { "path": "../scn-ts-core" }
+    { "path": "../../" }
   ]
 }
 ```
@@ -886,39 +989,6 @@ class Logger {
 export const logger = new Logger();
 ```
 
-## File: tsconfig.json
-```json
-{
-  "compilerOptions": {
-    // Environment setup & latest features
-    "lib": ["ESNext"],
-    "target": "ESNext",
-    "module": "Preserve",
-    "moduleDetection": "force",
-    "jsx": "react-jsx",
-    "allowJs": true,
-
-    // Bundler mode
-    "moduleResolution": "bundler",
-    "allowImportingTsExtensions": true,
-    "verbatimModuleSyntax": true,
-    "noEmit": true,
-
-    // Best practices
-    "strict": true,
-    "skipLibCheck": true,
-    "noFallthroughCasesInSwitch": true,
-    "noUncheckedIndexedAccess": true,
-    "noImplicitOverride": true,
-
-    // Some stricter flags (disabled by default)
-    "noUnusedLocals": true,
-    "noUnusedParameters": true,
-    "noPropertyAccessFromIndexSignature": false
-  }
-}
-```
-
 ## File: src/utils/tsconfig.ts
 ```typescript
 import path from './path';
@@ -963,122 +1033,38 @@ export const getPathResolver = (tsconfig?: TsConfig | null): PathResolver => {
 };
 ```
 
-## File: src/main.ts
-```typescript
-import { getLanguageForFile } from './languages';
-import { initializeParser as init, parse } from './parser';
-import type { ParserInitOptions, SourceFile, InputFile, TsConfig, LogLevel } from './types';
-import { analyze } from './analyzer';
-import { formatScn } from './formatter';
-import path from './utils/path';
-import { getPathResolver } from './utils/tsconfig';
-import { resolveGraph } from './graph-resolver';
-import { logger } from './logger';
+## File: tsconfig.json
+```json
+{
+  "compilerOptions": {
+    "composite": true,
+    // Environment setup & latest features
+    "lib": ["ESNext", "DOM"],
+    "target": "ESNext",
+    "module": "Preserve",
+    "moduleDetection": "force",
+    "jsx": "react-jsx",
+    "allowJs": true,
 
-/**
- * Public API to initialize the parser. Must be called before any other APIs.
- */
-export const initializeParser = (options: ParserInitOptions): Promise<void> => init(options);
+    // Bundler mode
+    "moduleResolution": "bundler",
+    "allowImportingTsExtensions": true,
+    "verbatimModuleSyntax": true,
+    "noEmit": true,
 
-// Types for web demo
-export type { ParserInitOptions, SourceFile, LogLevel, InputFile, TsConfig, ScnTsConfig } from './types';
-export type { LogHandler } from './logger';
-export type FileContent = InputFile;
+    // Best practices
+    "strict": true,
+    "skipLibCheck": true,
+    "noFallthroughCasesInSwitch": true,
+    "noUncheckedIndexedAccess": true,
+    "noImplicitOverride": true,
 
-// Exports for web demo
-export { logger };
-export { formatScn as generateScn }; // App.tsx uses `generateScn` to format the graph
-
-interface AnalyzeProjectOptions {
-    files: InputFile[];
-    tsconfig?: TsConfig;
-    root?: string;
-    onProgress?: (progress: { percentage: number; message: string }) => void;
-    logLevel?: LogLevel;
+    // Some stricter flags (disabled by default)
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noPropertyAccessFromIndexSignature": false
+  }
 }
-
-/**
- * Parses and analyzes a project's files to build a dependency graph.
- */
-export const analyzeProject = async ({
-    files,
-    tsconfig,
-    root = '/',
-    onProgress,
-    logLevel
-}: AnalyzeProjectOptions): Promise<SourceFile[]> => {
-    if (logLevel) {
-        logger.setLevel(logLevel);
-    }
-    const pathResolver = getPathResolver(tsconfig);
-
-    let fileIdCounter = 1;
-
-    onProgress?.({ percentage: 0, message: 'Creating source files...' });
-    logger.debug('Creating source files...');
-
-    // Step 1: Create SourceFile objects for all files
-    const sourceFiles = files.map((file) => {
-        const lang = getLanguageForFile(file.path);
-        const absolutePath = path.join(root, file.path);
-        const sourceFile: SourceFile = {
-            id: fileIdCounter++,
-            relativePath: file.path,
-            absolutePath,
-            sourceCode: file.content,
-            language: lang!,
-            symbols: [],
-            parseError: false,
-        };
-        return sourceFile;
-    });
-
-    onProgress?.({ percentage: 10, message: `Parsing ${sourceFiles.length} files...` });
-    logger.debug(`Parsing ${sourceFiles.length} files...`);
-
-    // Step 2: Parse all files
-    const parsedFiles = sourceFiles.map((file, i) => {
-        if (!file.language || !file.language.wasmPath || file.sourceCode.trim() === '') {
-            return file;
-        }
-        const tree = parse(file.sourceCode, file.language);
-        if (!tree) {
-            file.parseError = true;
-            logger.warn(`Failed to parse ${file.relativePath}`);
-        } else {
-            file.ast = tree;
-        }
-        const percentage = 10 + (40 * (i + 1) / sourceFiles.length);
-        onProgress?.({ percentage, message: `Parsing ${file.relativePath}` });
-        logger.debug(`[${Math.round(percentage)}%] Parsed ${file.relativePath}`);
-        return file;
-    });
-
-    onProgress?.({ percentage: 50, message: 'Analyzing files...' });
-    logger.debug('Analyzing files...');
-
-    // Step 3: Analyze all parsed files
-    const analyzedFiles = parsedFiles.map((file, i) => {
-        if (file.ast) {
-            const analyzed = analyze(file);
-            const percentage = 50 + (40 * (i + 1) / sourceFiles.length);
-            onProgress?.({ percentage, message: `Analyzing ${file.relativePath}` });
-            logger.debug(`[${Math.round(percentage)}%] Analyzed ${file.relativePath}`);
-            return analyzed;
-        }
-        return file;
-    });
-    
-    onProgress?.({ percentage: 90, message: 'Resolving dependency graph...' });
-    logger.debug('Resolving dependency graph...');
-
-    // Step 4: Resolve the dependency graph across all files
-    const resolvedGraph = resolveGraph(analyzedFiles, pathResolver, root);
-    
-    onProgress?.({ percentage: 100, message: 'Analysis complete.' });
-    logger.debug('Analysis complete.');
-    return resolvedGraph;
-};
 ```
 
 ## File: src/utils/ast.ts
@@ -1216,6 +1202,142 @@ export const getLanguageForFile = (filePath: string): LanguageConfig | undefined
 };
 ```
 
+## File: src/main.ts
+```typescript
+import { getLanguageForFile } from './languages';
+import { initializeParser as init, parse } from './parser';
+import type { ParserInitOptions, SourceFile, InputFile, TsConfig, LogLevel, ScnTsConfig } from './types';
+import { analyze } from './analyzer';
+import { formatScn } from './formatter';
+import path from './utils/path';
+import { getPathResolver } from './utils/tsconfig';
+import { resolveGraph } from './graph-resolver';
+import { logger } from './logger';
+
+/**
+ * Public API to initialize the parser. Must be called before any other APIs.
+ */
+export const initializeParser = (options: ParserInitOptions): Promise<void> => init(options);
+
+// Types for web demo
+export type { ParserInitOptions, SourceFile, LogLevel, InputFile, TsConfig, ScnTsConfig } from './types';
+export type { LogHandler } from './logger';
+export type FileContent = InputFile;
+
+// Exports for web demo
+export { logger };
+
+/**
+ * Generate SCN from analyzed source files
+ */
+export const generateScn = (analyzedFiles: SourceFile[]): string => {
+    return formatScn(analyzedFiles);
+};
+
+/**
+ * Legacy API: Generate SCN from config (for backward compatibility)
+ */
+export const generateScnFromConfig = async (config: ScnTsConfig): Promise<string> => {
+    const analyzedFiles = await analyzeProject({
+        files: config.files,
+        tsconfig: config.tsconfig,
+        root: config.root
+    });
+    return formatScn(analyzedFiles);
+};
+
+interface AnalyzeProjectOptions {
+    files: InputFile[];
+    tsconfig?: TsConfig;
+    root?: string;
+    onProgress?: (progress: { percentage: number; message: string }) => void;
+    logLevel?: LogLevel;
+}
+
+/**
+ * Parses and analyzes a project's files to build a dependency graph.
+ */
+export const analyzeProject = async ({
+    files,
+    tsconfig,
+    root = '/',
+    onProgress,
+    logLevel
+}: AnalyzeProjectOptions): Promise<SourceFile[]> => {
+    if (logLevel) {
+        logger.setLevel(logLevel);
+    }
+    const pathResolver = getPathResolver(tsconfig);
+
+    let fileIdCounter = 1;
+
+    onProgress?.({ percentage: 0, message: 'Creating source files...' });
+    logger.debug('Creating source files...');
+
+    // Step 1: Create SourceFile objects for all files
+    const sourceFiles = files.map((file) => {
+        const lang = getLanguageForFile(file.path);
+        const absolutePath = path.join(root, file.path);
+        const sourceFile: SourceFile = {
+            id: fileIdCounter++,
+            relativePath: file.path,
+            absolutePath,
+            sourceCode: file.content,
+            language: lang!,
+            symbols: [],
+            parseError: false,
+        };
+        return sourceFile;
+    });
+
+    onProgress?.({ percentage: 10, message: `Parsing ${sourceFiles.length} files...` });
+    logger.debug(`Parsing ${sourceFiles.length} files...`);
+
+    // Step 2: Parse all files
+    const parsedFiles = sourceFiles.map((file, i) => {
+        if (!file.language || !file.language.wasmPath || file.sourceCode.trim() === '') {
+            return file;
+        }
+        const tree = parse(file.sourceCode, file.language);
+        if (!tree) {
+            file.parseError = true;
+            logger.warn(`Failed to parse ${file.relativePath}`);
+        } else {
+            file.ast = tree;
+        }
+        const percentage = 10 + (40 * (i + 1) / sourceFiles.length);
+        onProgress?.({ percentage, message: `Parsing ${file.relativePath}` });
+        logger.debug(`[${Math.round(percentage)}%] Parsed ${file.relativePath}`);
+        return file;
+    });
+
+    onProgress?.({ percentage: 50, message: 'Analyzing files...' });
+    logger.debug('Analyzing files...');
+
+    // Step 3: Analyze all parsed files
+    const analyzedFiles = parsedFiles.map((file, i) => {
+        if (file.ast) {
+            const analyzed = analyze(file);
+            const percentage = 50 + (40 * (i + 1) / sourceFiles.length);
+            onProgress?.({ percentage, message: `Analyzing ${file.relativePath}` });
+            logger.debug(`[${Math.round(percentage)}%] Analyzed ${file.relativePath}`);
+            return analyzed;
+        }
+        return file;
+    });
+    
+    onProgress?.({ percentage: 90, message: 'Resolving dependency graph...' });
+    logger.debug('Resolving dependency graph...');
+
+    // Step 4: Resolve the dependency graph across all files
+    const resolvedGraph = resolveGraph(analyzedFiles, pathResolver, root);
+    
+    onProgress?.({ percentage: 100, message: 'Analysis complete.' });
+    logger.debug('Analysis complete.');
+    return resolvedGraph;
+};
+```
+
 ## File: src/queries/go.ts
 ```typescript
 export const goQueries = `
@@ -1332,23 +1454,6 @@ export const parse = (sourceCode: string, lang: LanguageConfig): Tree | null => 
 };
 ```
 
-## File: package.json
-```json
-{
-  "name": "scn-ts-core",
-  "module": "index.ts",
-  "type": "module",
-  "private": true,
-  "devDependencies": {
-    "@types/bun": "latest",
-    "web-tree-sitter": "0.25.6"
-  },
-  "peerDependencies": {
-    "typescript": "^5"
-  }
-}
-```
-
 ## File: src/graph-resolver.ts
 ```typescript
 import type { SourceFile, PathResolver, Relationship } from './types';
@@ -1439,6 +1544,23 @@ export const resolveGraph = (sourceFiles: SourceFile[], pathResolver: PathResolv
     }
     return sourceFiles;
 };
+```
+
+## File: package.json
+```json
+{
+  "name": "scn-ts-core",
+  "module": "src/main.ts",
+  "type": "module",
+  "private": true,
+  "devDependencies": {
+    "@types/bun": "latest",
+    "web-tree-sitter": "0.25.6"
+  },
+  "peerDependencies": {
+    "typescript": "^5"
+  }
+}
 ```
 
 ## File: src/queries/css.ts
@@ -1642,7 +1764,7 @@ const formatSymbolIdDisplay = (file: SourceFile, symbol: CodeSymbol): string | n
 };
 
 const formatSymbol = (symbol: CodeSymbol, allFiles: SourceFile[]): string[] => {
-    let icon = ICONS[symbol.kind] || ICONS.default;
+    let icon = ICONS[symbol.kind] || ICONS.default || '?';
     const prefix = symbol.isExported ? '+' : '-';
     let name = symbol.name === '<anonymous>' ? '' : symbol.name;
     if (symbol.kind === 'variable' && name.trim() === 'default') name = '';
@@ -2523,7 +2645,7 @@ export const typescriptQueries = `
 ; Type references in type annotations, extends clauses, etc.
 (type_identifier) @rel.references
 
-; `satisfies` expressions
+; satisfies expressions
 (satisfies_expression
   (type_identifier) @rel.references)
 

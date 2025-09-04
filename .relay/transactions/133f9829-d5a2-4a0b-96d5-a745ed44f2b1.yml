@@ -1,0 +1,770 @@
+uuid: 133f9829-d5a2-4a0b-96d5-a745ed44f2b1
+projectId: scn-ts-core
+createdAt: '2025-09-04T17:25:15.507Z'
+linesAdded: 83
+linesRemoved: 82
+gitCommitMsg: 'refactor(web-demo): improve UI layout and UX for cohesiveness'
+promptSummary: Refactor the web demo UI for a more cohesive and modern layout.
+reasoning:
+  - >-
+    ok fam, let's get this UI looking slick. the current layout is a bit clunky,
+    with that fixed footer and the crowded controls. we're gonna refactor it
+    into a more cohesive, modern workspace layout. think resizable-style panes,
+    but with pure tailwind flexbox/grid magic.
+  - 'here''s the plan:'
+  - >-
+    1.  **Restructure `App.tsx`**: Ditch the `main` + `footer` structure. We'll
+    move everything into a single, flexible `main` layout using `flex-col`.
+  - >-
+    2.  **Flexible Panes**: The top area will be a `grid` for the input/output
+    panels. The bottom area will be a log panel with a flexible height (`h-1/3`)
+    and a `max-h` to keep it from getting too big. This makes the whole view
+    feel more integrated.
+  - >-
+    3.  **Declutter Output Header**: Those formatting checkboxes are all jammed
+    on one line. I'll break them out onto their own line below the title, giving
+    them room to breathe and making the header clean.
+  - >-
+    4.  **Tweak `LogViewer` Padding**: Shave down the padding in the log viewer
+    to make it more compact and save precious vertical space.
+  - let's ship it.
+  - >-
+    First, I'll tighten up the padding in the `LogViewer` component for a more
+    compact feel.
+  - >-
+    Now for the main event: overhauling `App.tsx` to create the new, cohesive
+    layout and clean up the controls.
+operations:
+  - type: write
+    path: packages/scn-ts-web-demo/src/components/LogViewer.tsx
+    content: |-
+      --- packages/scn-ts-web-demo/src/components/LogViewer.tsx
+      +++ packages/scn-ts-web-demo/src/components/LogViewer.tsx
+      @@ -16,11 +16,11 @@
+       
+         return (
+           <Card className="h-full flex flex-col border-0 rounded-none bg-transparent">
+      -      <CardHeader className="py-3 px-6">
+      +      <CardHeader className="py-2 px-4">
+               <CardTitle>Logs</CardTitle>
+             </CardHeader>
+             <CardContent ref={scrollContainerRef} className="flex-grow overflow-auto p-0">
+      -        <div className="p-6 pt-0 font-mono text-xs">
+      +        <div className="px-4 pb-4 pt-0 font-mono text-xs">
+                 {logs.length === 0 && <p className="text-muted-foreground">No logs yet. Click "Analyze" to start.</p>}
+                 {logs.map((log, index) => (
+                   <div key={index} className="flex items-start">
+    patchStrategy: new-unified
+  - type: write
+    path: packages/scn-ts-web-demo/src/App.tsx
+    content: >-
+      --- packages/scn-ts-web-demo/src/App.tsx
+
+      +++ packages/scn-ts-web-demo/src/App.tsx
+
+      @@ -124,7 +124,8 @@
+               </Button>
+             </header>
+       
+      -      <main className="flex-grow grid grid-cols-1 lg:grid-cols-2 gap-4
+      p-4 overflow-hidden">
+
+      +      <main className="flex-grow flex flex-col gap-4 p-4
+      overflow-hidden">
+
+      +        <div className="flex-grow grid grid-cols-1 lg:grid-cols-2 gap-4
+      overflow-hidden">
+               <Card className="flex flex-col overflow-hidden">
+                 <CardHeader>
+                   <CardTitle className="flex justify-between items-center">
+      @@ -144,71 +145,72 @@
+       
+               <Card className="flex flex-col overflow-hidden">
+                 <CardHeader>
+      -            <CardTitle className="flex justify-between items-center">
+
+      -              <span className="whitespace-nowrap">Output (SCN)</span>
+
+      -              <div className="flex items-center flex-wrap gap-x-4 gap-y-1
+      text-sm font-normal text-muted-foreground w-full justify-end">
+
+      -                <div className="flex items-center space-x-1.5">
+
+      -                  <input
+
+      -                    type="checkbox"
+
+      -                    id="showOutgoing"
+
+      -                    checked={formattingOptions.showOutgoing}
+
+      -                    onChange={(e) => setFormattingOptions(prev => ({
+      ...prev, showOutgoing: e.target.checked }))}
+
+      -                    className="h-4 w-4 rounded border-muted-foreground/50
+      bg-transparent text-primary focus:ring-primary"
+
+      -                  />
+
+      -                  <label htmlFor="showOutgoing" className="cursor-pointer
+      select-none">Outgoing</label>
+
+      -                </div>
+
+      -                <div className="flex items-center space-x-1.5">
+
+      -                  <input
+
+      -                    type="checkbox"
+
+      -                    id="showIncoming"
+
+      -                    checked={formattingOptions.showIncoming}
+
+      -                    onChange={(e) => setFormattingOptions(prev => ({
+      ...prev, showIncoming: e.target.checked }))}
+
+      -                    className="h-4 w-4 rounded border-muted-foreground/50
+      bg-transparent text-primary focus:ring-primary"
+
+      -                  />
+
+      -                  <label htmlFor="showIncoming" className="cursor-pointer
+      select-none">Incoming</label>
+
+      -                </div>
+
+      -                <div className="flex items-center space-x-1.5">
+
+      -                  <input
+
+      -                    type="checkbox"
+
+      -                    id="showIcons"
+
+      -                    checked={formattingOptions.showIcons}
+
+      -                    onChange={(e) => setFormattingOptions(prev => ({
+      ...prev, showIcons: e.target.checked }))}
+
+      -                    className="h-4 w-4 rounded border-muted-foreground/50
+      bg-transparent text-primary focus:ring-primary"
+
+      -                  />
+
+      -                  <label htmlFor="showIcons" className="cursor-pointer
+      select-none">Icons</label>
+
+      -                </div>
+
+      -                <div className="flex items-center space-x-1.5">
+
+      -                  <input
+
+      -                    type="checkbox"
+
+      -                    id="showVisibility"
+
+      -                    checked={formattingOptions.showVisibility}
+
+      -                    onChange={(e) => setFormattingOptions(prev => ({
+      ...prev, showVisibility: e.target.checked }))}
+
+      -                    className="h-4 w-4 rounded border-muted-foreground/50
+      bg-transparent text-primary focus:ring-primary"
+
+      -                  />
+
+      -                  <label htmlFor="showVisibility"
+      className="cursor-pointer select-none">Visibility</label>
+
+      -                </div>
+
+      -                <div className="flex items-center space-x-1.5">
+
+      -                  <input
+
+      -                    type="checkbox"
+
+      -                    id="showModifiers"
+
+      -                    checked={formattingOptions.showModifiers}
+
+      -                    onChange={(e) => setFormattingOptions(prev => ({
+      ...prev, showModifiers: e.target.checked }))}
+
+      -                    className="h-4 w-4 rounded border-muted-foreground/50
+      bg-transparent text-primary focus:ring-primary"
+
+      -                  />
+
+      -                  <label htmlFor="showModifiers"
+      className="cursor-pointer select-none">Modifiers</label>
+
+      -                </div>
+
+      -                <div className="flex items-center space-x-1.5">
+
+      -                  <input
+
+      -                    type="checkbox"
+
+      -                    id="showTags"
+
+      -                    checked={formattingOptions.showTags}
+
+      -                    onChange={(e) => setFormattingOptions(prev => ({
+      ...prev, showTags: e.target.checked }))}
+
+      -                    className="h-4 w-4 rounded border-muted-foreground/50
+      bg-transparent text-primary focus:ring-primary"
+
+      -                  />
+
+      -                  <label htmlFor="showTags" className="cursor-pointer
+      select-none">Tags</label>
+
+      -                </div>
+
+      -                <div className="flex items-center space-x-1.5">
+
+      -                  <input
+
+      -                    type="checkbox"
+
+      -                    id="showSymbolIds"
+
+      -                    checked={formattingOptions.showSymbolIds}
+
+      -                    onChange={(e) => setFormattingOptions(prev => ({
+      ...prev, showSymbolIds: e.target.checked }))}
+
+      -                    className="h-4 w-4 rounded border-muted-foreground/50
+      bg-transparent text-primary focus:ring-primary"
+
+      -                  />
+
+      -                  <label htmlFor="showSymbolIds"
+      className="cursor-pointer select-none">Symbol IDs</label>
+
+      -                </div>
+
+      -                <span className="text-right tabular-nums w-24
+      shrink-0">{tokenCounts.output.toLocaleString()} tokens</span>
+
+      -              </div>
+
+      -            </CardTitle>
+
+      +            <div className="flex justify-between items-center">
+
+      +              <CardTitle>Output (SCN)</CardTitle>
+
+      +              <span className="text-sm font-normal text-muted-foreground
+      tabular-nums">{tokenCounts.output.toLocaleString()} tokens</span>
+
+      +            </div>
+
+      +            <div className="flex items-center flex-wrap gap-x-4 gap-y-2
+      pt-2 text-sm text-muted-foreground">
+
+      +              <div className="flex items-center space-x-1.5">
+
+      +                <input
+
+      +                  type="checkbox"
+
+      +                  id="showOutgoing"
+
+      +                  checked={formattingOptions.showOutgoing}
+
+      +                  onChange={(e) => setFormattingOptions(prev => ({
+      ...prev, showOutgoing: e.target.checked }))}
+
+      +                  className="h-4 w-4 rounded border-muted-foreground/50
+      bg-transparent text-primary focus:ring-primary"
+
+      +                />
+
+      +                <label htmlFor="showOutgoing" className="cursor-pointer
+      select-none">Outgoing</label>
+
+      +              </div>
+
+      +              <div className="flex items-center space-x-1.5">
+
+      +                <input
+
+      +                  type="checkbox"
+
+      +                  id="showIncoming"
+
+      +                  checked={formattingOptions.showIncoming}
+
+      +                  onChange={(e) => setFormattingOptions(prev => ({
+      ...prev, showIncoming: e.target.checked }))}
+
+      +                  className="h-4 w-4 rounded border-muted-foreground/50
+      bg-transparent text-primary focus:ring-primary"
+
+      +                />
+
+      +                <label htmlFor="showIncoming" className="cursor-pointer
+      select-none">Incoming</label>
+
+      +              </div>
+
+      +              <div className="flex items-center space-x-1.5">
+
+      +                <input
+
+      +                  type="checkbox"
+
+      +                  id="showIcons"
+
+      +                  checked={formattingOptions.showIcons}
+
+      +                  onChange={(e) => setFormattingOptions(prev => ({
+      ...prev, showIcons: e.target.checked }))}
+
+      +                  className="h-4 w-4 rounded border-muted-foreground/50
+      bg-transparent text-primary focus:ring-primary"
+
+      +                />
+
+      +                <label htmlFor="showIcons" className="cursor-pointer
+      select-none">Icons</label>
+
+      +              </div>
+
+      +              <div className="flex items-center space-x-1.5">
+
+      +                <input
+
+      +                  type="checkbox"
+
+      +                  id="showVisibility"
+
+      +                  checked={formattingOptions.showVisibility}
+
+      +                  onChange={(e) => setFormattingOptions(prev => ({
+      ...prev, showVisibility: e.target.checked }))}
+
+      +                  className="h-4 w-4 rounded border-muted-foreground/50
+      bg-transparent text-primary focus:ring-primary"
+
+      +                />
+
+      +                <label htmlFor="showVisibility" className="cursor-pointer
+      select-none">Visibility</label>
+
+      +              </div>
+
+      +              <div className="flex items-center space-x-1.5">
+
+      +                <input
+
+      +                  type="checkbox"
+
+      +                  id="showModifiers"
+
+      +                  checked={formattingOptions.showModifiers}
+
+      +                  onChange={(e) => setFormattingOptions(prev => ({
+      ...prev, showModifiers: e.target.checked }))}
+
+      +                  className="h-4 w-4 rounded border-muted-foreground/50
+      bg-transparent text-primary focus:ring-primary"
+
+      +                />
+
+      +                <label htmlFor="showModifiers" className="cursor-pointer
+      select-none">Modifiers</label>
+
+      +              </div>
+
+      +              <div className="flex items-center space-x-1.5">
+
+      +                <input
+
+      +                  type="checkbox"
+
+      +                  id="showTags"
+
+      +                  checked={formattingOptions.showTags}
+
+      +                  onChange={(e) => setFormattingOptions(prev => ({
+      ...prev, showTags: e.target.checked }))}
+
+      +                  className="h-4 w-4 rounded border-muted-foreground/50
+      bg-transparent text-primary focus:ring-primary"
+
+      +                />
+
+      +                <label htmlFor="showTags" className="cursor-pointer
+      select-none">Tags</label>
+
+      +              </div>
+
+      +              <div className="flex items-center space-x-1.5">
+
+      +                <input
+
+      +                  type="checkbox"
+
+      +                  id="showSymbolIds"
+
+      +                  checked={formattingOptions.showSymbolIds}
+
+      +                  onChange={(e) => setFormattingOptions(prev => ({
+      ...prev, showSymbolIds: e.target.checked }))}
+
+      +                  className="h-4 w-4 rounded border-muted-foreground/50
+      bg-transparent text-primary focus:ring-primary"
+
+      +                />
+
+      +                <label htmlFor="showSymbolIds" className="cursor-pointer
+      select-none">Symbol IDs</label>
+
+      +              </div>
+
+      +            </div>
+                 </CardHeader>
+                 <CardContent className="flex-grow overflow-auto">
+                   <pre className="text-xs whitespace-pre-wrap font-mono h-full w-full">
+      @@ -219,12 +221,11 @@
+                   </pre>
+                 </CardContent>
+               </Card>
+      +        </div>
+
+      +        <div className="flex-shrink-0 h-1/3 max-h-[25rem] border
+      rounded-lg overflow-hidden">
+
+      +          <LogViewer logs={logs} />
+
+      +        </div>
+             </main>
+      -
+
+      -      <footer className="flex-shrink-0 h-[200px] border-t">
+
+      -        <LogViewer logs={logs} />
+
+      -      </footer>
+           </div>
+         );
+       }
+    patchStrategy: new-unified
+snapshot:
+  packages/scn-ts-web-demo/src/components/LogViewer.tsx: |
+    import React, { useEffect, useRef } from 'react';
+    import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
+    import { cn } from '../lib/utils';
+    import type { LogEntry } from '../types';
+    import { levelColorMap } from '../constants';
+
+    const LogViewer: React.FC<{ logs: readonly LogEntry[] }> = ({ logs }) => {
+      const scrollContainerRef = useRef<HTMLDivElement>(null);
+
+      useEffect(() => {
+        if (scrollContainerRef.current) {
+          scrollContainerRef.current.scrollTop = scrollContainerRef.current.scrollHeight;
+        }
+      }, [logs]);
+
+      return (
+        <Card className="h-full flex flex-col border-0 rounded-none bg-transparent">
+          <CardHeader className="py-3 px-6">
+            <CardTitle>Logs</CardTitle>
+          </CardHeader>
+          <CardContent ref={scrollContainerRef} className="flex-grow overflow-auto p-0">
+            <div className="p-6 pt-0 font-mono text-xs">
+              {logs.length === 0 && <p className="text-muted-foreground">No logs yet. Click "Analyze" to start.</p>}
+              {logs.map((log, index) => (
+                <div key={index} className="flex items-start">
+                  <span className="text-muted-foreground/80 mr-4 flex-shrink-0">
+                    {new Date(log.timestamp).toLocaleTimeString()}
+                  </span>
+                  <span className={cn("font-bold w-14 flex-shrink-0", levelColorMap[log.level])}>
+                    [{log.level.toUpperCase()}]
+                  </span>
+                  <span className="whitespace-pre-wrap break-all text-foreground">{log.message}</span>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      );
+    };
+
+    export default LogViewer;
+  packages/scn-ts-web-demo/src/App.tsx: >
+    import { useState, useEffect, useCallback, useRef } from 'react';
+
+    import { get_encoding, type Tiktoken } from 'tiktoken';
+
+    import {
+      initializeParser,
+      logger,
+      analyzeProject,
+      generateScn,
+    } from '../../../index';
+
+    import type { FileContent, LogHandler, SourceFile, FormattingOptions } from
+    '../../../index';
+
+    import { defaultFilesJSON } from './default-files';
+
+    import { Button } from './components/ui/button';
+
+    import { Card, CardContent, CardHeader, CardTitle } from
+    './components/ui/card';
+
+    import { Textarea } from './components/ui/textarea';
+
+    import LogViewer from './components/LogViewer';
+
+    import { Play, Loader } from 'lucide-react';
+
+    import type { LogEntry, ProgressData } from './types';
+
+
+    function App() {
+      const [isInitialized, setIsInitialized] = useState(false);
+      const [isLoading, setIsLoading] = useState(false);
+      const [filesInput, setFilesInput] = useState(defaultFilesJSON);
+      const [scnOutput, setScnOutput] = useState('');
+      const [analysisResult, setAnalysisResult] = useState<SourceFile[] | null>(null);
+      const [formattingOptions, setFormattingOptions] = useState<FormattingOptions>({
+        showOutgoing: true,
+        showIncoming: true,
+        showIcons: true,
+        showVisibility: true,
+        showModifiers: true,
+        showTags: true,
+        showSymbolIds: true,
+      });
+      const [progress, setProgress] = useState<ProgressData | null>(null);
+      const [logs, setLogs] = useState<LogEntry[]>([]);
+      const [encoder, setEncoder] = useState<Tiktoken | null>(null);
+      const [tokenCounts, setTokenCounts] = useState({ input: 0, output: 0 });
+
+      useEffect(() => {
+        const init = async () => {
+          try {
+            await initializeParser({ wasmBaseUrl: '/wasm/' });
+            const enc = get_encoding("cl100k_base");
+            setEncoder(enc);
+            setIsInitialized(true);
+            setLogs(prev => [...prev, { level: 'info', message: 'Parser and tokenizer initialized.', timestamp: Date.now() }]);
+          } catch (error) {
+            const message = error instanceof Error ? error.message : String(error);
+            setLogs(prev => [...prev, { level: 'error', message: `Failed to initialize: ${message}`, timestamp: Date.now() }]);
+          }
+        };
+        init();
+      }, []);
+
+      useEffect(() => {
+        if (!encoder) return;
+        try {
+          const inputTokens = encoder.encode(filesInput).length;
+          const outputTokens = encoder.encode(scnOutput).length;
+          setTokenCounts({ input: inputTokens, output: outputTokens });
+        } catch (e) {
+          console.error("Tokenization error:", e);
+          setTokenCounts({ input: 0, output: 0 });
+        }
+      }, [filesInput, scnOutput, encoder]);
+
+      useEffect(() => {
+        if (analysisResult) {
+          const scn = generateScn(analysisResult, formattingOptions);
+          setScnOutput(scn);
+        }
+      }, [analysisResult, formattingOptions]);
+
+      const handleAnalyze = useCallback(async () => {
+        if (!isInitialized) {
+          setLogs(prev => [...prev, { level: 'warn', message: 'Parser not ready.', timestamp: Date.now() }]);
+          return;
+        }
+
+        setIsLoading(true);
+        setLogs([]);
+        setScnOutput('');
+        setAnalysisResult(null);
+        setProgress(null);
+
+        const logHandler: LogHandler = (level, ...args) => {
+          const message = args.map(arg => typeof arg === 'object' ? JSON.stringify(arg) : String(arg)).join(' ');
+          setLogs(prev => [...prev, { level, message, timestamp: Date.now() }]);
+        };
+        logger.setLogHandler(logHandler);
+        logger.setLevel('debug');
+
+        const onProgress = (progressData: ProgressData) => {
+          setProgress(progressData);
+          logger.info(`[${Math.round(progressData.percentage)}%] ${progressData.message}`);
+        };
+
+        try {
+          let files: FileContent[] = [];
+          try {
+            files = JSON.parse(filesInput);
+            if (!Array.isArray(files)) throw new Error("Input is not an array.");
+          } catch (error) {
+            throw new Error(`Invalid JSON input: ${error instanceof Error ? error.message : String(error)}`);
+          }
+
+          const rankedGraph = await analyzeProject({ files, onProgress, logLevel: 'debug' });
+          setAnalysisResult(rankedGraph);
+          logger.info('Analysis complete.');
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          logger.error('Analysis failed:', message);
+        } finally {
+          setIsLoading(false);
+          setProgress(null);
+          logger.setLogHandler(null);
+        }
+      }, [filesInput, isInitialized]);
+
+      return (
+        <div className="h-screen w-screen flex flex-col bg-background text-foreground">
+          <header className="flex-shrink-0 flex items-center justify-between p-4 border-b">
+            <h1 className="text-xl font-bold tracking-tight">SCN-TS Web Demo</h1>
+            <Button onClick={handleAnalyze} disabled={isLoading || !isInitialized} className="w-32 justify-center">
+              {isLoading ? (
+                <>
+                  <Loader className="mr-2 h-4 w-4 animate-spin" />
+                  <span>{progress ? `${Math.round(progress.percentage)}%` : 'Analyzing...'}</span>
+                </>
+              ) : (
+                <>
+                  <Play className="mr-2 h-4 w-4" />
+                  <span>Analyze</span>
+                </>
+              )}
+            </Button>
+          </header>
+
+          <main className="flex-grow grid grid-cols-1 lg:grid-cols-2 gap-4 p-4 overflow-hidden">
+            <Card className="flex flex-col overflow-hidden">
+              <CardHeader>
+                <CardTitle className="flex justify-between items-center">
+                  <span>Input Files (JSON)</span>
+                  <span className="text-sm font-normal text-muted-foreground">{tokenCounts.input.toLocaleString()} tokens</span>
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="flex-grow">
+                <Textarea
+                  value={filesInput}
+                  onChange={(e) => setFilesInput(e.currentTarget.value)}
+                  className="h-full w-full font-mono text-xs resize-none"
+                  placeholder="Paste an array of FileContent objects here..."
+                />
+              </CardContent>
+            </Card>
+
+            <Card className="flex flex-col overflow-hidden">
+              <CardHeader>
+                <CardTitle className="flex justify-between items-center">
+                  <span className="whitespace-nowrap">Output (SCN)</span>
+                  <div className="flex items-center flex-wrap gap-x-4 gap-y-1 text-sm font-normal text-muted-foreground w-full justify-end">
+                    <div className="flex items-center space-x-1.5">
+                      <input
+                        type="checkbox"
+                        id="showOutgoing"
+                        checked={formattingOptions.showOutgoing}
+                        onChange={(e) => setFormattingOptions(prev => ({ ...prev, showOutgoing: e.target.checked }))}
+                        className="h-4 w-4 rounded border-muted-foreground/50 bg-transparent text-primary focus:ring-primary"
+                      />
+                      <label htmlFor="showOutgoing" className="cursor-pointer select-none">Outgoing</label>
+                    </div>
+                    <div className="flex items-center space-x-1.5">
+                      <input
+                        type="checkbox"
+                        id="showIncoming"
+                        checked={formattingOptions.showIncoming}
+                        onChange={(e) => setFormattingOptions(prev => ({ ...prev, showIncoming: e.target.checked }))}
+                        className="h-4 w-4 rounded border-muted-foreground/50 bg-transparent text-primary focus:ring-primary"
+                      />
+                      <label htmlFor="showIncoming" className="cursor-pointer select-none">Incoming</label>
+                    </div>
+                    <div className="flex items-center space-x-1.5">
+                      <input
+                        type="checkbox"
+                        id="showIcons"
+                        checked={formattingOptions.showIcons}
+                        onChange={(e) => setFormattingOptions(prev => ({ ...prev, showIcons: e.target.checked }))}
+                        className="h-4 w-4 rounded border-muted-foreground/50 bg-transparent text-primary focus:ring-primary"
+                      />
+                      <label htmlFor="showIcons" className="cursor-pointer select-none">Icons</label>
+                    </div>
+                    <div className="flex items-center space-x-1.5">
+                      <input
+                        type="checkbox"
+                        id="showVisibility"
+                        checked={formattingOptions.showVisibility}
+                        onChange={(e) => setFormattingOptions(prev => ({ ...prev, showVisibility: e.target.checked }))}
+                        className="h-4 w-4 rounded border-muted-foreground/50 bg-transparent text-primary focus:ring-primary"
+                      />
+                      <label htmlFor="showVisibility" className="cursor-pointer select-none">Visibility</label>
+                    </div>
+                    <div className="flex items-center space-x-1.5">
+                      <input
+                        type="checkbox"
+                        id="showModifiers"
+                        checked={formattingOptions.showModifiers}
+                        onChange={(e) => setFormattingOptions(prev => ({ ...prev, showModifiers: e.target.checked }))}
+                        className="h-4 w-4 rounded border-muted-foreground/50 bg-transparent text-primary focus:ring-primary"
+                      />
+                      <label htmlFor="showModifiers" className="cursor-pointer select-none">Modifiers</label>
+                    </div>
+                    <div className="flex items-center space-x-1.5">
+                      <input
+                        type="checkbox"
+                        id="showTags"
+                        checked={formattingOptions.showTags}
+                        onChange={(e) => setFormattingOptions(prev => ({ ...prev, showTags: e.target.checked }))}
+                        className="h-4 w-4 rounded border-muted-foreground/50 bg-transparent text-primary focus:ring-primary"
+                      />
+                      <label htmlFor="showTags" className="cursor-pointer select-none">Tags</label>
+                    </div>
+                    <div className="flex items-center space-x-1.5">
+                      <input
+                        type="checkbox"
+                        id="showSymbolIds"
+                        checked={formattingOptions.showSymbolIds}
+                        onChange={(e) => setFormattingOptions(prev => ({ ...prev, showSymbolIds: e.target.checked }))}
+                        className="h-4 w-4 rounded border-muted-foreground/50 bg-transparent text-primary focus:ring-primary"
+                      />
+                      <label htmlFor="showSymbolIds" className="cursor-pointer select-none">Symbol IDs</label>
+                    </div>
+                    <span className="text-right tabular-nums w-24 shrink-0">{tokenCounts.output.toLocaleString()} tokens</span>
+                  </div>
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="flex-grow overflow-auto">
+                <pre className="text-xs whitespace-pre-wrap font-mono h-full w-full">
+                  <code className="h-full w-full">
+                    {scnOutput || (isLoading ? "Generating..." : "Output will appear here.")}
+                  </code>
+                </pre>
+              </CardContent>
+            </Card>
+          </main>
+
+          <footer className="flex-shrink-0 h-[200px] border-t">
+            <LogViewer logs={logs} />
+          </footer>
+        </div>
+      );
+    }
+
+
+    export default App;
+approved: true

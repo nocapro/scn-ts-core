@@ -1,0 +1,1107 @@
+uuid: 44266c2d-8067-4256-b040-062e2124578b
+projectId: scn-ts-core
+createdAt: '2025-09-04T16:34:02.926Z'
+linesAdded: 38
+linesRemoved: 36
+gitCommitMsg: 'refactor(core): centralize types and constants'
+promptSummary: >-
+  Refactor scn-ts-core to extract types and constants into dedicated files
+  (types.ts and constants.ts).
+reasoning:
+  - >-
+    i'm anton, y combinator programmer netizen. i'll get this done for you, no
+    problem. refactoring to centralize types and constants is a good move for
+    maintainability.
+  - First, I'll create a new `src/constants.ts` file to hold shared constants.
+  - Next, I'll update `src/formatter.ts` to use the new `ICONS` constant.
+  - >-
+    I'll also update `src/graph-resolver.ts` to use the `RESOLVE_EXTENSIONS`
+    constant for resolving file paths.
+  - >-
+    Now for the types. I'll move `LogHandler` from `src/logger.ts` to
+    `src/types.ts`.
+  - >-
+    Next, I'll move the `TsConfig` interface from `src/utils/tsconfig.ts` to
+    `src/types.ts`.
+  - >-
+    I'll move the `AnalyzeProjectOptions` interface from `src/main.ts` into
+    `src/types.ts` and adjust the imports and exports.
+  - >-
+    Finally, I'll update `src/types.ts` to include the new types and remove the
+    old re-export.
+  - >-
+    This refactoring centralizes the core types and constants, making the
+    codebase cleaner. lgtm.
+operations:
+  - type: write
+    path: src/constants.ts
+    content: >-
+      export const ICONS: Record<string, string> = {
+          class: '◇', interface: '{}', function: '~', method: '~',
+          constructor: '~',
+          variable: '@', property: '@', enum: '☰', enum_member: '@',
+          type_alias: '=:', react_component: '◇', jsx_element: '⛶', styled_component: '~',
+          css_class: '¶', css_id: '¶', css_tag: '¶', css_at_rule: '¶',
+          go_package: '◇',
+          rust_struct: '◇', rust_trait: '{}', rust_impl: '+',
+          error: '[error]', default: '?',
+      };
+
+
+      export const RESOLVE_EXTENSIONS = ['.ts', '.tsx', '.js', '.jsx', '.css',
+      '.go', '.rs', '.py', '.java', '.graphql', ''];
+    patchStrategy: replace
+  - type: write
+    path: src/formatter.ts
+    content: >-
+      --- src/formatter.ts
+
+      +++ src/formatter.ts
+
+      @@ -1,16 +1,6 @@
+       import type { CodeSymbol, SourceFile } from './types';
+       import { topologicalSort } from './utils/graph';
+      -
+
+      -const ICONS: Record<string, string> = {
+
+      -    class: '◇', interface: '{}', function: '~', method: '~',
+
+      -    constructor: '~',
+
+      -    variable: '@', property: '@', enum: '☰', enum_member: '@',
+
+      -    type_alias: '=:', react_component: '◇', jsx_element: '⛶',
+      styled_component: '~',
+
+      -    css_class: '¶', css_id: '¶', css_tag: '¶', css_at_rule: '¶',
+
+      -    go_package: '◇',
+
+      -    rust_struct: '◇', rust_trait: '{}', rust_impl: '+',
+
+      -    error: '[error]', default: '?',
+
+      -};
+
+      +import { ICONS } from './constants';
+       
+       // Compute display index per file based on eligible symbols (exclude properties and constructors)
+       const isIdEligible = (symbol: CodeSymbol): boolean => {
+    patchStrategy: new-unified
+  - type: write
+    path: src/graph-resolver.ts
+    content: >-
+      --- src/graph-resolver.ts
+
+      +++ src/graph-resolver.ts
+
+      @@ -1,5 +1,6 @@
+       import type { SourceFile, PathResolver, Relationship } from './types';
+       import path from './utils/path';
+      +import { RESOLVE_EXTENSIONS } from './constants';
+       
+       type FileMap = Map<string, SourceFile>;
+       type SymbolMap = Map<number, Map<string, string>>;
+      @@ -9,8 +10,7 @@
+       
+           const resolvedPath = aliasedPath ? path.resolve(root, aliasedPath) : path.resolve(currentDir, importPath);
+       
+      -    const extensions = ['.ts', '.tsx', '.js', '.jsx', '.css', '.go',
+      '.rs', '.py', '.java', '.graphql', ''];
+
+      -    for (const ext of extensions) {
+
+      +    for (const ext of RESOLVE_EXTENSIONS) {
+               const tryPath = (resolvedPath + ext).replace(/\\/g, '/');
+               const relative = path.relative(root, tryPath).replace(/\\/g, '/');
+               if (fileMap.has(relative)) return fileMap.get(relative);
+    patchStrategy: new-unified
+  - type: write
+    path: src/logger.ts
+    content: >-
+      --- src/logger.ts
+
+      +++ src/logger.ts
+
+      @@ -1,6 +1,4 @@
+
+      -import type { LogLevel } from './types';
+
+      -
+
+      -export type LogHandler = (level: Exclude<LogLevel, 'silent'>, ...args:
+      any[]) => void;
+
+      +import type { LogLevel, LogHandler } from './types';
+       
+       class Logger {
+         private handler: LogHandler | null = null;
+    patchStrategy: new-unified
+  - type: write
+    path: src/utils/tsconfig.ts
+    content: |-
+      --- src/utils/tsconfig.ts
+      +++ src/utils/tsconfig.ts
+      @@ -1,12 +1,5 @@
+       import path from './path';
+      -
+      -export interface TsConfig {
+      -    compilerOptions?: {
+      -        baseUrl?: string;
+      -        paths?: Record<string, string[]>;
+      -    };
+      -}
+      +import type { TsConfig } from '../../types';
+       
+       const createPathResolver = (baseUrl: string, paths: Record<string, string[]>) => {
+           const aliasEntries = Object.entries(paths).map(([alias, resolutions]) => {
+    patchStrategy: new-unified
+  - type: write
+    path: src/main.ts
+    content: >-
+      --- src/main.ts
+
+      +++ src/main.ts
+
+      @@ -1,5 +1,5 @@
+       import { getLanguageForFile } from './languages';
+      -import { initializeParser as init, parse } from './parser';
+
+      -import type { ParserInitOptions, SourceFile, InputFile, TsConfig,
+      LogLevel, ScnTsConfig } from './types';
+
+      +import { initializeParser as init, parse } from './parser';
+
+      +import type { ParserInitOptions, SourceFile, InputFile, TsConfig,
+      LogLevel, ScnTsConfig, AnalyzeProjectOptions, LogHandler } from './types';
+       import { analyze } from './analyzer';
+       import { formatScn } from './formatter';
+      @@ -12,8 +12,7 @@
+       export const initializeParser = (options: ParserInitOptions): Promise<void> => init(options);
+       
+       // Types for web demo
+      -export type { ParserInitOptions, SourceFile, LogLevel, InputFile,
+      TsConfig, ScnTsConfig } from './types';
+
+      -export type { LogHandler } from './logger';
+
+      +export type { ParserInitOptions, SourceFile, LogLevel, InputFile,
+      TsConfig, ScnTsConfig, LogHandler, AnalyzeProjectOptions } from './types';
+       export type FileContent = InputFile;
+       
+       // Exports for web demo
+      @@ -35,15 +34,6 @@
+           return formatScn(analyzedFiles);
+       };
+       
+      -interface AnalyzeProjectOptions {
+
+      -    files: InputFile[];
+
+      -    tsconfig?: TsConfig;
+
+      -    root?: string;
+
+      -    onProgress?: (progress: { percentage: number; message: string }) =>
+      void;
+
+      -    logLevel?: LogLevel;
+
+      -}
+
+      -
+       /**
+        * Parses and analyzes a project's files to build a dependency graph.
+        */
+    patchStrategy: new-unified
+  - type: write
+    path: src/types.ts
+    content: >-
+      --- src/types.ts
+
+      +++ src/types.ts
+
+      @@ -1,8 +1,24 @@
+       import type { Parser, Tree, Language } from 'web-tree-sitter';
+      -import type { TsConfig, PathResolver } from './utils/tsconfig';
+
+      -export type { TsConfig, PathResolver };
+
+      +import type { PathResolver } from './utils/tsconfig';
+
+      +export type { PathResolver };
+       
+       export type LogLevel = 'error' | 'warn' | 'info' | 'debug' | 'silent';
+       
+      +export type LogHandler = (level: Exclude<LogLevel, 'silent'>, ...args:
+      any[]) => void;
+
+      +
+
+      +export interface TsConfig {
+
+      +    compilerOptions?: {
+
+      +        baseUrl?: string;
+
+      +        paths?: Record<string, string[]>;
+
+      +    };
+
+      +}
+
+      +
+
+      +export interface AnalyzeProjectOptions {
+
+      +    files: InputFile[];
+
+      +    tsconfig?: TsConfig;
+
+      +    root?: string;
+
+      +    onProgress?: (progress: { percentage: number; message: string }) =>
+      void;
+
+      +    logLevel?: LogLevel;
+
+      +}
+
+      +
+       /**
+        * Represents a file to be processed.
+        */
+    patchStrategy: new-unified
+snapshot:
+  src/constants.ts: null
+  src/formatter.ts: >-
+    import type { CodeSymbol, SourceFile } from './types';
+
+    import { topologicalSort } from './utils/graph';
+
+
+    const ICONS: Record<string, string> = {
+        class: '◇', interface: '{}', function: '~', method: '~',
+        constructor: '~',
+        variable: '@', property: '@', enum: '☰', enum_member: '@',
+        type_alias: '=:', react_component: '◇', jsx_element: '⛶', styled_component: '~',
+        css_class: '¶', css_id: '¶', css_tag: '¶', css_at_rule: '¶',
+        go_package: '◇',
+        rust_struct: '◇', rust_trait: '{}', rust_impl: '+',
+        error: '[error]', default: '?',
+    };
+
+
+    // Compute display index per file based on eligible symbols (exclude
+    properties and constructors)
+
+    const isIdEligible = (symbol: CodeSymbol): boolean => {
+        if (symbol.kind === 'property' || symbol.kind === 'constructor') return false;
+        if (symbol.kind === 'variable') return symbol.isExported || symbol.name === 'module.exports' || symbol.name === 'default';
+        if (symbol.kind === 'method') return !!symbol.isExported;
+        return true;
+    };
+
+
+    const getDisplayIndex = (file: SourceFile, symbol: CodeSymbol): number |
+    null => {
+        const ordered = file.symbols
+            .filter(isIdEligible)
+            .sort((a, b) => a.range.start.line - b.range.start.line || a.range.start.column - b.range.start.column);
+        const index = ordered.findIndex(s => s === symbol);
+        return index === -1 ? null : index + 1;
+    };
+
+
+    const formatSymbolIdDisplay = (file: SourceFile, symbol: CodeSymbol): string
+    | null => {
+        const idx = getDisplayIndex(file, symbol);
+        if (idx == null) return null;
+        return `(${file.id}.${idx})`;
+    };
+
+
+    const formatSymbol = (symbol: CodeSymbol, allFiles: SourceFile[]): string[]
+    => {
+        let icon = ICONS[symbol.kind] || ICONS.default || '?';
+        const prefix = symbol.isExported ? '+' : '-';
+        let name = symbol.name === '<anonymous>' ? '' : symbol.name;
+        if (symbol.kind === 'variable' && name.trim() === 'default') name = '';
+        
+        // Handle styled components: ~div ComponentName, ~h1 ComponentName, etc.
+        if (symbol.kind === 'styled_component' && (symbol as any)._styledTag) {
+            const tagName = (symbol as any)._styledTag;
+            icon = `~${tagName}`;
+        }
+
+        const mods = [
+            symbol.isAbstract && 'abstract',
+            symbol.isStatic && 'static',
+        ].filter(Boolean).join(' ');
+        const modStr = mods ? ` [${mods}]` : '';
+
+        const suffixParts: string[] = [];
+        if (symbol.signature) name += symbol.name === '<anonymous>' ? symbol.signature : `${symbol.signature}`;
+        if (symbol.typeAnnotation) name += `: ${symbol.typeAnnotation}`;
+        if (symbol.typeAliasValue) name += ` ${symbol.typeAliasValue}`;
+        // Merge async + throws into a single token '...!'
+        const asyncToken = symbol.isAsync ? '...' : '';
+        const throwsToken = symbol.throws ? '!' : '';
+        const asyncThrows = (asyncToken + throwsToken) || '';
+        if (asyncThrows) suffixParts.push(asyncThrows);
+        if (symbol.isPure) suffixParts.push('o');
+        if (symbol.labels && symbol.labels.length > 0) suffixParts.push(...symbol.labels.map(l => `[${l}]`));
+        const suffix = suffixParts.join(' ');
+
+        // Build ID portion conditionally
+        const file = allFiles.find(f => f.id === symbol.fileId)!;
+        const idPart = formatSymbolIdDisplay(file, symbol);
+        const idText = (symbol.kind === 'property' || symbol.kind === 'constructor') ? null : (idPart ?? null);
+        const segments: string[] = [prefix, icon];
+        if (idText) segments.push(idText);
+        if (name) segments.push(name.trim());
+        if (modStr) segments.push(modStr);
+        if (suffix) segments.push(suffix);
+        const line = `  ${segments.filter(Boolean).join(' ')}`;
+        const result = [line];
+
+        const outgoing = new Map<number, Set<string>>();
+        const unresolvedDeps: string[] = [];
+        symbol.dependencies.forEach(dep => {
+            if (dep.resolvedFileId !== undefined && dep.resolvedFileId !== symbol.fileId) {
+                if (!outgoing.has(dep.resolvedFileId)) outgoing.set(dep.resolvedFileId, new Set());
+                if (dep.resolvedSymbolId) {
+                    const targetFile = allFiles.find(f => f.id === dep.resolvedFileId);
+                    const targetSymbol = targetFile?.symbols.find(s => s.id === dep.resolvedSymbolId);
+                    if (targetSymbol) {
+                        const displayId = formatSymbolIdDisplay(targetFile!, targetSymbol);
+                        let text = displayId ?? `(${targetFile!.id}.0)`;
+                        if (dep.kind === 'goroutine') {
+                            text += ' [goroutine]';
+                        }
+                        outgoing.get(dep.resolvedFileId)!.add(text);
+                    }
+                } else {
+                    let text = `(${dep.resolvedFileId}.0)`;
+                    if (dep.kind === 'dynamic_import') text += ' [dynamic]';
+                    outgoing.get(dep.resolvedFileId)!.add(text);
+                }
+            } else if (dep.resolvedFileId === undefined) {
+                if (dep.kind === 'macro') {
+                    unresolvedDeps.push(`${dep.targetName} [macro]`);
+                }
+            }
+        });
+
+        const outgoingParts: string[] = [];
+        if (outgoing.size > 0) {
+            const resolvedParts = Array.from(outgoing.entries())
+                .sort((a, b) => a[0] - b[0])
+                .map(([fileId, symbolIds]) => {
+                    const items = Array.from(symbolIds).sort();
+                    return items.length > 0 ? `${items.join(', ')}` : `(${fileId}.0)`;
+                });
+            outgoingParts.push(...resolvedParts);
+        }
+        outgoingParts.push(...unresolvedDeps);
+
+        if (outgoingParts.length > 0) {
+            result.push(`    -> ${outgoingParts.join(', ')}`);
+        }
+        
+        const incoming = new Map<number, Set<string>>();
+        allFiles.forEach(file => {
+            file.symbols.forEach(s => {
+                s.dependencies.forEach(d => {
+                    if (d.resolvedFileId === symbol.fileId && d.resolvedSymbolId === symbol.id && s !== symbol) {
+                        if(!incoming.has(file.id)) incoming.set(file.id, new Set());
+                        // Suppress same-file incoming for properties
+                        if (file.id === symbol.fileId && symbol.kind === 'property') return;
+                        const disp = formatSymbolIdDisplay(file, s) ?? `(${file.id}.0)`;
+                        incoming.get(file.id)!.add(disp);
+                    }
+                });
+            });
+            // Include file-level imports to this file as incoming for exported symbols
+            // but only if there is no symbol-level incoming from that file already
+            if (file.id !== symbol.fileId && symbol.isExported) {
+                file.fileRelationships?.forEach(rel => {
+                    if (rel.resolvedFileId === symbol.fileId) {
+                        const already = incoming.get(file.id);
+                        if (!already || already.size === 0) {
+                            if(!incoming.has(file.id)) incoming.set(file.id, new Set());
+                            incoming.get(file.id)!.add(`(${file.id}.0)`);
+                        }
+                    }
+                });
+            }
+        });
+
+        if (incoming.size > 0) {
+            const parts = Array.from(incoming.entries()).map(([_fileId, symbolIds]) => Array.from(symbolIds).join(', '));
+            result.push(`    <- ${parts.join(', ')}`);
+        }
+
+        return result;
+    };
+
+
+
+    const isWithin = (inner: CodeSymbol, outer: CodeSymbol): boolean => {
+        const a = inner.range;
+        const b = outer.scopeRange;
+        return (
+            (a.start.line > b.start.line || (a.start.line === b.start.line && a.start.column >= b.start.column)) &&
+            (a.end.line < b.end.line || (a.end.line === b.end.line && a.end.column <= b.end.column))
+        );
+    };
+
+
+    const buildChildrenMap = (symbols: CodeSymbol[]): Map<string, CodeSymbol[]>
+    => {
+        const parents = symbols.filter(s => s.kind === 'class' || s.kind === 'interface' || s.kind === 'react_component');
+        const map = new Map<string, CodeSymbol[]>();
+        for (const parent of parents) map.set(parent.id, []);
+        for (const sym of symbols) {
+            if (sym.kind === 'class' || sym.kind === 'interface' || sym.kind === 'react_component') continue;
+            const parent = parents
+                .filter(p => isWithin(sym, p))
+                .sort((a, b) => (a.scopeRange.end.line - a.scopeRange.start.line) - (b.scopeRange.end.line - b.scopeRange.start.line))[0];
+            if (parent) {
+                map.get(parent.id)!.push(sym);
+            }
+        }
+        // Sort children by position
+        for (const [, arr] of map.entries()) {
+            arr.sort((a, b) => a.range.start.line - b.range.start.line || a.range.start.column - b.range.start.column);
+        }
+        return map;
+    };
+
+
+    const formatFile = (file: SourceFile, allFiles: SourceFile[]): string => {
+        if (file.parseError) return `§ (${file.id}) ${file.relativePath} [error]`;
+        if (!file.sourceCode.trim()) return `§ (${file.id}) ${file.relativePath}`;
+
+        const directives = [
+            file.isGenerated && 'generated',
+            ...(file.languageDirectives || [])
+        ].filter(Boolean);
+        const directiveStr = directives.length > 0 ? ` [${directives.join(' ')}]` : '';
+        const header = `§ (${file.id}) ${file.relativePath}${directiveStr}`;
+
+        const headerLines: string[] = [header];
+
+        // File-level outgoing/incoming dependencies
+        const outgoing: string[] = [];
+        if (file.fileRelationships) {
+            const outgoingFiles = new Set<number>();
+            file.fileRelationships.forEach(rel => {
+                // Only show true file-level imports on the header
+                if ((rel.kind === 'import' || rel.kind === 'dynamic_import') && rel.resolvedFileId && rel.resolvedFileId !== file.id) {
+                    let text = `(${rel.resolvedFileId}.0)`;
+                    if (rel.kind === 'dynamic_import') text += ' [dynamic]';
+                    outgoingFiles.add(rel.resolvedFileId);
+                    outgoing.push(text);
+                }
+            });
+            if (outgoing.length > 0) headerLines.push(`  -> ${Array.from(new Set(outgoing)).sort().join(', ')}`);
+        }
+
+        // Incoming: any other file that has a file-level relationship pointing here
+        const incoming: string[] = [];
+        allFiles.forEach(other => {
+            if (other.id === file.id) return;
+            other.fileRelationships?.forEach(rel => {
+                if (rel.resolvedFileId === file.id) incoming.push(`(${other.id}.0)`);
+            });
+        });
+        if (incoming.length > 0) headerLines.push(`  <- ${Array.from(new Set(incoming)).sort().join(', ')}`);
+
+        // If file has no exported symbols, only show symbols that are "entry points" for analysis,
+        // which we define as having outgoing dependencies.
+        const hasExports = file.symbols.some(s => s.isExported);
+        let symbolsToPrint = hasExports
+            ? file.symbols.slice()
+            : file.symbols.filter(s => s.dependencies.length > 0);
+
+        // Group properties/methods under their class/interface parent
+        const childrenMap = buildChildrenMap(symbolsToPrint);
+        const childIds = new Set<string>(Array.from(childrenMap.values()).flat().map(s => s.id));
+        const topLevel = symbolsToPrint.filter(s => !childIds.has(s.id));
+
+        const symbolLines: string[] = [];
+        for (const sym of topLevel) {
+            const lines = formatSymbol(sym, allFiles);
+            symbolLines.push(...lines);
+            if (childrenMap.has(sym.id)) {
+                const kids = childrenMap.get(sym.id)!;
+                for (const kid of kids) {
+                    const kLines = formatSymbol(kid, allFiles).map(l => `  ${l}`);
+                    symbolLines.push(...kLines);
+                }
+            }
+        }
+
+        // If we hid symbols (or there were none to begin with for an entry file),
+        // aggregate outgoing dependencies from all symbols onto the file header
+        if (symbolsToPrint.length === 0) {
+            const aggOutgoing = new Map<number, Set<string>>();
+            const unresolvedDeps: string[] = [];
+
+            const processDep = (dep: import('./types').Relationship) => {
+                if (dep.resolvedFileId && dep.resolvedFileId !== file.id) {
+                    if (!aggOutgoing.has(dep.resolvedFileId)) aggOutgoing.set(dep.resolvedFileId, new Set());
+                    let text = `(${dep.resolvedFileId}.0)`; // Default to file-level
+                    if (dep.resolvedSymbolId) {
+                        const targetFile = allFiles.find(f => f.id === dep.resolvedFileId)!;
+                        const targetSymbol = targetFile.symbols.find(ts => ts.id === dep.resolvedSymbolId);
+                        if (targetSymbol) {
+                            text = formatSymbolIdDisplay(targetFile, targetSymbol) ?? `(${dep.resolvedFileId}.0)`;
+                        }
+                    }
+                    if (dep.kind === 'dynamic_import') text += ' [dynamic]';
+                    aggOutgoing.get(dep.resolvedFileId)!.add(text);
+                } else if (dep.resolvedFileId === undefined && dep.kind === 'macro') {
+                    unresolvedDeps.push(`${dep.targetName} [macro]`);
+                }
+            };
+
+            file.symbols.forEach(s => s.dependencies.forEach(processDep));
+            file.fileRelationships?.forEach(processDep);
+
+            const outgoingParts: string[] = [];
+            if (aggOutgoing.size > 0) {
+                const resolvedParts = Array.from(aggOutgoing.entries())
+                    .sort((a, b) => a[0] - b[0])
+                    .flatMap(([, symbolIds]) => Array.from(symbolIds).sort());
+                outgoingParts.push(...resolvedParts);
+            }
+            outgoingParts.push(...unresolvedDeps);
+
+            if (outgoingParts.length > 0) {
+                // Some fixtures expect separate -> lines per dependency.
+                // This preserves that behavior.
+                for (const part of outgoingParts) {
+                    headerLines.push(`  -> ${part}`);
+                }
+            }
+        }
+        return [...headerLines, ...symbolLines].join('\n');
+    };
+
+
+    export const formatScn = (analyzedFiles: SourceFile[]): string => {
+        const sortedFiles = topologicalSort(analyzedFiles);
+        return sortedFiles.map(file => formatFile(file, analyzedFiles)).join('\n\n');
+    };
+  src/graph-resolver.ts: >-
+    import type { SourceFile, PathResolver, Relationship } from './types';
+
+    import path from './utils/path';
+
+
+    type FileMap = Map<string, SourceFile>;
+
+    type SymbolMap = Map<number, Map<string, string>>;
+
+
+    const findFileByImportPath = (importPath: string, currentFile: SourceFile,
+    fileMap: FileMap, pathResolver: PathResolver, root: string): SourceFile |
+    undefined => {
+        const currentDir = path.dirname(currentFile.absolutePath);
+        const aliasedPath = pathResolver(importPath);
+
+        const resolvedPath = aliasedPath ? path.resolve(root, aliasedPath) : path.resolve(currentDir, importPath);
+
+        const extensions = ['.ts', '.tsx', '.js', '.jsx', '.css', '.go', '.rs', '.py', '.java', '.graphql', ''];
+        for (const ext of extensions) {
+            const tryPath = (resolvedPath + ext).replace(/\\/g, '/');
+            const relative = path.relative(root, tryPath).replace(/\\/g, '/');
+            if (fileMap.has(relative)) return fileMap.get(relative);
+            
+            const tryIndexPath = path.join(resolvedPath, 'index' + ext).replace(/\\/g, '/');
+            const relativeIndex = path.relative(root, tryIndexPath).replace(/\\/g, '/');
+            if(fileMap.has(relativeIndex)) return fileMap.get(relativeIndex);
+        }
+        return undefined;
+    };
+
+
+
+    const resolveRelationship = (rel: Relationship, sourceFile: SourceFile,
+    fileMap: FileMap, symbolMap: SymbolMap, pathResolver: PathResolver, root:
+    string) => {
+        if (rel.kind === 'import') {
+            const targetFile = findFileByImportPath(rel.targetName, sourceFile, fileMap, pathResolver, root);
+            if (targetFile) rel.resolvedFileId = targetFile.id;
+            return;
+        }
+        
+        // Handle dynamic imports
+        if (rel.kind === 'dynamic_import') {
+            const targetFile = findFileByImportPath(rel.targetName, sourceFile, fileMap, pathResolver, root);
+            if (targetFile) rel.resolvedFileId = targetFile.id;
+            return;
+        }
+        
+        // Attempt intra-file resolution first
+        const intraFileSymbol = sourceFile.symbols.find(s => s.name === rel.targetName);
+        if (intraFileSymbol) {
+            rel.resolvedSymbolId = intraFileSymbol.id;
+            rel.resolvedFileId = sourceFile.id;
+            return;
+        }
+        
+        // Attempt inter-file resolution via explicit imports of the current file
+        if (sourceFile.fileRelationships) {
+            for (const importRel of sourceFile.fileRelationships) {
+                // We only care about resolved imports that bring in symbols
+                if ((importRel.kind === 'import' || importRel.kind === 'dynamic_import') && importRel.resolvedFileId !== undefined) {
+                    const targetFileSymbols = symbolMap.get(importRel.resolvedFileId);
+                    // Does the file we imported from export a symbol with the name we're looking for?
+                    if (targetFileSymbols?.has(rel.targetName)) {
+                        rel.resolvedFileId = importRel.resolvedFileId;
+                        rel.resolvedSymbolId = targetFileSymbols.get(rel.targetName);
+                        return; // Found it!
+                    }
+                }
+            }
+        }
+    };
+
+
+    export const resolveGraph = (sourceFiles: SourceFile[], pathResolver:
+    PathResolver, root: string): SourceFile[] => {
+        const fileMap: FileMap = new Map(sourceFiles.map(f => [f.relativePath.replace(/\\/g, '/'), f]));
+        const symbolMap: SymbolMap = new Map();
+        for(const file of sourceFiles) {
+            const fileSymbolMap = new Map(file.symbols.filter(s => s.isExported).map(s => [s.name, s.id]));
+            symbolMap.set(file.id, fileSymbolMap);
+        }
+        
+        for (const sourceFile of sourceFiles) {
+            // Resolve file-level relationships (e.g., imports that aren't tied to a symbol)
+            if (sourceFile.fileRelationships) {
+                for (const rel of sourceFile.fileRelationships) {
+                    resolveRelationship(rel, sourceFile, fileMap, symbolMap, pathResolver, root);
+                }
+            }
+            for (const symbol of sourceFile.symbols) {
+                for (const rel of symbol.dependencies) {
+                    resolveRelationship(rel, sourceFile, fileMap, symbolMap, pathResolver, root);
+                }
+            }
+        }
+        return sourceFiles;
+    };
+  src/logger.ts: >-
+    import type { LogLevel } from './types';
+
+
+    export type LogHandler = (level: Exclude<LogLevel, 'silent'>, ...args:
+    any[]) => void;
+
+
+    class Logger {
+      private handler: LogHandler | null = null;
+      private level: LogLevel = 'info';
+
+      private logLevels: Record<LogLevel, number> = {
+        error: 0,
+        warn: 1,
+        info: 2,
+        debug: 3,
+        silent: -1,
+      };
+
+      setLogHandler(handler: LogHandler | null) {
+        this.handler = handler;
+      }
+
+      setLevel(level: LogLevel) {
+        this.level = level;
+      }
+
+      private shouldLog(level: Exclude<LogLevel, 'silent'>): boolean {
+        if (this.level === 'silent' || !this.handler) return false;
+        return this.logLevels[level] <= this.logLevels[this.level];
+      }
+
+      error(...args: any[]) {
+        if (this.shouldLog('error')) {
+          this.handler!('error', ...args);
+        }
+      }
+
+      warn(...args: any[]) {
+        if (this.shouldLog('warn')) {
+          this.handler!('warn', ...args);
+        }
+      }
+
+      info(...args: any[]) {
+        if (this.shouldLog('info')) {
+          this.handler!('info', ...args);
+        }
+      }
+
+      debug(...args: any[]) {
+        if (this.shouldLog('debug')) {
+          this.handler!('debug', ...args);
+        }
+      }
+    }
+
+
+    export const logger = new Logger();
+  src/utils/tsconfig.ts: >-
+    import path from './path';
+
+
+    export interface TsConfig {
+        compilerOptions?: {
+            baseUrl?: string;
+            paths?: Record<string, string[]>;
+        };
+    }
+
+
+    const createPathResolver = (baseUrl: string, paths: Record<string,
+    string[]>) => {
+        const aliasEntries = Object.entries(paths).map(([alias, resolutions]) => {
+            return {
+                pattern: new RegExp(`^${alias.replace('*', '(.*)')}$`),
+                resolutions,
+            };
+        });
+
+        return (importPath: string): string | null => {
+            for (const { pattern, resolutions } of aliasEntries) {
+                const match = importPath.match(pattern);
+                if (match && resolutions[0]) {
+                    const captured = match[1] || '';
+                    // Return the first resolved path.
+                    const resolvedPath = resolutions[0].replace('*', captured);
+                    return path.join(baseUrl, resolvedPath).replace(/\\/g, '/');
+                }
+            }
+            return null; // Not an alias
+        };
+    };
+
+
+    export type PathResolver = ReturnType<typeof createPathResolver>;
+
+
+    export const getPathResolver = (tsconfig?: TsConfig | null): PathResolver =>
+    {
+        const baseUrl = tsconfig?.compilerOptions?.baseUrl || '.';
+        const paths = tsconfig?.compilerOptions?.paths ?? {};
+        // The baseUrl from tsconfig is relative to the tsconfig file itself (the root).
+        // The final paths we create should be relative to the root to match our file list.
+        return createPathResolver(baseUrl, paths);
+    };
+  src/main.ts: >-
+    import { getLanguageForFile } from './languages';
+
+    import { initializeParser as init, parse } from './parser';
+
+    import type { ParserInitOptions, SourceFile, InputFile, TsConfig, LogLevel,
+    ScnTsConfig } from './types';
+
+    import { analyze } from './analyzer';
+
+    import { formatScn } from './formatter';
+
+    import path from './utils/path';
+
+    import { getPathResolver } from './utils/tsconfig';
+
+    import { resolveGraph } from './graph-resolver';
+
+    import { logger } from './logger';
+
+
+    /**
+     * Public API to initialize the parser. Must be called before any other APIs.
+     */
+    export const initializeParser = (options: ParserInitOptions): Promise<void>
+    => init(options);
+
+
+    // Types for web demo
+
+    export type { ParserInitOptions, SourceFile, LogLevel, InputFile, TsConfig,
+    ScnTsConfig } from './types';
+
+    export type { LogHandler } from './logger';
+
+    export type FileContent = InputFile;
+
+
+    // Exports for web demo
+
+    export { logger };
+
+
+    /**
+     * Generate SCN from analyzed source files
+     */
+    export const generateScn = (analyzedFiles: SourceFile[]): string => {
+        return formatScn(analyzedFiles);
+    };
+
+
+    /**
+     * Legacy API: Generate SCN from config (for backward compatibility)
+     */
+    export const generateScnFromConfig = async (config: ScnTsConfig):
+    Promise<string> => {
+        const analyzedFiles = await analyzeProject({
+            files: config.files,
+            tsconfig: config.tsconfig,
+            root: config.root
+        });
+        return formatScn(analyzedFiles);
+    };
+
+
+    interface AnalyzeProjectOptions {
+        files: InputFile[];
+        tsconfig?: TsConfig;
+        root?: string;
+        onProgress?: (progress: { percentage: number; message: string }) => void;
+        logLevel?: LogLevel;
+    }
+
+
+    /**
+     * Parses and analyzes a project's files to build a dependency graph.
+     */
+    export const analyzeProject = async ({
+        files,
+        tsconfig,
+        root = '/',
+        onProgress,
+        logLevel
+    }: AnalyzeProjectOptions): Promise<SourceFile[]> => {
+        if (logLevel) {
+            logger.setLevel(logLevel);
+        }
+        const pathResolver = getPathResolver(tsconfig);
+
+        let fileIdCounter = 1;
+
+        onProgress?.({ percentage: 0, message: 'Creating source files...' });
+        logger.debug('Creating source files...');
+
+        // Step 1: Create SourceFile objects for all files
+        const sourceFiles = files.map((file) => {
+            const lang = getLanguageForFile(file.path);
+            const absolutePath = path.join(root, file.path);
+            const sourceFile: SourceFile = {
+                id: fileIdCounter++,
+                relativePath: file.path,
+                absolutePath,
+                sourceCode: file.content,
+                language: lang!,
+                symbols: [],
+                parseError: false,
+            };
+            return sourceFile;
+        });
+
+        onProgress?.({ percentage: 10, message: `Parsing ${sourceFiles.length} files...` });
+        logger.debug(`Parsing ${sourceFiles.length} files...`);
+
+        // Step 2: Parse all files
+        const parsedFiles = sourceFiles.map((file, i) => {
+            if (!file.language || !file.language.wasmPath || file.sourceCode.trim() === '') {
+                return file;
+            }
+            const tree = parse(file.sourceCode, file.language);
+            if (!tree) {
+                file.parseError = true;
+                logger.warn(`Failed to parse ${file.relativePath}`);
+            } else {
+                file.ast = tree;
+            }
+            const percentage = 10 + (40 * (i + 1) / sourceFiles.length);
+            onProgress?.({ percentage, message: `Parsing ${file.relativePath}` });
+            logger.debug(`[${Math.round(percentage)}%] Parsed ${file.relativePath}`);
+            return file;
+        });
+
+        onProgress?.({ percentage: 50, message: 'Analyzing files...' });
+        logger.debug('Analyzing files...');
+
+        // Step 3: Analyze all parsed files
+        const analyzedFiles = parsedFiles.map((file, i) => {
+            if (file.ast) {
+                const analyzed = analyze(file);
+                const percentage = 50 + (40 * (i + 1) / sourceFiles.length);
+                onProgress?.({ percentage, message: `Analyzing ${file.relativePath}` });
+                logger.debug(`[${Math.round(percentage)}%] Analyzed ${file.relativePath}`);
+                return analyzed;
+            }
+            return file;
+        });
+        
+        onProgress?.({ percentage: 90, message: 'Resolving dependency graph...' });
+        logger.debug('Resolving dependency graph...');
+
+        // Step 4: Resolve the dependency graph across all files
+        const resolvedGraph = resolveGraph(analyzedFiles, pathResolver, root);
+        
+        onProgress?.({ percentage: 100, message: 'Analysis complete.' });
+        logger.debug('Analysis complete.');
+        return resolvedGraph;
+    };
+  src/types.ts: |-
+    import type { Parser, Tree, Language } from 'web-tree-sitter';
+    import type { TsConfig, PathResolver } from './utils/tsconfig';
+    export type { TsConfig, PathResolver };
+
+    export type LogLevel = 'error' | 'warn' | 'info' | 'debug' | 'silent';
+
+    /**
+     * Represents a file to be processed.
+     */
+    export interface InputFile {
+      path: string; // relative path from root
+      content: string;
+    }
+
+    /**
+     * Configuration for the SCN generation process.
+     */
+    export interface ScnTsConfig {
+      files: InputFile[];
+      tsconfig?: TsConfig;
+      root?: string; // Optional: A virtual root path for resolution. Defaults to '/'.
+      _test_id?: string; // Special property for test runner to identify fixtures
+    }
+
+    /**
+     * Options for initializing the Tree-sitter parser.
+     */
+    export interface ParserInitOptions {
+        wasmBaseUrl: string;
+    }
+
+    /**
+     * Represents a supported programming language and its configuration.
+     */
+    export type SymbolKind =
+      // TS/JS
+      | 'class' | 'interface' | 'function' | 'method' | 'constructor'
+      | 'variable' | 'property' | 'enum' | 'enum_member' | 'type_alias' | 'module'
+      | 'decorator' | 'parameter' | 'type_parameter' | 'import_specifier' | 're_export'
+      // React
+      | 'react_component' | 'react_hook' | 'react_hoc' | 'jsx_attribute' | 'jsx_element' | 'styled_component'
+      // CSS
+      | 'css_class' | 'css_id' | 'css_tag' | 'css_at_rule' | 'css_property' | 'css_variable'
+      // Generic / Meta
+      | 'file' | 'reference' | 'comment' | 'error' | 'unresolved'
+      // Other Languages
+      | 'go_package' | 'go_struct' | 'go_goroutine' | 'rust_struct' | 'rust_trait' | 'rust_impl' | 'rust_macro'
+      | 'java_package' | 'python_class'
+      | 'unknown';
+
+    export interface Position {
+      line: number;
+      column: number;
+    }
+
+    export interface Range {
+      start: Position;
+      end: Position;
+    }
+
+    export interface CodeSymbol {
+      id: string;
+      fileId: number;
+      name: string;
+      kind: SymbolKind;
+      range: Range;
+      // Modifiers and metadata
+      isExported: boolean;
+      isAbstract?: boolean;
+      isStatic?: boolean;
+      isReadonly?: boolean;
+      isAsync?: boolean;
+      isPure?: boolean; // for 'o'
+      throws?: boolean; // for '!'
+      labels?: string[]; // extra display labels like [symbol], [proxy]
+      isGenerated?: boolean;
+      languageDirectives?: string[]; // e.g. 'use server'
+      superClass?: string;
+      implementedInterfaces?: string[];
+      scopeRange: Range; // The range of the entire scope (e.g., function body) for relationship association
+      accessibility?: 'public' | 'private' | 'protected';
+      // Type information and signatures
+      signature?: string; // e.g., (a: #number, b: #number): #number
+      typeAnnotation?: string; // e.g., #string for properties/variables
+      typeAliasValue?: string; // e.g., #number|string for type aliases
+      // Relationships
+      dependencies: Relationship[];
+    }
+
+    export type RelationshipKind =
+      | 'import'
+      | 'dynamic_import'
+      | 'reference'
+      | 'tagged'
+      | 'export'
+      | 'call'
+      | 'extends'
+      | 'implements'
+      | 'references'
+      | 'aliased'
+      | 'goroutine'
+      | 'macro';
+
+    export interface Relationship {
+      targetName: string; // The raw name of the target (e.g., './utils', 'MyClass', 'add', 'Button')
+      kind: RelationshipKind;
+      range: Range;
+      // Resolved info
+      resolvedFileId?: number;
+      resolvedSymbolId?: string;
+    }
+
+    export interface SourceFile {
+      id: number;
+      relativePath: string;
+      absolutePath: string;
+      language: LanguageConfig;
+      sourceCode: string;
+      ast?: Tree;
+      symbols: CodeSymbol[];
+      parseError: boolean;
+      isGenerated?: boolean;
+      languageDirectives?: string[];
+      // File-level relationships (e.g., imports not tied to a specific symbol)
+      fileRelationships?: Relationship[];
+    }
+
+    /**
+     * Represents a supported programming language and its configuration.
+     */
+    export interface LanguageConfig {
+        id: string;
+        name: string;
+        extensions: string[];
+        wasmPath: string;
+        parser?: Parser;
+        loadedLanguage?: Language;
+        queries?: Record<string, string>;
+    }
+
+    export interface AnalysisContext {
+        sourceFiles: SourceFile[];
+        pathResolver: PathResolver;
+    }
+approved: true

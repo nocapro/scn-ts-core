@@ -1,6 +1,4 @@
-import type { LogLevel } from './types';
-
-export type LogHandler = (level: Exclude<LogLevel, 'silent'>, ...args: any[]) => void;
+import type { LogLevel, LogHandler } from './types';
 
 class Logger {
   private handler: LogHandler | null = null;

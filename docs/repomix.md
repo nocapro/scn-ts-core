@@ -12,9 +12,11 @@ packages/
       lib/
         utils.ts
       App.tsx
+      constants.ts
       default-files.ts
       index.css
       main.tsx
+      types.ts
     index.html
     package.json
     postcss.config.js
@@ -34,6 +36,7 @@ src/
     path.ts
     tsconfig.ts
   analyzer.ts
+  constants.ts
   formatter.ts
   graph-resolver.ts
   languages.ts
@@ -193,22 +196,10 @@ export { Textarea }
 ## File: packages/scn-ts-web-demo/src/components/LogViewer.tsx
 ```typescript
 import React, { useEffect, useRef } from 'react';
-import type { LogLevel } from 'scn-ts-core';
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
 import { cn } from '../lib/utils';
-
-export interface LogEntry {
-  level: Exclude<LogLevel, 'silent'>;
-  message: string;
-  timestamp: number;
-}
-
-const levelColorMap: Record<Exclude<LogLevel, 'silent'>, string> = {
-  error: 'text-red-500',
-  warn: 'text-yellow-500',
-  info: 'text-blue-400',
-  debug: 'text-gray-500',
-};
+import type { LogEntry } from '../types';
+import { levelColorMap } from '../constants';
 
 const LogViewer: React.FC<{ logs: readonly LogEntry[] }> = ({ logs }) => {
   const scrollContainerRef = useRef<HTMLDivElement>(null);
@@ -272,15 +263,15 @@ import { Button } from './components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from './components/ui/card';
 import { Textarea } from './components/ui/textarea';
 import LogViewer from './components/LogViewer';
-import type { LogEntry } from './components/LogViewer';
 import { Play, Loader } from 'lucide-react';
+import type { LogEntry, ProgressData } from './types';
 
 function App() {
   const [isInitialized, setIsInitialized] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [filesInput, setFilesInput] = useState(defaultFilesJSON);
   const [scnOutput, setScnOutput] = useState('');
-  const [progress, setProgress] = useState<{ percentage: number; message: string } | null>(null);
+  const [progress, setProgress] = useState<ProgressData | null>(null);
   const [logs, setLogs] = useState<LogEntry[]>([]);
 
   useEffect(() => {
@@ -315,7 +306,7 @@ function App() {
     logger.setLogHandler(logHandler);
     logger.setLevel('debug');
 
-    const onProgress = (progressData: { percentage: number; message: string }) => {
+    const onProgress = (progressData: ProgressData) => {
       setProgress(progressData);
       logger.info(`[${Math.round(progressData.percentage)}%] ${progressData.message}`);
     };
@@ -401,91 +392,311 @@ function App() {
 export default App;
 ```
 
+## File: packages/scn-ts-web-demo/src/constants.ts
+```typescript
+import type { LogLevel } from 'scn-ts-core';
+
+export const levelColorMap: Record<Exclude<LogLevel, 'silent'>, string> = {
+  error: 'text-red-500',
+  warn: 'text-yellow-500',
+  info: 'text-blue-400',
+  debug: 'text-gray-500',
+};
+```
+
 ## File: packages/scn-ts-web-demo/src/default-files.ts
 ```typescript
 import type { FileContent } from "scn-ts-core";
 
 const files: FileContent[] = [
   {
-    path: "src/main.ts",
-    content: `import { formatMessage } from './utils/formatter';
-import { createButton } from './ui/button';
-import { Greeter } from './services/greeter.py';
+    path: "src/main.tsx",
+    content: `import React from 'react';
+import { Page } from './components/layout/Page';
+import { UserProfile } from './components/UserProfile';
+import { getUser } from './api/client';
+import { Log } from './services/logger';
+import { TokenProvider } from './auth/token';
+import './styles/main.css';
 
-console.log('App starting...');
+async function main() {
+    Log('App starting...');
 
-const message = formatMessage('World');
-const button = createButton('Click Me');
-const greeter = new Greeter();
+    const tokenProvider = new TokenProvider();
+    console.log('Auth token:', tokenProvider.getToken());
 
-document.body.innerHTML = \`<h1>\${message}</h1>\`;
-document.body.appendChild(button);
-console.log(greeter.greet());
+    const user = await getUser('1');
+    
+    const App = () => (
+        <Page>
+            <UserProfile initialUser={user} />
+        </Page>
+    );
+    
+    console.log('App ready to be rendered.');
+    // The existence of <App /> is enough for analysis.
+    // In a real app: ReactDOM.render(<App />, document.getElementById('root'));
+    Log('App finished setup.');
+}
+
+main();
 `
   },
   {
-    path: "src/utils/formatter.ts",
-    content: `/**
- * Formats a message with a greeting.
- * @param name The name to include in the message.
- * @returns The formatted message.
- */
-export const formatMessage = (name: string): string => {
-  return \`Hello, \${name}!\`;
+    path: "src/api/client.ts",
+    content: `import type { User } from '../types';
+import { capitalize } from '../utils/string';
+
+const API_BASE = '/api/v1';
+
+export async function getUser(id: string): Promise<User> {
+    console.log(\`Fetching user \${id} from \${API_BASE}\`);
+    await new Promise(res => setTimeout(res, 100));
+    return {
+        id,
+        name: capitalize('john doe'),
+        email: 'john.doe@example.com',
+    };
+}
+
+export const updateUser = async (user: Partial<User> & { id: string }): Promise<User> => {
+    console.log(\`Updating user \${user.id}\`);
+    await new Promise(res => setTimeout(res, 100));
+    const fullUser = await getUser(user.id);
+    return { ...fullUser, ...user };
 };
 `
   },
   {
-    path: "src/ui/button.ts",
-    content: `import { formatMessage } from '../utils/formatter';
+    path: "src/components/Button.tsx",
+    content: `import React from 'react';
+import './../styles/components/button.css';
 
-export function createButton(text: string) {
-  const btn = document.createElement('button');
-  btn.textContent = text;
-  // This is a contrived call to create a graph edge
-  btn.ariaLabel = formatMessage('Button');
-  return btn;
+type ButtonVariant = 'primary' | 'secondary';
+
+export interface ButtonProps {
+    text: string;
+    variant?: ButtonVariant;
+    onClick?: () => void;
 }
+
+export const Button: React.FC<ButtonProps> = ({ text, variant = 'primary', onClick }) => {
+    return (
+        <button className={\`btn btn-\${variant}\`} onClick={onClick}>
+            {text}
+        </button>
+    );
+};
 `
   },
   {
-    path: "src/styles.css",
-    content: `body {
-  font-family: sans-serif;
-  background-color: #f0f0f0;
+    path: "src/components/UserProfile.tsx",
+    content: `import React from 'react';
+import type { User } from '../types';
+import { useUser } from '../hooks/useUser';
+
+// Fake styled-component to test parser. In a real app this would be \`import styled from 'styled-components';\`
+const styled = {
+  div: (template: TemplateStringsArray) => (props: any) => React.createElement('div', props)
+};
+
+const UserCard = styled.div\`
+  border: 1px solid #ccc;
+  padding: 1rem;
+  border-radius: 8px;
+\`;
+
+interface UserProfileProps {
+    initialUser: User;
 }
 
-h1 {
-  color: #333;
-}`
-  },
-  {
-    path: 'src/services/greeter.py',
-    content: `class Greeter:
-    def __init__(self):
-        self.message = "Hello from Python"
+export function UserProfile({ initialUser }: UserProfileProps): React.ReactElement {
+    const { user, updateUser } = useUser(initialUser.id, initialUser);
 
-    def greet(self):
-        return self.message
-`
-  },
-  {
-    path: 'src/data/user.java',
-    content: `package com.example.data;
-
-public class User {
-    private String name;
-
-    public User(String name) {
-        this.name = name;
+    if (!user) {
+        return <div>Loading...</div>;
     }
 
-    public String getName() {
-        return name;
+    return (
+        <UserCard>
+            <h2>{user.name}</h2>
+            <p>{user.email}</p>
+            <button onClick={() => updateUser({ name: 'Jane Doe' })}>
+                Change Name
+            </button>
+        </UserCard>
+    );
+}
+`
+  },
+  {
+    path: "src/components/layout/Page.tsx",
+    content: `import React from 'react';
+import { Button } from '../Button';
+import type { Theme } from '../../types';
+
+interface PageProps {
+    children: React.ReactNode;
+}
+
+const theme: Theme = 'light';
+
+export const Page = ({ children }: PageProps): React.ReactElement => {
+    return (
+        <div className={\`page-container theme-\${theme}\`}>
+            <header>
+                <h1>My App</h1>
+                <Button text="Logout" />
+            </header>
+            <main>
+                {children}
+            </main>
+        </div>
+    );
+};
+`
+  },
+  {
+    path: "src/hooks/useUser.ts",
+    content: `import { getUser, updateUser as apiUpdateUser } from '../api/client';
+import type { User } from '../types';
+
+// This is a fake hook for dependency analysis purposes.
+export function useUser(userId: string, initialUser?: User) {
+    let user: User | null = initialUser || null;
+
+    const fetchUser = async () => {
+        user = await getUser(userId);
+    };
+
+    if (!user) {
+        fetchUser();
+    }
+
+    const updateUser = async (data: Partial<User>) => {
+        if (!user) return;
+        const updatedUser = await apiUpdateUser({ ...data, id: userId });
+        user = updatedUser;
+    };
+
+    return { user, updateUser };
+}
+`
+  },
+  {
+    path: "src/styles/main.css",
+    content: `@import url('./components/button.css');
+
+:root {
+    --primary-color: #007bff;
+}
+
+body {
+    font-family: sans-serif;
+    background-color: #f0f0f0;
+}
+
+.page-container {
+    max-width: 960px;
+    margin: 0 auto;
+}
+`
+  },
+  {
+    path: "src/styles/components/button.css",
+    content: `.btn {
+    padding: 0.5rem 1rem;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+}
+
+.btn-primary {
+    background-color: var(--primary-color);
+    color: white;
+}
+
+.btn-secondary {
+    background-color: gray;
+    color: white;
+}
+`
+  },
+  {
+    path: "src/types/index.ts",
+    content: `export interface User {
+    id: string;
+    name: string;
+    email: string;
+}
+
+export type Theme = 'light' | 'dark';
+`
+  },
+  {
+    path: "src/utils/string.ts",
+    content: `/**
+ * Capitalizes the first letter of a string.
+ */
+export function capitalize(str: string): string {
+    if (!str) return '';
+    return str.charAt(0).toUpperCase() + str.slice(1);
+}
+`
+  },
+  {
+    path: "src/auth/token.ts",
+    content: `import { generate_secret } from '../services/auth'; // fake import from .rs
+
+export class TokenProvider {
+    private secret: string;
+    constructor() {
+        this.secret = generate_secret();
+    }
+
+    getToken(): string {
+        return \`fake-token-with-\${this.secret}\`;
     }
 }
 `
-  }
+  },
+  {
+    path: "src/services/logger.go",
+    content: `package services
+
+import "fmt"
+
+// Log prints a message to the console.
+func Log(message string) {
+	fmt.Println("[Go Logger]", message)
+}
+`
+  },
+  {
+    path: "src/services/auth.rs",
+    content: `// A simple auth service mock
+pub struct AuthService {
+    secret_key: String,
+}
+
+impl AuthService {
+    pub fn new(secret: &str) -> Self {
+        AuthService {
+            secret_key: secret.to_string(),
+        }
+    }
+
+    pub fn verify_token(&self, token: &str) -> bool {
+        // In a real app, you'd have complex logic here.
+        token.len() > 10 && self.secret_key != ""
+    }
+}
+
+pub fn generate_secret() -> String {
+    "super_secret_key_from_rust".to_string()
+}
+`
+  },
 ];
 
 export const defaultFilesJSON = JSON.stringify(files, null, 2);
@@ -582,6 +793,22 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
     <App />
   </React.StrictMode>,
 )
+```
+
+## File: packages/scn-ts-web-demo/src/types.ts
+```typescript
+import type { LogLevel } from 'scn-ts-core';
+
+export interface LogEntry {
+  level: Exclude<LogLevel, 'silent'>;
+  message: string;
+  timestamp: number;
+}
+
+export interface ProgressData {
+  percentage: number;
+  message: string;
+}
 ```
 
 ## File: packages/scn-ts-web-demo/index.html
@@ -788,6 +1015,42 @@ export default defineConfig({
 })
 ```
 
+## File: src/constants.ts
+```typescript
+export const ICONS: Record<string, string> = {
+    class: '◇', interface: '{}', function: '~', method: '~',
+    constructor: '~',
+    variable: '@', property: '@', enum: '☰', enum_member: '@',
+    type_alias: '=:', react_component: '◇', jsx_element: '⛶', styled_component: '~',
+    css_class: '¶', css_id: '¶', css_tag: '¶', css_at_rule: '¶',
+    go_package: '◇',
+    rust_struct: '◇', rust_trait: '{}', rust_impl: '+',
+    error: '[error]', default: '?',
+};
+
+export const SCN_SYMBOLS = {
+    FILE_PREFIX: '§',
+    EXPORTED_PREFIX: '+',
+    PRIVATE_PREFIX: '-',
+    OUTGOING_ARROW: '->',
+    INCOMING_ARROW: '<-',
+    ASYNC: '...',
+    THROWS: '!',
+    PURE: 'o',
+    TAG_GENERATED: '[generated]',
+    TAG_DYNAMIC: '[dynamic]',
+    TAG_GOROUTINE: '[goroutine]',
+    TAG_MACRO: '[macro]',
+    TAG_SYMBOL: '[symbol]',
+    TAG_PROXY: '[proxy]',
+    TAG_ABSTRACT: '[abstract]',
+    TAG_STATIC: '[static]',
+    TAG_STYLED: '[styled]',
+};
+
+export const RESOLVE_EXTENSIONS = ['.ts', '.tsx', '.js', '.jsx', '.css', '.go', '.rs', '.py', '.java', '.graphql', ''];
+```
+
 ## File: src/utils/graph.ts
 ```typescript
 import type { SourceFile } from '../types';
@@ -932,9 +1195,7 @@ export default {
 
 ## File: src/logger.ts
 ```typescript
-import type { LogLevel } from './types';
-
-export type LogHandler = (level: Exclude<LogLevel, 'silent'>, ...args: any[]) => void;
+import type { LogLevel, LogHandler } from './types';
 
 class Logger {
   private handler: LogHandler | null = null;
@@ -992,13 +1253,7 @@ export const logger = new Logger();
 ## File: src/utils/tsconfig.ts
 ```typescript
 import path from './path';
-
-export interface TsConfig {
-    compilerOptions?: {
-        baseUrl?: string;
-        paths?: Record<string, string[]>;
-    };
-}
+import type { TsConfig } from '../types';
 
 const createPathResolver = (baseUrl: string, paths: Record<string, string[]>) => {
     const aliasEntries = Object.entries(paths).map(([alias, resolutions]) => {
@@ -1206,7 +1461,7 @@ export const getLanguageForFile = (filePath: string): LanguageConfig | undefined
 ```typescript
 import { getLanguageForFile } from './languages';
 import { initializeParser as init, parse } from './parser';
-import type { ParserInitOptions, SourceFile, InputFile, TsConfig, LogLevel, ScnTsConfig } from './types';
+import type { ParserInitOptions, SourceFile, InputFile, ScnTsConfig, AnalyzeProjectOptions } from './types';
 import { analyze } from './analyzer';
 import { formatScn } from './formatter';
 import path from './utils/path';
@@ -1220,8 +1475,7 @@ import { logger } from './logger';
 export const initializeParser = (options: ParserInitOptions): Promise<void> => init(options);
 
 // Types for web demo
-export type { ParserInitOptions, SourceFile, LogLevel, InputFile, TsConfig, ScnTsConfig } from './types';
-export type { LogHandler } from './logger';
+export type { ParserInitOptions, SourceFile, LogLevel, InputFile, TsConfig, ScnTsConfig, AnalyzeProjectOptions, LogHandler } from './types';
 export type FileContent = InputFile;
 
 // Exports for web demo
@@ -1245,14 +1499,6 @@ export const generateScnFromConfig = async (config: ScnTsConfig): Promise<string
     });
     return formatScn(analyzedFiles);
 };
-
-interface AnalyzeProjectOptions {
-    files: InputFile[];
-    tsconfig?: TsConfig;
-    root?: string;
-    onProgress?: (progress: { percentage: number; message: string }) => void;
-    logLevel?: LogLevel;
-}
 
 /**
  * Parses and analyzes a project's files to build a dependency graph.
@@ -1458,6 +1704,7 @@ export const parse = (sourceCode: string, lang: LanguageConfig): Tree | null => 
 ```typescript
 import type { SourceFile, PathResolver, Relationship } from './types';
 import path from './utils/path';
+import { RESOLVE_EXTENSIONS } from './constants';
 
 type FileMap = Map<string, SourceFile>;
 type SymbolMap = Map<number, Map<string, string>>;
@@ -1468,8 +1715,7 @@ const findFileByImportPath = (importPath: string, currentFile: SourceFile, fileM
 
     const resolvedPath = aliasedPath ? path.resolve(root, aliasedPath) : path.resolve(currentDir, importPath);
 
-    const extensions = ['.ts', '.tsx', '.js', '.jsx', '.css', '.go', '.rs', '.py', '.java', '.graphql', ''];
-    for (const ext of extensions) {
+    for (const ext of RESOLVE_EXTENSIONS) {
         const tryPath = (resolvedPath + ext).replace(/\\/g, '/');
         const relative = path.relative(root, tryPath).replace(/\\/g, '/');
         if (fileMap.has(relative)) return fileMap.get(relative);
@@ -1580,10 +1826,27 @@ export const cssQueries = `
 ## File: src/types.ts
 ```typescript
 import type { Parser, Tree, Language } from 'web-tree-sitter';
-import type { TsConfig, PathResolver } from './utils/tsconfig';
-export type { TsConfig, PathResolver };
+import type { PathResolver } from './utils/tsconfig';
+export type { PathResolver };
 
 export type LogLevel = 'error' | 'warn' | 'info' | 'debug' | 'silent';
+
+export type LogHandler = (level: Exclude<LogLevel, 'silent'>, ...args: any[]) => void;
+
+export interface TsConfig {
+    compilerOptions?: {
+        baseUrl?: string;
+        paths?: Record<string, string[]>;
+    };
+}
+
+export interface AnalyzeProjectOptions {
+    files: InputFile[];
+    tsconfig?: TsConfig;
+    root?: string;
+    onProgress?: (progress: { percentage: number; message: string }) => void;
+    logLevel?: LogLevel;
+}
 
 /**
  * Represents a file to be processed.
@@ -1729,17 +1992,7 @@ export interface AnalysisContext {
 ```typescript
 import type { CodeSymbol, SourceFile } from './types';
 import { topologicalSort } from './utils/graph';
-
-const ICONS: Record<string, string> = {
-    class: '◇', interface: '{}', function: '~', method: '~',
-    constructor: '~',
-    variable: '@', property: '@', enum: '☰', enum_member: '@',
-    type_alias: '=:', react_component: '◇', jsx_element: '⛶', styled_component: '~',
-    css_class: '¶', css_id: '¶', css_tag: '¶', css_at_rule: '¶',
-    go_package: '◇',
-    rust_struct: '◇', rust_trait: '{}', rust_impl: '+',
-    error: '[error]', default: '?',
-};
+import { ICONS, SCN_SYMBOLS } from './constants';
 
 // Compute display index per file based on eligible symbols (exclude properties and constructors)
 const isIdEligible = (symbol: CodeSymbol): boolean => {
@@ -1765,7 +2018,7 @@ const formatSymbolIdDisplay = (file: SourceFile, symbol: CodeSymbol): string | n
 
 const formatSymbol = (symbol: CodeSymbol, allFiles: SourceFile[]): string[] => {
     let icon = ICONS[symbol.kind] || ICONS.default || '?';
-    const prefix = symbol.isExported ? '+' : '-';
+    const prefix = symbol.isExported ? SCN_SYMBOLS.EXPORTED_PREFIX : SCN_SYMBOLS.PRIVATE_PREFIX;
     let name = symbol.name === '<anonymous>' ? '' : symbol.name;
     if (symbol.kind === 'variable' && name.trim() === 'default') name = '';
     
@@ -1775,22 +2028,21 @@ const formatSymbol = (symbol: CodeSymbol, allFiles: SourceFile[]): string[] => {
         icon = `~${tagName}`;
     }
 
-    const mods = [
-        symbol.isAbstract && 'abstract',
-        symbol.isStatic && 'static',
-    ].filter(Boolean).join(' ');
-    const modStr = mods ? ` [${mods}]` : '';
+    const mods: string[] = [];
+    if (symbol.isAbstract) mods.push(SCN_SYMBOLS.TAG_ABSTRACT.slice(1, -1));
+    if (symbol.isStatic) mods.push(SCN_SYMBOLS.TAG_STATIC.slice(1, -1));
+    const modStr = mods.length > 0 ? ` [${mods.join(' ')}]` : '';
 
     const suffixParts: string[] = [];
     if (symbol.signature) name += symbol.name === '<anonymous>' ? symbol.signature : `${symbol.signature}`;
     if (symbol.typeAnnotation) name += `: ${symbol.typeAnnotation}`;
     if (symbol.typeAliasValue) name += ` ${symbol.typeAliasValue}`;
-    // Merge async + throws into a single token '...!'
-    const asyncToken = symbol.isAsync ? '...' : '';
-    const throwsToken = symbol.throws ? '!' : '';
+    // Merge async + throws into a single token
+    const asyncToken = symbol.isAsync ? SCN_SYMBOLS.ASYNC : '';
+    const throwsToken = symbol.throws ? SCN_SYMBOLS.THROWS : '';
     const asyncThrows = (asyncToken + throwsToken) || '';
     if (asyncThrows) suffixParts.push(asyncThrows);
-    if (symbol.isPure) suffixParts.push('o');
+    if (symbol.isPure) suffixParts.push(SCN_SYMBOLS.PURE);
     if (symbol.labels && symbol.labels.length > 0) suffixParts.push(...symbol.labels.map(l => `[${l}]`));
     const suffix = suffixParts.join(' ');
 
@@ -1818,18 +2070,18 @@ const formatSymbol = (symbol: CodeSymbol, allFiles: SourceFile[]): string[] => {
                     const displayId = formatSymbolIdDisplay(targetFile!, targetSymbol);
                     let text = displayId ?? `(${targetFile!.id}.0)`;
                     if (dep.kind === 'goroutine') {
-                        text += ' [goroutine]';
+                        text += ` ${SCN_SYMBOLS.TAG_GOROUTINE}`;
                     }
                     outgoing.get(dep.resolvedFileId)!.add(text);
                 }
             } else {
                 let text = `(${dep.resolvedFileId}.0)`;
-                if (dep.kind === 'dynamic_import') text += ' [dynamic]';
+                if (dep.kind === 'dynamic_import') text += ` ${SCN_SYMBOLS.TAG_DYNAMIC}`;
                 outgoing.get(dep.resolvedFileId)!.add(text);
             }
         } else if (dep.resolvedFileId === undefined) {
             if (dep.kind === 'macro') {
-                unresolvedDeps.push(`${dep.targetName} [macro]`);
+                unresolvedDeps.push(`${dep.targetName} ${SCN_SYMBOLS.TAG_MACRO}`);
             }
         }
     });
@@ -1847,7 +2099,7 @@ const formatSymbol = (symbol: CodeSymbol, allFiles: SourceFile[]): string[] => {
     outgoingParts.push(...unresolvedDeps);
 
     if (outgoingParts.length > 0) {
-        result.push(`    -> ${outgoingParts.join(', ')}`);
+        result.push(`    ${SCN_SYMBOLS.OUTGOING_ARROW} ${outgoingParts.join(', ')}`);
     }
     
     const incoming = new Map<number, Set<string>>();
@@ -1880,7 +2132,7 @@ const formatSymbol = (symbol: CodeSymbol, allFiles: SourceFile[]): string[] => {
 
     if (incoming.size > 0) {
         const parts = Array.from(incoming.entries()).map(([_fileId, symbolIds]) => Array.from(symbolIds).join(', '));
-        result.push(`    <- ${parts.join(', ')}`);
+        result.push(`    ${SCN_SYMBOLS.INCOMING_ARROW} ${parts.join(', ')}`);
     }
 
     return result;
@@ -1917,15 +2169,15 @@ const buildChildrenMap = (symbols: CodeSymbol[]): Map<string, CodeSymbol[]> => {
 };
 
 const formatFile = (file: SourceFile, allFiles: SourceFile[]): string => {
-    if (file.parseError) return `§ (${file.id}) ${file.relativePath} [error]`;
-    if (!file.sourceCode.trim()) return `§ (${file.id}) ${file.relativePath}`;
+    if (file.parseError) return `${SCN_SYMBOLS.FILE_PREFIX} (${file.id}) ${file.relativePath} [error]`;
+    if (!file.sourceCode.trim()) return `${SCN_SYMBOLS.FILE_PREFIX} (${file.id}) ${file.relativePath}`;
 
     const directives = [
-        file.isGenerated && 'generated',
+        file.isGenerated && SCN_SYMBOLS.TAG_GENERATED.slice(1, -1),
         ...(file.languageDirectives || [])
     ].filter(Boolean);
     const directiveStr = directives.length > 0 ? ` [${directives.join(' ')}]` : '';
-    const header = `§ (${file.id}) ${file.relativePath}${directiveStr}`;
+    const header = `${SCN_SYMBOLS.FILE_PREFIX} (${file.id}) ${file.relativePath}${directiveStr}`;
 
     const headerLines: string[] = [header];
 
@@ -1937,12 +2189,12 @@ const formatFile = (file: SourceFile, allFiles: SourceFile[]): string => {
             // Only show true file-level imports on the header
             if ((rel.kind === 'import' || rel.kind === 'dynamic_import') && rel.resolvedFileId && rel.resolvedFileId !== file.id) {
                 let text = `(${rel.resolvedFileId}.0)`;
-                if (rel.kind === 'dynamic_import') text += ' [dynamic]';
+                if (rel.kind === 'dynamic_import') text += ` ${SCN_SYMBOLS.TAG_DYNAMIC}`;
                 outgoingFiles.add(rel.resolvedFileId);
                 outgoing.push(text);
             }
         });
-        if (outgoing.length > 0) headerLines.push(`  -> ${Array.from(new Set(outgoing)).sort().join(', ')}`);
+        if (outgoing.length > 0) headerLines.push(`  ${SCN_SYMBOLS.OUTGOING_ARROW} ${Array.from(new Set(outgoing)).sort().join(', ')}`);
     }
 
     // Incoming: any other file that has a file-level relationship pointing here
@@ -1953,7 +2205,7 @@ const formatFile = (file: SourceFile, allFiles: SourceFile[]): string => {
             if (rel.resolvedFileId === file.id) incoming.push(`(${other.id}.0)`);
         });
     });
-    if (incoming.length > 0) headerLines.push(`  <- ${Array.from(new Set(incoming)).sort().join(', ')}`);
+    if (incoming.length > 0) headerLines.push(`  ${SCN_SYMBOLS.INCOMING_ARROW} ${Array.from(new Set(incoming)).sort().join(', ')}`);
 
     // If file has no exported symbols, only show symbols that are "entry points" for analysis,
     // which we define as having outgoing dependencies.
@@ -1997,10 +2249,10 @@ const formatFile = (file: SourceFile, allFiles: SourceFile[]): string => {
                         text = formatSymbolIdDisplay(targetFile, targetSymbol) ?? `(${dep.resolvedFileId}.0)`;
                     }
                 }
-                if (dep.kind === 'dynamic_import') text += ' [dynamic]';
+                if (dep.kind === 'dynamic_import') text += ` ${SCN_SYMBOLS.TAG_DYNAMIC}`;
                 aggOutgoing.get(dep.resolvedFileId)!.add(text);
             } else if (dep.resolvedFileId === undefined && dep.kind === 'macro') {
-                unresolvedDeps.push(`${dep.targetName} [macro]`);
+                unresolvedDeps.push(`${dep.targetName} ${SCN_SYMBOLS.TAG_MACRO}`);
             }
         };
 
@@ -2020,7 +2272,7 @@ const formatFile = (file: SourceFile, allFiles: SourceFile[]): string => {
             // Some fixtures expect separate -> lines per dependency.
             // This preserves that behavior.
             for (const part of outgoingParts) {
-                headerLines.push(`  -> ${part}`);
+                headerLines.push(`  ${SCN_SYMBOLS.OUTGOING_ARROW} ${part}`);
             }
         }
     }
@@ -2037,6 +2289,7 @@ export const formatScn = (analyzedFiles: SourceFile[]): string => {
 ```typescript
 import type { SourceFile, CodeSymbol, Relationship, SymbolKind, RelationshipKind, Range } from './types';
 import { getNodeRange, getNodeText, getIdentifier, findChildByFieldName } from './utils/ast';
+import { SCN_SYMBOLS } from './constants';
 import { Query, type Node as SyntaxNode, type QueryCapture } from 'web-tree-sitter';
 
 const getSymbolName = (node: SyntaxNode, sourceCode: string): string => {
@@ -2233,7 +2486,7 @@ const processCapture = (
             scopeRange: getNodeRange(scopeNode),
             isExported: hasExportAncestor(scopeNode) || /^\s*export\b/.test(getNodeText(scopeNode, sourceFile.sourceCode)),
             dependencies: [],
-            labels: styledTag ? ['styled'] : undefined
+            labels: styledTag ? [SCN_SYMBOLS.TAG_STYLED.slice(1, -1)] : undefined
         };
         
         // Store styled tag for formatter
@@ -2478,11 +2731,11 @@ export const analyze = (sourceFile: SourceFile): SourceFile => {
         
         // Special handling for abstract classes and methods
         if (sym.kind === 'class' && sym.isAbstract) {
-            sym.labels = [...(sym.labels || []), 'abstract'];
+            sym.labels = [...(sym.labels || []), SCN_SYMBOLS.TAG_ABSTRACT.slice(1, -1)];
         }
         
         if (sym.kind === 'method' && sym.isAbstract) {
-            sym.labels = [...(sym.labels || []), 'abstract'];
+            sym.labels = [...(sym.labels || []), SCN_SYMBOLS.TAG_ABSTRACT.slice(1, -1)];
             sym.isExported = false; // Abstract methods are not exported
         }
     }
@@ -2494,13 +2747,13 @@ export const analyze = (sourceFile: SourceFile): SourceFile => {
             const text = getNodeText(ast.rootNode, sourceCode);
             const namePattern = new RegExp(`\\b${sym.name}\\s*=\\s*Symbol\\s*\\(`);
             if (namePattern.test(text)) {
-                sym.labels = [...(sym.labels || []), 'symbol'];
+                sym.labels = [...(sym.labels || []), SCN_SYMBOLS.TAG_SYMBOL.slice(1, -1)];
             }
             
             // Proxy detection: mark variable with [proxy]
             const proxyPattern = new RegExp(`\\b${sym.name}\\s*=\\s*new\\s+Proxy\\s*\\(`);
             if (proxyPattern.test(text)) {
-                sym.labels = [...(sym.labels || []), 'proxy'];
+                sym.labels = [...(sym.labels || []), SCN_SYMBOLS.TAG_PROXY.slice(1, -1)];
             }
         }
     }

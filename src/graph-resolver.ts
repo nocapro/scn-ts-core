@@ -1,5 +1,6 @@
 import type { SourceFile, PathResolver, Relationship } from './types';
 import path from './utils/path';
+import { RESOLVE_EXTENSIONS } from './constants';
 
 type FileMap = Map<string, SourceFile>;
 type SymbolMap = Map<number, Map<string, string>>;
@@ -10,8 +11,7 @@ const findFileByImportPath = (importPath: string, currentFile: SourceFile, fileM
 
     const resolvedPath = aliasedPath ? path.resolve(root, aliasedPath) : path.resolve(currentDir, importPath);
 
-    const extensions = ['.ts', '.tsx', '.js', '.jsx', '.css', '.go', '.rs', '.py', '.java', '.graphql', ''];
-    for (const ext of extensions) {
+    for (const ext of RESOLVE_EXTENSIONS) {
         const tryPath = (resolvedPath + ext).replace(/\\/g, '/');
         const relative = path.relative(root, tryPath).replace(/\\/g, '/');
         if (fileMap.has(relative)) return fileMap.get(relative);

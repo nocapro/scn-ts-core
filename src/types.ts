@@ -1,8 +1,25 @@
 import type { Parser, Tree, Language } from 'web-tree-sitter';
-import type { TsConfig, PathResolver } from './utils/tsconfig';
-export type { TsConfig, PathResolver };
+import type { PathResolver } from './utils/tsconfig';
+export type { PathResolver };
 
 export type LogLevel = 'error' | 'warn' | 'info' | 'debug' | 'silent';
+
+export type LogHandler = (level: Exclude<LogLevel, 'silent'>, ...args: any[]) => void;
+
+export interface TsConfig {
+    compilerOptions?: {
+        baseUrl?: string;
+        paths?: Record<string, string[]>;
+    };
+}
+
+export interface AnalyzeProjectOptions {
+    files: InputFile[];
+    tsconfig?: TsConfig;
+    root?: string;
+    onProgress?: (progress: { percentage: number; message: string }) => void;
+    logLevel?: LogLevel;
+}
 
 /**
  * Represents a file to be processed.

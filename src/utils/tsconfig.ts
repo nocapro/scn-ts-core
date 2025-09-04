@@ -1,11 +1,5 @@
 import path from './path';
-
-export interface TsConfig {
-    compilerOptions?: {
-        baseUrl?: string;
-        paths?: Record<string, string[]>;
-    };
-}
+import type { TsConfig } from '../types';
 
 const createPathResolver = (baseUrl: string, paths: Record<string, string[]>) => {
     const aliasEntries = Object.entries(paths).map(([alias, resolutions]) => {

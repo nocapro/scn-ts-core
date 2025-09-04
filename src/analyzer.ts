@@ -1,5 +1,6 @@
 import type { SourceFile, CodeSymbol, Relationship, SymbolKind, RelationshipKind, Range } from './types';
 import { getNodeRange, getNodeText, getIdentifier, findChildByFieldName } from './utils/ast';
+import { SCN_SYMBOLS } from './constants';
 import { Query, type Node as SyntaxNode, type QueryCapture } from 'web-tree-sitter';
 
 const getSymbolName = (node: SyntaxNode, sourceCode: string): string => {
@@ -196,7 +197,7 @@ const processCapture = (
             scopeRange: getNodeRange(scopeNode),
             isExported: hasExportAncestor(scopeNode) || /^\s*export\b/.test(getNodeText(scopeNode, sourceFile.sourceCode)),
             dependencies: [],
-            labels: styledTag ? ['styled'] : undefined
+            labels: styledTag ? [SCN_SYMBOLS.TAG_STYLED.slice(1, -1)] : undefined
         };
         
         // Store styled tag for formatter
@@ -441,11 +442,11 @@ export const analyze = (sourceFile: SourceFile): SourceFile => {
         
         // Special handling for abstract classes and methods
         if (sym.kind === 'class' && sym.isAbstract) {
-            sym.labels = [...(sym.labels || []), 'abstract'];
+            sym.labels = [...(sym.labels || []), SCN_SYMBOLS.TAG_ABSTRACT.slice(1, -1)];
         }
         
         if (sym.kind === 'method' && sym.isAbstract) {
-            sym.labels = [...(sym.labels || []), 'abstract'];
+            sym.labels = [...(sym.labels || []), SCN_SYMBOLS.TAG_ABSTRACT.slice(1, -1)];
             sym.isExported = false; // Abstract methods are not exported
         }
     }
@@ -457,13 +458,13 @@ export const analyze = (sourceFile: SourceFile): SourceFile => {
             const text = getNodeText(ast.rootNode, sourceCode);
             const namePattern = new RegExp(`\\b${sym.name}\\s*=\\s*Symbol\\s*\\(`);
             if (namePattern.test(text)) {
-                sym.labels = [...(sym.labels || []), 'symbol'];
+                sym.labels = [...(sym.labels || []), SCN_SYMBOLS.TAG_SYMBOL.slice(1, -1)];
             }
             
             // Proxy detection: mark variable with [proxy]
             const proxyPattern = new RegExp(`\\b${sym.name}\\s*=\\s*new\\s+Proxy\\s*\\(`);
             if (proxyPattern.test(text)) {
-                sym.labels = [...(sym.labels || []), 'proxy'];
+                sym.labels = [...(sym.labels || []), SCN_SYMBOLS.TAG_PROXY.slice(1, -1)];
             }
         }
     }

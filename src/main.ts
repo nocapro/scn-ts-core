@@ -1,6 +1,6 @@
 import { getLanguageForFile } from './languages';
 import { initializeParser as init, parse } from './parser';
-import type { ParserInitOptions, SourceFile, InputFile, TsConfig, LogLevel, ScnTsConfig } from './types';
+import type { ParserInitOptions, SourceFile, InputFile, ScnTsConfig, AnalyzeProjectOptions } from './types';
 import { analyze } from './analyzer';
 import { formatScn } from './formatter';
 import path from './utils/path';
@@ -14,8 +14,7 @@ import { logger } from './logger';
 export const initializeParser = (options: ParserInitOptions): Promise<void> => init(options);
 
 // Types for web demo
-export type { ParserInitOptions, SourceFile, LogLevel, InputFile, TsConfig, ScnTsConfig } from './types';
-export type { LogHandler } from './logger';
+export type { ParserInitOptions, SourceFile, LogLevel, InputFile, TsConfig, ScnTsConfig, AnalyzeProjectOptions, LogHandler } from './types';
 export type FileContent = InputFile;
 
 // Exports for web demo
@@ -39,14 +38,6 @@ export const generateScnFromConfig = async (config: ScnTsConfig): Promise<string
     });
     return formatScn(analyzedFiles);
 };
-
-interface AnalyzeProjectOptions {
-    files: InputFile[];
-    tsconfig?: TsConfig;
-    root?: string;
-    onProgress?: (progress: { percentage: number; message: string }) => void;
-    logLevel?: LogLevel;
-}
 
 /**
  * Parses and analyzes a project's files to build a dependency graph.

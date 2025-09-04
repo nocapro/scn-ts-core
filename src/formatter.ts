@@ -1,16 +1,6 @@
 import type { CodeSymbol, SourceFile } from './types';
 import { topologicalSort } from './utils/graph';
-
-const ICONS: Record<string, string> = {
-    class: '◇', interface: '{}', function: '~', method: '~',
-    constructor: '~',
-    variable: '@', property: '@', enum: '☰', enum_member: '@',
-    type_alias: '=:', react_component: '◇', jsx_element: '⛶', styled_component: '~',
-    css_class: '¶', css_id: '¶', css_tag: '¶', css_at_rule: '¶',
-    go_package: '◇',
-    rust_struct: '◇', rust_trait: '{}', rust_impl: '+',
-    error: '[error]', default: '?',
-};
+import { ICONS, SCN_SYMBOLS } from './constants';
 
 // Compute display index per file based on eligible symbols (exclude properties and constructors)
 const isIdEligible = (symbol: CodeSymbol): boolean => {
@@ -36,7 +26,7 @@ const formatSymbolIdDisplay = (file: SourceFile, symbol: CodeSymbol): string | n
 
 const formatSymbol = (symbol: CodeSymbol, allFiles: SourceFile[]): string[] => {
     let icon = ICONS[symbol.kind] || ICONS.default || '?';
-    const prefix = symbol.isExported ? '+' : '-';
+    const prefix = symbol.isExported ? SCN_SYMBOLS.EXPORTED_PREFIX : SCN_SYMBOLS.PRIVATE_PREFIX;
     let name = symbol.name === '<anonymous>' ? '' : symbol.name;
     if (symbol.kind === 'variable' && name.trim() === 'default') name = '';
     
@@ -46,22 +36,21 @@ const formatSymbol = (symbol: CodeSymbol, allFiles: SourceFile[]): string[] => {
         icon = `~${tagName}`;
     }
 
-    const mods = [
-        symbol.isAbstract && 'abstract',
-        symbol.isStatic && 'static',
-    ].filter(Boolean).join(' ');
-    const modStr = mods ? ` [${mods}]` : '';
+    const mods: string[] = [];
+    if (symbol.isAbstract) mods.push(SCN_SYMBOLS.TAG_ABSTRACT.slice(1, -1));
+    if (symbol.isStatic) mods.push(SCN_SYMBOLS.TAG_STATIC.slice(1, -1));
+    const modStr = mods.length > 0 ? ` [${mods.join(' ')}]` : '';
 
     const suffixParts: string[] = [];
     if (symbol.signature) name += symbol.name === '<anonymous>' ? symbol.signature : `${symbol.signature}`;
     if (symbol.typeAnnotation) name += `: ${symbol.typeAnnotation}`;
     if (symbol.typeAliasValue) name += ` ${symbol.typeAliasValue}`;
-    // Merge async + throws into a single token '...!'
-    const asyncToken = symbol.isAsync ? '...' : '';
-    const throwsToken = symbol.throws ? '!' : '';
+    // Merge async + throws into a single token
+    const asyncToken = symbol.isAsync ? SCN_SYMBOLS.ASYNC : '';
+    const throwsToken = symbol.throws ? SCN_SYMBOLS.THROWS : '';
     const asyncThrows = (asyncToken + throwsToken) || '';
     if (asyncThrows) suffixParts.push(asyncThrows);
-    if (symbol.isPure) suffixParts.push('o');
+    if (symbol.isPure) suffixParts.push(SCN_SYMBOLS.PURE);
     if (symbol.labels && symbol.labels.length > 0) suffixParts.push(...symbol.labels.map(l => `[${l}]`));
     const suffix = suffixParts.join(' ');
 
@@ -89,18 +78,18 @@ const formatSymbol = (symbol: CodeSymbol, allFiles: SourceFile[]): string[] => {
                     const displayId = formatSymbolIdDisplay(targetFile!, targetSymbol);
                     let text = displayId ?? `(${targetFile!.id}.0)`;
                     if (dep.kind === 'goroutine') {
-                        text += ' [goroutine]';
+                        text += ` ${SCN_SYMBOLS.TAG_GOROUTINE}`;
                     }
                     outgoing.get(dep.resolvedFileId)!.add(text);
                 }
             } else {
                 let text = `(${dep.resolvedFileId}.0)`;
-                if (dep.kind === 'dynamic_import') text += ' [dynamic]';
+                if (dep.kind === 'dynamic_import') text += ` ${SCN_SYMBOLS.TAG_DYNAMIC}`;
                 outgoing.get(dep.resolvedFileId)!.add(text);
             }
         } else if (dep.resolvedFileId === undefined) {
             if (dep.kind === 'macro') {
-                unresolvedDeps.push(`${dep.targetName} [macro]`);
+                unresolvedDeps.push(`${dep.targetName} ${SCN_SYMBOLS.TAG_MACRO}`);
             }
         }
     });
@@ -118,7 +107,7 @@ const formatSymbol = (symbol: CodeSymbol, allFiles: SourceFile[]): string[] => {
     outgoingParts.push(...unresolvedDeps);
 
     if (outgoingParts.length > 0) {
-        result.push(`    -> ${outgoingParts.join(', ')}`);
+        result.push(`    ${SCN_SYMBOLS.OUTGOING_ARROW} ${outgoingParts.join(', ')}`);
     }
     
     const incoming = new Map<number, Set<string>>();
@@ -151,7 +140,7 @@ const formatSymbol = (symbol: CodeSymbol, allFiles: SourceFile[]): string[] => {
 
     if (incoming.size > 0) {
         const parts = Array.from(incoming.entries()).map(([_fileId, symbolIds]) => Array.from(symbolIds).join(', '));
-        result.push(`    <- ${parts.join(', ')}`);
+        result.push(`    ${SCN_SYMBOLS.INCOMING_ARROW} ${parts.join(', ')}`);
     }
 
     return result;
@@ -188,15 +177,15 @@ const buildChildrenMap = (symbols: CodeSymbol[]): Map<string, CodeSymbol[]> => {
 };
 
 const formatFile = (file: SourceFile, allFiles: SourceFile[]): string => {
-    if (file.parseError) return `§ (${file.id}) ${file.relativePath} [error]`;
-    if (!file.sourceCode.trim()) return `§ (${file.id}) ${file.relativePath}`;
+    if (file.parseError) return `${SCN_SYMBOLS.FILE_PREFIX} (${file.id}) ${file.relativePath} [error]`;
+    if (!file.sourceCode.trim()) return `${SCN_SYMBOLS.FILE_PREFIX} (${file.id}) ${file.relativePath}`;
 
     const directives = [
-        file.isGenerated && 'generated',
+        file.isGenerated && SCN_SYMBOLS.TAG_GENERATED.slice(1, -1),
         ...(file.languageDirectives || [])
     ].filter(Boolean);
     const directiveStr = directives.length > 0 ? ` [${directives.join(' ')}]` : '';
-    const header = `§ (${file.id}) ${file.relativePath}${directiveStr}`;
+    const header = `${SCN_SYMBOLS.FILE_PREFIX} (${file.id}) ${file.relativePath}${directiveStr}`;
 
     const headerLines: string[] = [header];
 
@@ -208,12 +197,12 @@ const formatFile = (file: SourceFile, allFiles: SourceFile[]): string => {
             // Only show true file-level imports on the header
             if ((rel.kind === 'import' || rel.kind === 'dynamic_import') && rel.resolvedFileId && rel.resolvedFileId !== file.id) {
                 let text = `(${rel.resolvedFileId}.0)`;
-                if (rel.kind === 'dynamic_import') text += ' [dynamic]';
+                if (rel.kind === 'dynamic_import') text += ` ${SCN_SYMBOLS.TAG_DYNAMIC}`;
                 outgoingFiles.add(rel.resolvedFileId);
                 outgoing.push(text);
             }
         });
-        if (outgoing.length > 0) headerLines.push(`  -> ${Array.from(new Set(outgoing)).sort().join(', ')}`);
+        if (outgoing.length > 0) headerLines.push(`  ${SCN_SYMBOLS.OUTGOING_ARROW} ${Array.from(new Set(outgoing)).sort().join(', ')}`);
     }
 
     // Incoming: any other file that has a file-level relationship pointing here
@@ -224,7 +213,7 @@ const formatFile = (file: SourceFile, allFiles: SourceFile[]): string => {
             if (rel.resolvedFileId === file.id) incoming.push(`(${other.id}.0)`);
         });
     });
-    if (incoming.length > 0) headerLines.push(`  <- ${Array.from(new Set(incoming)).sort().join(', ')}`);
+    if (incoming.length > 0) headerLines.push(`  ${SCN_SYMBOLS.INCOMING_ARROW} ${Array.from(new Set(incoming)).sort().join(', ')}`);
 
     // If file has no exported symbols, only show symbols that are "entry points" for analysis,
     // which we define as having outgoing dependencies.
@@ -268,10 +257,10 @@ const formatFile = (file: SourceFile, allFiles: SourceFile[]): string => {
                         text = formatSymbolIdDisplay(targetFile, targetSymbol) ?? `(${dep.resolvedFileId}.0)`;
                     }
                 }
-                if (dep.kind === 'dynamic_import') text += ' [dynamic]';
+                if (dep.kind === 'dynamic_import') text += ` ${SCN_SYMBOLS.TAG_DYNAMIC}`;
                 aggOutgoing.get(dep.resolvedFileId)!.add(text);
             } else if (dep.resolvedFileId === undefined && dep.kind === 'macro') {
-                unresolvedDeps.push(`${dep.targetName} [macro]`);
+                unresolvedDeps.push(`${dep.targetName} ${SCN_SYMBOLS.TAG_MACRO}`);
             }
         };
 
@@ -291,7 +280,7 @@ const formatFile = (file: SourceFile, allFiles: SourceFile[]): string => {
             // Some fixtures expect separate -> lines per dependency.
             // This preserves that behavior.
             for (const part of outgoingParts) {
-                headerLines.push(`  -> ${part}`);
+                headerLines.push(`  ${SCN_SYMBOLS.OUTGOING_ARROW} ${part}`);
             }
         }
     }

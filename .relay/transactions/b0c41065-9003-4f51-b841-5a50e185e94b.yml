@@ -1,0 +1,123 @@
+uuid: b0c41065-9003-4f51-b841-5a50e185e94b
+projectId: scn-ts-core
+createdAt: '2025-09-04T16:54:16.291Z'
+linesAdded: 257
+linesRemoved: 50
+gitCommitMsg: 'feat(demo): enhance default file set for web demo'
+promptSummary: Make the prefilled example in the web demo more complex.
+reasoning:
+  - >-
+    yooo, gotta juice up this demo. that default file set is weak sauce. we need
+    something that really shows off the engine. i'm thinking more files, more
+    languages, more complex dependency graph. let's build a mini-app structure
+    right in the default json. components, hooks, utils, styles, even some go
+    and rust for the polyglot flex. this will give users a much beefier example
+    to play with out of the box.
+  - >-
+    I'm replacing the content of `packages/scn-ts-web-demo/src/default-files.ts`
+    with a more comprehensive set of example files. This new set represents a
+    small but feature-rich application, including:
+  - '-   TypeScript/TSX for React components, hooks, and API clients.'
+  - '-   CSS files with imports.'
+  - '-   Go and Rust files to demonstrate polyglot analysis.'
+  - '-   A nested directory structure for better organization.'
+  - >-
+    -   More complex code constructs like async functions,
+    styled-components-like syntax, and type definitions.
+  - >-
+    This will provide a much more realistic and impressive default example for
+    the web demo.
+operations:
+  - type: write
+    path: packages/scn-ts-web-demo/src/default-files.ts
+    content: "import type { FileContent } from \"scn-ts-core\";\n\nconst files: FileContent[] = [\n  {\n    path: \"src/main.tsx\",\n    content: `import React from 'react';\nimport { Page } from './components/layout/Page';\nimport { UserProfile } from './components/UserProfile';\nimport { getUser } from './api/client';\nimport { Log } from './services/logger';\nimport { TokenProvider } from './auth/token';\nimport './styles/main.css';\n\nasync function main() {\n    Log('App starting...');\n\n    const tokenProvider = new TokenProvider();\n    console.log('Auth token:', tokenProvider.getToken());\n\n    const user = await getUser('1');\n    \n    const App = () => (\n        <Page>\n            <UserProfile initialUser={user} />\n        </Page>\n    );\n    \n    console.log('App ready to be rendered.');\n    // The existence of <App /> is enough for analysis.\n    // In a real app: ReactDOM.render(<App />, document.getElementById('root'));\n    Log('App finished setup.');\n}\n\nmain();\n`\n  },\n  {\n    path: \"src/api/client.ts\",\n    content: `import type { User } from '../types';\nimport { capitalize } from '../utils/string';\n\nconst API_BASE = '/api/v1';\n\nexport async function getUser(id: string): Promise<User> {\n    console.log(\\`Fetching user \\${id} from \\${API_BASE}\\`);\n    await new Promise(res => setTimeout(res, 100));\n    return {\n        id,\n        name: capitalize('john doe'),\n        email: 'john.doe@example.com',\n    };\n}\n\nexport const updateUser = async (user: Partial<User> & { id: string }): Promise<User> => {\n    console.log(\\`Updating user \\${user.id}\\`);\n    await new Promise(res => setTimeout(res, 100));\n    const fullUser = await getUser(user.id);\n    return { ...fullUser, ...user };\n};\n`\n  },\n  {\n    path: \"src/components/Button.tsx\",\n    content: `import React from 'react';\nimport './../styles/components/button.css';\n\ntype ButtonVariant = 'primary' | 'secondary';\n\nexport interface ButtonProps {\n    text: string;\n    variant?: ButtonVariant;\n    onClick?: () => void;\n}\n\nexport const Button: React.FC<ButtonProps> = ({ text, variant = 'primary', onClick }) => {\n    return (\n        <button className={\\`btn btn-\\${variant}\\`} onClick={onClick}>\n            {text}\n        </button>\n    );\n};\n`\n  },\n  {\n    path: \"src/components/UserProfile.tsx\",\n    content: `import React from 'react';\nimport type { User } from '../types';\nimport { useUser } from '../hooks/useUser';\n\n// Fake styled-component to test parser. In a real app this would be \\`import styled from 'styled-components';\\`\nconst styled = {\n  div: (template: TemplateStringsArray) => (props: any) => React.createElement('div', props)\n};\n\nconst UserCard = styled.div\\`\n  border: 1px solid #ccc;\n  padding: 1rem;\n  border-radius: 8px;\n\\`;\n\ninterface UserProfileProps {\n    initialUser: User;\n}\n\nexport function UserProfile({ initialUser }: UserProfileProps): React.ReactElement {\n    const { user, updateUser } = useUser(initialUser.id, initialUser);\n\n    if (!user) {\n        return <div>Loading...</div>;\n    }\n\n    return (\n        <UserCard>\n            <h2>{user.name}</h2>\n            <p>{user.email}</p>\n            <button onClick={() => updateUser({ name: 'Jane Doe' })}>\n                Change Name\n            </button>\n        </UserCard>\n    );\n}\n`\n  },\n  {\n    path: \"src/components/layout/Page.tsx\",\n    content: `import React from 'react';\nimport { Button } from '../Button';\nimport type { Theme } from '../../types';\n\ninterface PageProps {\n    children: React.ReactNode;\n}\n\nconst theme: Theme = 'light';\n\nexport const Page = ({ children }: PageProps): React.ReactElement => {\n    return (\n        <div className={\\`page-container theme-\\${theme}\\`}>\n            <header>\n                <h1>My App</h1>\n                <Button text=\"Logout\" />\n            </header>\n            <main>\n                {children}\n            </main>\n        </div>\n    );\n};\n`\n  },\n  {\n    path: \"src/hooks/useUser.ts\",\n    content: `import { getUser, updateUser as apiUpdateUser } from '../api/client';\nimport type { User } from '../types';\n\n// This is a fake hook for dependency analysis purposes.\nexport function useUser(userId: string, initialUser?: User) {\n    let user: User | null = initialUser || null;\n\n    const fetchUser = async () => {\n        user = await getUser(userId);\n    };\n\n    if (!user) {\n        fetchUser();\n    }\n\n    const updateUser = async (data: Partial<User>) => {\n        if (!user) return;\n        const updatedUser = await apiUpdateUser({ ...data, id: userId });\n        user = updatedUser;\n    };\n\n    return { user, updateUser };\n}\n`\n  },\n  {\n    path: \"src/styles/main.css\",\n    content: `@import url('./components/button.css');\n\n:root {\n    --primary-color: #007bff;\n}\n\nbody {\n    font-family: sans-serif;\n    background-color: #f0f0f0;\n}\n\n.page-container {\n    max-width: 960px;\n    margin: 0 auto;\n}\n`\n  },\n  {\n    path: \"src/styles/components/button.css\",\n    content: `.btn {\n    padding: 0.5rem 1rem;\n    border: none;\n    border-radius: 4px;\n    cursor: pointer;\n}\n\n.btn-primary {\n    background-color: var(--primary-color);\n    color: white;\n}\n\n.btn-secondary {\n    background-color: gray;\n    color: white;\n}\n`\n  },\n  {\n    path: \"src/types/index.ts\",\n    content: `export interface User {\n    id: string;\n    name: string;\n    email: string;\n}\n\nexport type Theme = 'light' | 'dark';\n`\n  },\n  {\n    path: \"src/utils/string.ts\",\n    content: `/**\n * Capitalizes the first letter of a string.\n */\nexport function capitalize(str: string): string {\n    if (!str) return '';\n    return str.charAt(0).toUpperCase() + str.slice(1);\n}\n`\n  },\n  {\n    path: \"src/auth/token.ts\",\n    content: `import { generate_secret } from '../services/auth'; // fake import from .rs\n\nexport class TokenProvider {\n    private secret: string;\n    constructor() {\n        this.secret = generate_secret();\n    }\n\n    getToken(): string {\n        return \\`fake-token-with-\\${this.secret}\\`;\n    }\n}\n`\n  },\n  {\n    path: \"src/services/logger.go\",\n    content: `package services\n\nimport \"fmt\"\n\n// Log prints a message to the console.\nfunc Log(message string) {\n\tfmt.Println(\"[Go Logger]\", message)\n}\n`\n  },\n  {\n    path: \"src/services/auth.rs\",\n    content: `// A simple auth service mock\npub struct AuthService {\n    secret_key: String,\n}\n\nimpl AuthService {\n    pub fn new(secret: &str) -> Self {\n        AuthService {\n            secret_key: secret.to_string(),\n        }\n    }\n\n    pub fn verify_token(&self, token: &str) -> bool {\n        // In a real app, you'd have complex logic here.\n        token.len() > 10 && self.secret_key != \"\"\n    }\n}\n\npub fn generate_secret() -> String {\n    \"super_secret_key_from_rust\".to_string()\n}\n`\n  },\n];\n\nexport const defaultFilesJSON = JSON.stringify(files, null, 2);"
+    patchStrategy: replace
+snapshot:
+  packages/scn-ts-web-demo/src/default-files.ts: |
+    import type { FileContent } from "scn-ts-core";
+
+    const files: FileContent[] = [
+      {
+        path: "src/main.ts",
+        content: `import { formatMessage } from './utils/formatter';
+    import { createButton } from './ui/button';
+    import { Greeter } from './services/greeter.py';
+
+    console.log('App starting...');
+
+    const message = formatMessage('World');
+    const button = createButton('Click Me');
+    const greeter = new Greeter();
+
+    document.body.innerHTML = \`<h1>\${message}</h1>\`;
+    document.body.appendChild(button);
+    console.log(greeter.greet());
+    `
+      },
+      {
+        path: "src/utils/formatter.ts",
+        content: `/**
+     * Formats a message with a greeting.
+     * @param name The name to include in the message.
+     * @returns The formatted message.
+     */
+    export const formatMessage = (name: string): string => {
+      return \`Hello, \${name}!\`;
+    };
+    `
+      },
+      {
+        path: "src/ui/button.ts",
+        content: `import { formatMessage } from '../utils/formatter';
+
+    export function createButton(text: string) {
+      const btn = document.createElement('button');
+      btn.textContent = text;
+      // This is a contrived call to create a graph edge
+      btn.ariaLabel = formatMessage('Button');
+      return btn;
+    }
+    `
+      },
+      {
+        path: "src/styles.css",
+        content: `body {
+      font-family: sans-serif;
+      background-color: #f0f0f0;
+    }
+
+    h1 {
+      color: #333;
+    }`
+      },
+      {
+        path: 'src/services/greeter.py',
+        content: `class Greeter:
+        def __init__(self):
+            self.message = "Hello from Python"
+
+        def greet(self):
+            return self.message
+    `
+      },
+      {
+        path: 'src/data/user.java',
+        content: `package com.example.data;
+
+    public class User {
+        private String name;
+
+        public User(String name) {
+            this.name = name;
+        }
+
+        public String getName() {
+            return name;
+        }
+    }
+    `
+      }
+    ];
+
+    export const defaultFilesJSON = JSON.stringify(files, null, 2);
+approved: true

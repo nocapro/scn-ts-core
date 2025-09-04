@@ -1,3 +1,11 @@
+is scnable
+
+=== DONE
+
+web; show llm token counter both in input and output
+
+===
+
 scn-ts-web-demo; please make the UX is super cohesive
 
 ===

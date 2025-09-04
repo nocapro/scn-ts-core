@@ -248,8 +248,9 @@ const formatFile = (file: SourceFile, allFiles: SourceFile[], options: Formattin
         ? file.symbols.slice()
         : file.symbols.filter(s => s.dependencies.length > 0);
 
-    // Group properties/methods under their class/interface parent
-    const childrenMap = buildChildrenMap(symbolsToPrint);
+    // Group properties/methods under their class/interface parent if option is enabled
+    const groupMembers = options.groupMembers ?? true;
+    const childrenMap = groupMembers ? buildChildrenMap(symbolsToPrint) : new Map();
     const childIds = new Set<string>(Array.from(childrenMap.values()).flat().map(s => s.id));
     const topLevel = symbolsToPrint.filter(s => !childIds.has(s.id));
 

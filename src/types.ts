@@ -32,6 +32,7 @@ export interface FormattingOptions {
     showModifiers?: boolean; // ..., !, o
     showTags?: boolean;      // [generated], [styled], etc.
     showSymbolIds?: boolean; // (1.2) identifiers
+    groupMembers?: boolean;  // group class/interface members under parent
 }
 
 /**

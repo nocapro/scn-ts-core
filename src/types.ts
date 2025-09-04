@@ -28,7 +28,8 @@ export interface FormattingOptions {
     showOutgoing?: boolean;
     showIncoming?: boolean;
     showIcons?: boolean;
-    showVisibility?: boolean; // +/- prefixes
+    showExportedIndicator?: boolean; // + prefix
+    showPrivateIndicator?: boolean; // - prefix
     showModifiers?: boolean; // ..., !, o
     showTags?: boolean;      // [generated], [styled], etc.
     showSymbolIds?: boolean; // (1.2) identifiers

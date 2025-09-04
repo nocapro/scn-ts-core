@@ -29,13 +29,19 @@ const formatSymbol = (symbol: CodeSymbol, allFiles: SourceFile[], options: Forma
         showOutgoing = true,
         showIncoming = true,
         showIcons = true,
-        showVisibility = true,
+        showExportedIndicator = true,
+        showPrivateIndicator = true,
         showModifiers = true,
         showTags = true,
         showSymbolIds = true,
     } = options;
     let icon = showIcons ? (ICONS[symbol.kind] || ICONS.default || '?') : '';
-    const prefix = showVisibility ? (symbol.isExported ? SCN_SYMBOLS.EXPORTED_PREFIX : SCN_SYMBOLS.PRIVATE_PREFIX) : '';
+    let prefix = '';
+    if (symbol.isExported && showExportedIndicator) {
+        prefix = SCN_SYMBOLS.EXPORTED_PREFIX;
+    } else if (!symbol.isExported && showPrivateIndicator) {
+        prefix = SCN_SYMBOLS.PRIVATE_PREFIX;
+    }
     let name = symbol.name === '<anonymous>' ? '' : symbol.name;
     if (symbol.kind === 'variable' && name.trim() === 'default') name = '';
     

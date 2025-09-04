@@ -222,7 +222,7 @@ export default LogViewer;
 ## File: packages/scn-ts-web-demo/src/components/OutputOptions.tsx
 ```typescript
 import * as React from 'react';
-import type { FormattingOptions } from '../../../index';
+import type { FormattingOptions } from '../types';
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
 
 interface OutputOptionsProps {
@@ -323,7 +323,7 @@ export function cn(...inputs: ClassValue[]) {
 
 ## File: packages/scn-ts-web-demo/src/App.tsx
 ```typescript
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { get_encoding, type Tiktoken } from 'tiktoken';
 import {
   initializeParser,
@@ -331,7 +331,7 @@ import {
   analyzeProject,
   generateScn,
 } from '../../../index';
-import type { FileContent, LogHandler, SourceFile, FormattingOptions } from '../../../index';
+import type { FileContent, LogHandler, SourceFile } from '../../../index';
 import { defaultFilesJSON } from './default-files';
 import { Button } from './components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from './components/ui/card';
@@ -339,7 +339,7 @@ import { Textarea } from './components/ui/textarea';
 import LogViewer from './components/LogViewer';
 import OutputOptions from './components/OutputOptions';
 import { Play, Loader } from 'lucide-react';
-import type { LogEntry, ProgressData } from './types';
+import type { LogEntry, ProgressData, FormattingOptions } from './types';
 
 function App() {
   const [isInitialized, setIsInitialized] = useState(false);
@@ -928,6 +928,16 @@ export interface LogEntry {
 export interface ProgressData {
   percentage: number;
   message: string;
+}
+
+export interface FormattingOptions {
+  showOutgoing?: boolean;
+  showIncoming?: boolean;
+  showIcons?: boolean;
+  showVisibility?: boolean;
+  showModifiers?: boolean;
+  showTags?: boolean;
+  showSymbolIds?: boolean;
 }
 ```
 

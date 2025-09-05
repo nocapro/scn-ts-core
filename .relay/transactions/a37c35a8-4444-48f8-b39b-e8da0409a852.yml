@@ -1,0 +1,676 @@
+uuid: a37c35a8-4444-48f8-b39b-e8da0409a852
+projectId: scn-ts-core
+createdAt: '2025-09-05T02:41:26.921Z'
+linesAdded: 5
+linesRemoved: 8
+gitCommitMsg: >-
+  refactor(web-demo): improve log viewer scrolling behavior and fix tsc error in
+  ast script
+promptSummary: >-
+  Refactor the web demo's log viewer to be non-scrollable internally and fix a
+  TypeScript error in a script.
+reasoning:
+  - >-
+    Yo, what's up. Anton here. Got a couple of quick fixes for ya. First, I'm
+    yanking the janky internal scroll from the log viewer and letting the parent
+    container handle it. This makes the UI feel less constrained, you know?
+    Second, squashed a TS error in one of the build scripts that was bugging out
+    because of a mismatched return type. Classic stuff. Let's get this patched.
+  - '### Step 1: Refactor Log Viewer to Remove Internal Scrolling'
+  - >-
+    I'm removing the internal height constraints and `overflow-auto` from the
+    `LogViewer` component. This will allow it to grow with its content. The
+    component will no longer be a fixed-height, scrolling box on its own.
+  - '### Step 2: Make the Log Accordion Content Scrollable'
+  - >-
+    Now that `LogViewer` is fluid, I'll make its container in the `App`
+    component scrollable. I'm adding `overflow-y-auto` to the `div` that wraps
+    the log viewer, which already has a fixed height.
+  - '### Step 3: Fix TypeScript Error in AST Script'
+  - >-
+    The `analyzeProject` function returns an object, but it was being passed
+    directly to `generateScn` which expects an array. A little destructuring
+    magic ` { sourceFiles: analyzedFiles } ` fixes the type mismatch. Easy
+    peasy.
+  - Alright, that should do it. Hit me up if anything else breaks.
+operations:
+  - type: write
+    path: packages/scn-ts-web-demo/src/components/LogViewer.tsx
+    content: >-
+      --- packages/scn-ts-web-demo/src/components/LogViewer.tsx
+
+      +++ packages/scn-ts-web-demo/src/components/LogViewer.tsx
+
+      @@ -58,26 +58,22 @@
+         const filteredLogs = logs.filter(log => visibleLevels.has(log.level));
+       
+         return (
+      -    <div className="h-full flex flex-col">
+
+      +    <div className="flex flex-col">
+             <div className="flex items-center space-x-2 pb-2 border-b mb-2 flex-shrink-0">
+               <span className="text-xs font-medium text-muted-foreground">Show levels:</span>
+               {LOG_LEVELS.map(level => (
+                 <Button
+                   key={level}
+                   variant={visibleLevels.has(level) ? 'secondary' : 'ghost'}
+                   size="sm"
+                   className={cn(
+                     'h-6 px-2 text-xs capitalize',
+                     !visibleLevels.has(level) && 'opacity-50',
+                     levelColorMap[level],
+                   )}
+                   onClick={() => toggleLevel(level)}
+                 >
+                   {level}
+                 </Button>
+               ))}
+             </div>
+      -      <div className="relative flex-grow">
+
+      -        <div
+
+      -          ref={scrollContainerRef}
+
+      -          className="absolute inset-0 overflow-auto font-mono text-xs
+      pr-10"
+
+      -        >
+
+      +      <div className="relative">
+
+      +        <div ref={scrollContainerRef} className="font-mono text-xs
+      pr-10">
+                 {filteredLogs.length === 0 && (
+                   <p className="text-muted-foreground">
+                     {logs.length === 0 ? 'No logs yet. Click "Analyze" to start.' : 'No logs match the current filter.'}
+    patchStrategy: new-unified
+  - type: write
+    path: packages/scn-ts-web-demo/src/App.tsx
+    content: |-
+      --- packages/scn-ts-web-demo/src/App.tsx
+      +++ packages/scn-ts-web-demo/src/App.tsx
+      @@ -213,8 +213,8 @@
+                   <AccordionItem value="logs" className="border-b-0">
+                     <AccordionTrigger className="px-4 text-sm font-semibold hover:no-underline">Logs</AccordionTrigger>
+                     <AccordionContent className="px-4">
+      -                <div className="h-96">
+      +                <div className="h-96 overflow-y-auto">
+                         <LogViewer logs={logs} />
+                       </div>
+                     </AccordionContent>
+                   </AccordionItem>
+    patchStrategy: new-unified
+  - type: write
+    path: scripts/ast.ts
+    content: |-
+      --- scripts/ast.ts
+      +++ scripts/ast.ts
+      @@ -108,13 +108,13 @@
+           console.log('ANALYSIS:');
+           const { analyzeProject, generateScn } = await import('../src/main');
+           try {
+      -      const analyzedFiles = await analyzeProject({
+      +      const { sourceFiles: analyzedFiles } = await analyzeProject({
+               files: [{
+                 path: sample.file,
+                 content: sample.code
+               }]
+             });
+             const scnOutput = generateScn(analyzedFiles);
+             console.log('SCN Output:');
+             console.log(scnOutput);
+           } catch (error) {
+    patchStrategy: new-unified
+snapshot:
+  packages/scn-ts-web-demo/src/components/LogViewer.tsx: >
+    import React, { useRef, useState, useCallback } from 'react';
+
+    import { cn } from '../lib/utils';
+
+    import type { LogEntry } from '../types';
+
+    import { levelColorMap } from '../constants';
+
+    import { Button } from './ui/button';
+
+    import { Copy, Check } from 'lucide-react';
+
+    import type { LogLevel } from 'scn-ts-core';
+
+
+    const LOG_LEVELS: Exclude<LogLevel, 'silent'>[] = ['error', 'warn', 'info',
+    'debug'];
+
+
+    const LogViewer: React.FC<{ logs: readonly LogEntry[] }> = ({ logs }) => {
+      const scrollContainerRef = useRef<HTMLDivElement>(null);
+      const [isCopied, setIsCopied] = useState(false);
+      const [visibleLevels, setVisibleLevels] = useState<Set<Exclude<LogLevel, 'silent'>>>(
+        new Set(LOG_LEVELS),
+      );
+
+      const handleCopy = useCallback(() => {
+        const logsToCopy = logs.filter(log => visibleLevels.has(log.level));
+        if (logsToCopy.length > 0) {
+          const logText = logsToCopy
+            .map(
+              log =>
+                `${new Date(log.timestamp).toLocaleTimeString()} [${log.level.toUpperCase()}] ${log.message}`,
+            )
+            .join('\n');
+          navigator.clipboard.writeText(logText).then(() => {
+            setIsCopied(true);
+            setTimeout(() => setIsCopied(false), 2000);
+          });
+        }
+      }, [logs, visibleLevels]);
+
+      const toggleLevel = (level: Exclude<LogLevel, 'silent'>) => {
+        setVisibleLevels(prev => {
+          const newSet = new Set(prev);
+          if (newSet.has(level)) {
+            newSet.delete(level);
+          } else {
+            newSet.add(level);
+          }
+          return newSet;
+        });
+      };
+
+      const filteredLogs = logs.filter(log => visibleLevels.has(log.level));
+
+      return (
+        <div className="h-full flex flex-col">
+          <div className="flex items-center space-x-2 pb-2 border-b mb-2 flex-shrink-0">
+            <span className="text-xs font-medium text-muted-foreground">Show levels:</span>
+            {LOG_LEVELS.map(level => (
+              <Button
+                key={level}
+                variant={visibleLevels.has(level) ? 'secondary' : 'ghost'}
+                size="sm"
+                className={cn(
+                  'h-6 px-2 text-xs capitalize',
+                  !visibleLevels.has(level) && 'opacity-50',
+                  levelColorMap[level],
+                )}
+                onClick={() => toggleLevel(level)}
+              >
+                {level}
+              </Button>
+            ))}
+          </div>
+          <div className="relative flex-grow">
+            <div
+              ref={scrollContainerRef}
+              className="absolute inset-0 overflow-auto font-mono text-xs pr-10"
+            >
+              {filteredLogs.length === 0 && (
+                <p className="text-muted-foreground">
+                  {logs.length === 0 ? 'No logs yet. Click "Analyze" to start.' : 'No logs match the current filter.'}
+                </p>
+              )}
+              {filteredLogs.map((log, index) => (
+                <div key={index} className="flex items-start">
+                  <span className="text-muted-foreground/80 mr-4 flex-shrink-0">
+                    {new Date(log.timestamp).toLocaleTimeString()}
+                  </span>
+                  <span className={cn('font-bold w-14 flex-shrink-0', levelColorMap[log.level])}>
+                    [{log.level.toUpperCase()}]
+                  </span>
+                  <span className="whitespace-pre-wrap break-all text-foreground">{log.message}</span>
+                </div>
+              ))}
+            </div>
+            {logs.length > 0 && (
+              <Button variant="ghost" size="icon" className="absolute top-0 right-0 h-8 w-8" onClick={handleCopy} title="Copy logs to clipboard">
+                {isCopied ? <Check className="h-4 w-4 text-green-500" /> : <Copy className="h-4 w-4" />}
+              </Button>
+            )}
+          </div>
+        </div>
+      );
+    };
+
+
+    export default LogViewer;
+  packages/scn-ts-web-demo/src/App.tsx: >
+    import { useState, useEffect, useCallback, useRef } from 'react';
+
+    import { get_encoding, type Tiktoken } from 'tiktoken';
+
+    import * as Comlink from 'comlink';
+
+    import type { Remote } from 'comlink';
+
+    import { generateScn } from '../../../index';
+
+    import type { SourceFile } from '../../../index';
+
+    import { defaultFilesJSON } from './default-files';
+
+    import { Button } from './components/ui/button';
+
+    import { Textarea } from './components/ui/textarea';
+
+    import LogViewer from './components/LogViewer';
+
+    import OutputOptions from './components/OutputOptions';
+
+    import { Play, Loader, Copy, Check, StopCircle } from 'lucide-react';
+
+    import type { LogEntry, ProgressData, FormattingOptions } from './types';
+
+    import type { WorkerApi } from './worker';
+
+    import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from
+    './components/ui/accordion';
+
+
+    function App() {
+      const [isInitialized, setIsInitialized] = useState(false);
+      const [isLoading, setIsLoading] = useState(false);
+      const [filesInput, setFilesInput] = useState(defaultFilesJSON);
+      const [scnOutput, setScnOutput] = useState('');
+      const [analysisResult, setAnalysisResult] = useState<SourceFile[] | null>(null);
+      const [isCopied, setIsCopied] = useState(false);
+      const [formattingOptions, setFormattingOptions] = useState<FormattingOptions>({
+        showOutgoing: true,
+        showIncoming: true,
+        showIcons: true,
+        showExportedIndicator: true,
+        showPrivateIndicator: true,
+        showModifiers: true,
+        showTags: true,
+        showSymbolIds: true,
+        groupMembers: true,
+        displayFilters: {},
+        showFilePrefix: true,
+        showFileIds: true,
+      });
+      const [progress, setProgress] = useState<ProgressData | null>(null);
+      const [logs, setLogs] = useState<LogEntry[]>([]);
+      const [encoder, setEncoder] = useState<Tiktoken | null>(null);
+      const [analysisTime, setAnalysisTime] = useState<number | null>(null);
+      const [tokenCounts, setTokenCounts] = useState({ input: 0, output: 0 });
+      
+      const workerRef = useRef<Remote<WorkerApi> | null>(null);
+
+      useEffect(() => {
+        // Initialize Tokenizer on main thread
+        try {
+          const enc = get_encoding("cl100k_base");
+          setEncoder(enc);
+        } catch (e) {
+          console.error("Failed to initialize tokenizer:", e);
+          setLogs(prev => [...prev, { level: 'error', message: 'Failed to initialize tokenizer.', timestamp: Date.now() }]);
+        }
+
+        // Comlink setup
+        const worker = new Worker(new URL('./worker.ts', import.meta.url), { type: 'module' });
+        const wrappedWorker = Comlink.wrap<WorkerApi>(worker);
+        workerRef.current = wrappedWorker;
+
+        const initializeWorker = async () => {
+          try {
+            await wrappedWorker.init();
+            setIsInitialized(true);
+            setLogs(prev => [...prev, { level: 'info', message: 'Analysis worker ready.', timestamp: Date.now() }]);
+          } catch (error) {
+            const message = error instanceof Error ? error.message : String(error);
+            setLogs(prev => [...prev, { level: 'error', message: `Worker failed to initialize: ${message}`, timestamp: Date.now() }]);
+          }
+        };
+
+        initializeWorker();
+
+        return () => {
+          wrappedWorker[Comlink.releaseProxy]();
+          worker.terminate();
+        };
+      }, []);
+
+      useEffect(() => {
+        if (!encoder) return;
+        try {
+          const inputTokens = encoder.encode(filesInput).length;
+          const outputTokens = encoder.encode(scnOutput).length;
+          setTokenCounts({ input: inputTokens, output: outputTokens });
+        } catch (e) {
+          console.error("Tokenization error:", e);
+          setTokenCounts({ input: 0, output: 0 });
+        }
+      }, [filesInput, scnOutput, encoder]);
+
+      useEffect(() => {
+        if (analysisResult) {
+          setScnOutput(generateScn(analysisResult, formattingOptions));
+        }
+      }, [analysisResult, formattingOptions]);
+
+      const handleCopy = useCallback(() => {
+        if (scnOutput) {
+          navigator.clipboard.writeText(scnOutput).then(
+            () => {
+              setIsCopied(true);
+              setTimeout(() => setIsCopied(false), 2000);
+            }
+          );
+        }
+      }, [scnOutput]);
+
+      const handleStop = useCallback(() => {
+        if (isLoading && workerRef.current) {
+          workerRef.current.cancel();
+          // The error propagation and finally block in handleAnalyze will handle state updates.
+        }
+      }, [isLoading]);
+
+      const handleAnalyze = useCallback(async () => {
+        if (!isInitialized || !workerRef.current) {
+          setLogs(prev => [...prev, { level: 'warn', message: 'Analysis worker not ready.', timestamp: Date.now() }]);
+          return;
+        }
+        
+        if (isLoading) {
+          return; // Prevent multiple concurrent analyses
+        }
+        
+        setIsLoading(true);
+        setScnOutput('');
+        setAnalysisResult(null);
+        setAnalysisTime(null);
+        setProgress(null);
+        setLogs([]);
+
+        const onLog = (log: LogEntry) => {
+          setLogs(prev => [...prev, log]);
+        };
+
+        try {
+          const { result, analysisTime } = await workerRef.current.analyze(
+            { filesInput, logLevel: 'debug' },
+            Comlink.proxy(setProgress),
+            Comlink.proxy(onLog)
+          );
+          setAnalysisResult(result);
+          setAnalysisTime(analysisTime);
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          if ((error as Error).name === 'AbortError') {
+            setLogs(prev => [...prev, { level: 'warn', message: 'Analysis canceled by user.', timestamp: Date.now() }]);
+          } else {
+            setLogs(prev => [...prev, { level: 'error', message: `Analysis error: ${message}`, timestamp: Date.now() }]);
+          }
+        } finally {
+          setIsLoading(false);
+          setProgress(null);
+        }
+      }, [filesInput, isInitialized, isLoading]);
+
+      return (
+        <div className="h-screen w-screen flex bg-background text-foreground">
+          {/* Sidebar */}
+          <aside className="w-[30rem] max-w-[40%] flex-shrink-0 flex flex-col border-r">
+            <div className="flex-shrink-0 flex items-center justify-between p-4 border-b">
+              <h1 className="text-xl font-bold tracking-tight">SCN-TS Web Demo</h1>
+              <div className="flex items-center space-x-2">
+                {isLoading ? (
+                  <>
+                    <Button disabled className="w-32 justify-center">
+                      <Loader className="mr-2 h-4 w-4 animate-spin" />
+                      <span>{progress ? `${Math.round(progress.percentage)}%` : 'Analyzing...'}</span>
+                    </Button>
+                    <Button onClick={handleStop} variant="outline" size="icon" title="Stop analysis">
+                      <StopCircle className="h-4 w-4" />
+                    </Button>
+                  </>
+                ) : (
+                  <Button onClick={handleAnalyze} disabled={!isInitialized} className="w-32 justify-center">
+                    <Play className="mr-2 h-4 w-4" />
+                    <span>Analyze</span>
+                  </Button>
+                )}
+              </div>
+            </div>
+
+            <div className="flex-grow overflow-y-auto">
+              <Accordion type="multiple" defaultValue={['input', 'options', 'logs']} className="w-full">
+                <AccordionItem value="input">
+                  <AccordionTrigger className="px-4 text-sm font-semibold hover:no-underline">
+                    <div className="flex w-full justify-between items-center">
+                      <span>Input Files (JSON)</span>
+                      <span className="text-xs font-normal text-muted-foreground tabular-nums">
+                        {tokenCounts.input.toLocaleString()} tokens
+                      </span>
+                    </div>
+                  </AccordionTrigger>
+                  <AccordionContent>
+                    <div className="px-4 pb-4 h-96">
+                      <Textarea
+                        value={filesInput}
+                        onChange={(e) => setFilesInput(e.currentTarget.value)}
+                        className="h-full w-full font-mono text-xs resize-none"
+                        placeholder="Paste an array of FileContent objects here..."
+                      />
+                    </div>
+                  </AccordionContent>
+                </AccordionItem>
+
+                <AccordionItem value="options">
+                  <AccordionTrigger className="px-4 text-sm font-semibold hover:no-underline">Formatting Options</AccordionTrigger>
+                  <AccordionContent className="px-4">
+                    <OutputOptions options={formattingOptions} setOptions={setFormattingOptions} />
+                  </AccordionContent>
+                </AccordionItem>
+
+                <AccordionItem value="logs" className="border-b-0">
+                  <AccordionTrigger className="px-4 text-sm font-semibold hover:no-underline">Logs</AccordionTrigger>
+                  <AccordionContent className="px-4">
+                    <div className="h-96">
+                      <LogViewer logs={logs} />
+                    </div>
+                  </AccordionContent>
+                </AccordionItem>
+              </Accordion>
+            </div>
+          </aside>
+
+          {/* Main Content Area */}
+          <main className="flex-grow flex flex-col overflow-hidden">
+            <div className="flex justify-between items-center p-4 border-b flex-shrink-0">
+              <h2 className="text-lg font-semibold leading-none tracking-tight">Output (SCN)</h2>
+              <div className="flex items-center gap-4">
+                {analysisTime !== null && (
+                  <span className="text-sm text-muted-foreground">
+                    Analyzed in {(analysisTime / 1000).toFixed(2)}s
+                  </span>
+                )}
+                <span className="text-sm font-normal text-muted-foreground tabular-nums">{tokenCounts.output.toLocaleString()} tokens</span>
+                <Button variant="ghost" size="icon" onClick={handleCopy} disabled={!scnOutput} title="Copy to clipboard">
+                  {isCopied ? <Check className="h-4 w-4 text-green-500" /> : <Copy className="h-4 w-4" />}
+                </Button>
+              </div>
+            </div>
+            <div className="p-4 flex-grow overflow-auto font-mono text-xs">
+              <pre className="whitespace-pre-wrap">
+                {scnOutput || (isLoading ? "Generating..." : "Output will appear here.")}
+              </pre>
+            </div>
+          </main>
+        </div>
+      );
+    }
+
+
+    export default App;
+  scripts/ast.ts: >
+    import { initializeParser, parse } from '../src/parser';
+
+    import { getLanguageForFile } from '../src/languages';
+
+    import path from 'node:path';
+
+
+    async function main() {
+      const wasmDir = path.join(process.cwd(), 'test', 'wasm');
+      await initializeParser({ wasmBaseUrl: wasmDir });
+
+      const samples: Array<{file: string, code: string, title: string}> = [
+        {
+          file: 'sample.ts',
+          title: 'TS class/interface snippet',
+          code: `
+    export interface User { id: number; name: string; }
+
+    export type UserId = number | string;
+
+    export class ApiClient { private apiKey: string; constructor(key: string) {
+    this.apiKey = key; } async fetchUser(id: UserId): Promise<User> { return {
+    id: 1, name: 'x' }; } }
+          `.trim()
+        },
+        {
+          file: 'iife.js',
+          title: 'IIFE and prototype',
+          code: `
+    (function(){
+      function Widget(name){ this.name = name }
+      Widget.prototype.render = function(){ return 'x' }
+      function * idGenerator(){ let i=0; while(true) yield i++; }
+      window.Widget = Widget; window.idGenerator = idGenerator;
+    })();
+          `.trim()
+        },
+        {
+          file: 'cjs.js',
+          title: 'CJS require',
+          code: `
+    const cjs = require('./cjs_module');
+          `.trim()
+        },
+        {
+          file: 'cjs_exports.js',
+          title: 'CJS module.exports',
+          code: `
+    function cjsFunc() { console.log('cjs'); }
+
+    module.exports = {
+      value: 42,
+      run: () => cjsFunc()
+    };
+          `.trim()
+        },
+        {
+          file: 'tagged.js',
+          title: 'Tagged template',
+          code: `
+    function styler(strings, ...values) { return '' }
+
+    const name = 'a';
+
+    document.body.innerHTML = styler\`Hello, \${name}!\`;
+          `.trim()
+        },
+        {
+          file: 'abstract_class.ts',
+          title: 'Abstract Class',
+          code: `
+    abstract class BaseEntity {
+      readonly id: string;
+      static species: string;
+      protected constructor(id: string) { this.id = id; }
+      abstract getDescription(): string;
+      static getSpeciesName(): string { return this.species; }
+    }
+          `.trim()
+        },
+        {
+          file: 'advanced_types.ts',
+          title: 'Advanced Types',
+          code: `
+    type EventName = 'click' | 'scroll' | 'mousemove';
+
+    type Style = 'bold' | 'italic';
+
+    type CssClass = \`text-\${Style}\`;
+
+    type HandlerMap = { [K in EventName]: (event: K) => void };
+
+    type UnpackPromise<T> = T extends Promise<infer U> ? U : T;
+
+    interface User { id: number; name: string; }
+
+    const config = { user: { id: 1, name: 'a' } satisfies User };
+          `.trim()
+        },
+        {
+            file: 'proxy.js',
+            title: 'JS Proxy',
+            code: `
+    const hiddenProp = Symbol('hidden');
+
+    const user = { name: 'John', [hiddenProp]: 'secret' };
+
+    const userProxy = new Proxy(user, {
+      get(target, prop) {
+        return prop in target ? target[prop] : 'N/A';
+      }
+    });
+            `.trim()
+        }
+      ];
+
+      for (const sample of samples) {
+        const lang = getLanguageForFile(sample.file)!;
+        const tree = parse(sample.code, lang)!;
+        console.log(`\n===== ${sample.title} (${sample.file}) =====`);
+        
+        // Run analysis
+        console.log('ANALYSIS:');
+        const { analyzeProject, generateScn } = await import('../src/main');
+        try {
+          const analyzedFiles = await analyzeProject({
+            files: [{
+              path: sample.file,
+              content: sample.code
+            }]
+          });
+          const scnOutput = generateScn(analyzedFiles);
+          console.log('SCN Output:');
+          console.log(scnOutput);
+        } catch (error) {
+          console.log('Analysis error:', error);
+        }
+        
+        console.log('\nAST:');
+        printAST(tree.rootNode);
+      }
+    }
+
+
+    function printAST(node: any, depth = 0) {
+      const indent = '  '.repeat(depth);
+      const isNamed = typeof node.isNamed === 'function' ? node.isNamed() : true;
+      console.log(`${indent}${node.type}${isNamed ? '' : ' [anon]'} [${node.startPosition.row}:${node.startPosition.column}-${node.endPosition.row}:${node.endPosition.column}]`);
+
+      const fieldNames: string[] = node.fieldNames || [];
+      for (const fieldName of fieldNames) {
+        const child = node.childForFieldName(fieldName);
+        if (child) {
+          console.log(`${indent}  ${fieldName}:`);
+          printAST(child, depth + 2);
+        }
+      }
+
+      for (let i = 0; i < node.childCount; i++) {
+        const child = node.child(i);
+        if (!fieldNames.some(fn => node.childForFieldName(fn) === child)) {
+          printAST(child, depth + 1);
+        }
+      }
+    }
+
+
+    main().catch(e => { console.error(e); process.exit(1); });
+approved: true

@@ -1,0 +1,498 @@
+uuid: a6974720-c23f-4e67-8c35-c3da6a143734
+projectId: scn-ts-core
+createdAt: '2025-09-05T02:36:34.610Z'
+linesAdded: 3
+linesRemoved: 3
+gitCommitMsg: 'fix(web-demo): resolve typescript errors in components'
+promptSummary: >-
+  Fix TypeScript errors reported by the user. One is an unused import, another
+  is a missing export from a library, and the third is in a file not provided
+  but likely due to incorrect usage of a function's return value.
+reasoning:
+  - >-
+    what's up, it's anton. took a look at your TS errors. those first two were
+    trivial, just some linting and a missing icon. the third error in
+    `scripts/ast.ts` is interesting though, since i don't have that file. my
+    guess is it's a local test script or something. the core library code and
+    the web demo you sent over are both handling the return value from
+    `analyzeProject` correctly (destructuring it to get `sourceFiles`). you
+    probably just need to do the same in your script, e.g., `const {
+    sourceFiles: analyzedFiles } = await analyzeProject(...)`.
+  - >-
+    anyway, here are the patches for the files i could fix. should get you
+    unblocked.
+  - >-
+    First, I'll remove the unused `useEffect` import from `LogViewer.tsx`. Dead
+    code is no good.
+  - >-
+    Next, `lucide-react` doesn't export a `Collapse` icon. I've swapped it for
+    `Compress`, which is a more fitting counterpart to `Expand` anyway.
+  - >-
+    These two changes should resolve the typescript errors you're seeing in the
+    provided files. Let me know if anything else pops up.
+operations:
+  - type: write
+    path: packages/scn-ts-web-demo/src/components/LogViewer.tsx
+    content: |-
+      --- packages/scn-ts-web-demo/src/components/LogViewer.tsx
+      +++ packages/scn-ts-web-demo/src/components/LogViewer.tsx
+      @@ -1,4 +1,4 @@
+      -import React, { useEffect, useRef, useState, useCallback } from 'react';
+      +import React, { useRef, useState, useCallback } from 'react';
+       import { cn } from '../lib/utils';
+       import type { LogEntry } from '../types';
+       import { levelColorMap } from '../constants';
+    patchStrategy: new-unified
+  - type: write
+    path: packages/scn-ts-web-demo/src/components/OutputOptions.tsx
+    content: >-
+      --- packages/scn-ts-web-demo/src/components/OutputOptions.tsx
+
+      +++ packages/scn-ts-web-demo/src/components/OutputOptions.tsx
+
+      @@ -1,6 +1,6 @@
+       import * as React from 'react';
+       import type { FormattingOptions } from '../types';
+      -import { ChevronDown, ChevronRight, Expand, Collapse } from
+      'lucide-react';
+
+      +import { ChevronDown, ChevronRight, Expand, Compress } from
+      'lucide-react';
+       import { Button } from './ui/button';
+       
+       interface OutputOptionsProps {
+      @@ -176,8 +176,8 @@
+                 Expand all
+               </Button>
+               <Button variant="ghost" size="sm" onClick={collapseAll} className="text-muted-foreground hover:text-foreground h-auto px-2 py-1 text-xs">
+      -          <Collapse className="mr-1.5 h-3.5 w-3.5" />
+
+      +          <Compress className="mr-1.5 h-3.5 w-3.5" />
+                 Collapse all
+               </Button>
+             </div>
+    patchStrategy: new-unified
+snapshot:
+  packages/scn-ts-web-demo/src/components/LogViewer.tsx: >
+    import React, { useEffect, useRef, useState, useCallback } from 'react';
+
+    import { cn } from '../lib/utils';
+
+    import type { LogEntry } from '../types';
+
+    import { levelColorMap } from '../constants';
+
+    import { Button } from './ui/button';
+
+    import { Copy, Check } from 'lucide-react';
+
+    import type { LogLevel } from 'scn-ts-core';
+
+
+    const LOG_LEVELS: Exclude<LogLevel, 'silent'>[] = ['error', 'warn', 'info',
+    'debug'];
+
+
+    const LogViewer: React.FC<{ logs: readonly LogEntry[] }> = ({ logs }) => {
+      const scrollContainerRef = useRef<HTMLDivElement>(null);
+      const [isCopied, setIsCopied] = useState(false);
+      const [visibleLevels, setVisibleLevels] = useState<Set<Exclude<LogLevel, 'silent'>>>(
+        new Set(LOG_LEVELS),
+      );
+
+      const handleCopy = useCallback(() => {
+        const logsToCopy = logs.filter(log => visibleLevels.has(log.level));
+        if (logsToCopy.length > 0) {
+          const logText = logsToCopy
+            .map(
+              log =>
+                `${new Date(log.timestamp).toLocaleTimeString()} [${log.level.toUpperCase()}] ${log.message}`,
+            )
+            .join('\n');
+          navigator.clipboard.writeText(logText).then(() => {
+            setIsCopied(true);
+            setTimeout(() => setIsCopied(false), 2000);
+          });
+        }
+      }, [logs, visibleLevels]);
+
+      const toggleLevel = (level: Exclude<LogLevel, 'silent'>) => {
+        setVisibleLevels(prev => {
+          const newSet = new Set(prev);
+          if (newSet.has(level)) {
+            newSet.delete(level);
+          } else {
+            newSet.add(level);
+          }
+          return newSet;
+        });
+      };
+
+      const filteredLogs = logs.filter(log => visibleLevels.has(log.level));
+
+      return (
+        <div className="h-full flex flex-col">
+          <div className="flex items-center space-x-2 pb-2 border-b mb-2 flex-shrink-0">
+            <span className="text-xs font-medium text-muted-foreground">Show levels:</span>
+            {LOG_LEVELS.map(level => (
+              <Button
+                key={level}
+                variant={visibleLevels.has(level) ? 'secondary' : 'ghost'}
+                size="sm"
+                className={cn(
+                  'h-6 px-2 text-xs capitalize',
+                  !visibleLevels.has(level) && 'opacity-50',
+                  levelColorMap[level],
+                )}
+                onClick={() => toggleLevel(level)}
+              >
+                {level}
+              </Button>
+            ))}
+          </div>
+          <div className="relative flex-grow">
+            <div
+              ref={scrollContainerRef}
+              className="absolute inset-0 overflow-auto font-mono text-xs pr-10"
+            >
+              {filteredLogs.length === 0 && (
+                <p className="text-muted-foreground">
+                  {logs.length === 0 ? 'No logs yet. Click "Analyze" to start.' : 'No logs match the current filter.'}
+                </p>
+              )}
+              {filteredLogs.map((log, index) => (
+                <div key={index} className="flex items-start">
+                  <span className="text-muted-foreground/80 mr-4 flex-shrink-0">
+                    {new Date(log.timestamp).toLocaleTimeString()}
+                  </span>
+                  <span className={cn('font-bold w-14 flex-shrink-0', levelColorMap[log.level])}>
+                    [{log.level.toUpperCase()}]
+                  </span>
+                  <span className="whitespace-pre-wrap break-all text-foreground">{log.message}</span>
+                </div>
+              ))}
+            </div>
+            {logs.length > 0 && (
+              <Button variant="ghost" size="icon" className="absolute top-0 right-0 h-8 w-8" onClick={handleCopy} title="Copy logs to clipboard">
+                {isCopied ? <Check className="h-4 w-4 text-green-500" /> : <Copy className="h-4 w-4" />}
+              </Button>
+            )}
+          </div>
+        </div>
+      );
+    };
+
+
+    export default LogViewer;
+  packages/scn-ts-web-demo/src/components/OutputOptions.tsx: >-
+    import * as React from 'react';
+
+    import type { FormattingOptions } from '../types';
+
+    import { ChevronDown, ChevronRight, Expand, Collapse } from 'lucide-react';
+
+    import { Button } from './ui/button';
+
+
+    interface OutputOptionsProps {
+      options: FormattingOptions;
+      setOptions: React.Dispatch<React.SetStateAction<FormattingOptions>>;
+    }
+
+
+    const OptionCheckbox: React.FC<{
+      id: string;
+      label: string;
+      checked: boolean;
+      onChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
+    }> = ({ id, label, checked, onChange }) => (
+      <div className="flex items-center space-x-1.5">
+        <input
+          type="checkbox"
+          id={id}
+          checked={checked}
+          onChange={onChange}
+          className="h-4 w-4 rounded border-muted-foreground/50 bg-transparent text-primary focus:ring-primary"
+        />
+        <label htmlFor={id} className="cursor-pointer select-none text-sm text-muted-foreground">
+          {label}
+        </label>
+      </div>
+    );
+
+
+    type RegularOptionKey = keyof Omit<FormattingOptions, 'displayFilters'>;
+
+    type OptionItem = RegularOptionKey | string | { name: string; children:
+    OptionItem[] };
+
+
+    const symbolKindLabels: Record<string, string> = {
+      // TS/JS
+      class: 'Classes',
+      interface: 'Interfaces',
+      function: 'Functions',
+      method: 'Methods',
+      constructor: 'Constructors',
+      variable: 'Variables',
+      property: 'Properties',
+      enum: 'Enums',
+      enum_member: 'Enum Members',
+      type_alias: 'Type Aliases',
+      module: 'Modules',
+      // React
+      react_component: 'React Components',
+      styled_component: 'Styled Components',
+      jsx_element: 'JSX Elements',
+      // CSS
+      css_class: 'CSS Classes',
+      css_id: 'CSS IDs',
+      css_tag: 'CSS Tags',
+      css_at_rule: 'CSS At-Rules',
+      css_variable: 'CSS Variables',
+      // Go
+      go_package: 'Go Packages',
+      // Rust
+      rust_struct: 'Rust Structs',
+      rust_trait: 'Rust Traits',
+      rust_impl: 'Rust Impls',
+    };
+
+
+    const symbolVisibilityTree: OptionItem = {
+      name: 'Symbol Visibility',
+      children: [
+        {
+          name: 'TypeScript/JavaScript',
+          children: [
+            {
+              name: 'Declarations',
+              children: [
+                'filter:class', 'filter:interface', 'filter:function', 'filter:variable',
+                'filter:enum', 'filter:type_alias', 'filter:module',
+              ],
+            },
+            { name: 'Members', children: ['filter:method', 'filter:constructor', 'filter:property', 'filter:enum_member'] },
+          ],
+        },
+        { name: 'React', children: ['filter:react_component', 'filter:styled_component', 'filter:jsx_element'] },
+        { name: 'CSS', children: ['filter:css_class', 'filter:css_id', 'filter:css_tag', 'filter:css_at_rule', 'filter:css_variable'] },
+        {
+          name: 'Other Languages',
+          children: [
+            { name: 'Go', children: ['filter:go_package'] },
+            { name: 'Rust', children: ['filter:rust_struct', 'filter:rust_trait', 'filter:rust_impl'] },
+          ],
+        },
+      ],
+    };
+
+
+    const optionTree: OptionItem[] = [
+      {
+        name: 'Display Elements',
+        children: [
+          'showIcons',
+          {
+            name: 'Indicators',
+            children: ['showExportedIndicator', 'showPrivateIndicator'],
+          },
+          'showModifiers',
+          'showTags',
+          {
+            name: 'Identifiers',
+            children: ['showFilePrefix', 'showFileIds', 'showSymbolIds'],
+          },
+        ],
+      },
+      {
+        name: 'Relationships',
+        children: ['showOutgoing', 'showIncoming'],
+      },
+      {
+        name: 'Structure',
+        children: ['groupMembers'],
+      },
+      symbolVisibilityTree,
+    ];
+
+
+    const optionLabels: Record<RegularOptionKey, string> & Record<string,
+    string> = {
+      ...symbolKindLabels,
+      showIcons: 'Icons',
+      showExportedIndicator: 'Exported (+)',
+      showPrivateIndicator: 'Private (-)',
+      showModifiers: 'Modifiers',
+      showTags: 'Tags',
+      showSymbolIds: 'Symbol IDs',
+      showFilePrefix: 'File Prefix (§)',
+      showFileIds: 'File IDs',
+      showOutgoing: 'Outgoing',
+      showIncoming: 'Incoming',
+      groupMembers: 'Group Members',
+    };
+
+
+    function getAllKeys(item: OptionItem): string[] {
+      if (typeof item === 'string') {
+        return [item];
+      }
+      return item.children.flatMap(getAllKeys);
+    }
+
+
+    const getAllGroupNames = (items: OptionItem[]): string[] => {
+      return items.flatMap(item => {
+        if (typeof item === 'object' && 'name' in item) {
+          return [item.name, ...getAllGroupNames(item.children)];
+        }
+        return [];
+      });
+    }
+
+
+    const OutputOptions: React.FC<OutputOptionsProps> = ({ options, setOptions
+    }) => {
+      const [expandedGroups, setExpandedGroups] = React.useState<Set<string>>(
+        () =>
+          new Set([
+            'Display Elements', 'Indicators', 'Relationships', 'Structure',
+            'TypeScript/JavaScript',
+            'React', 'Identifiers',
+          ])
+      );
+
+      const allGroupNames = React.useMemo(() => getAllGroupNames(optionTree), []);
+
+      const expandAll = () => {
+        setExpandedGroups(new Set(allGroupNames));
+      };
+
+      const collapseAll = () => {
+        setExpandedGroups(new Set());
+      };
+
+      const toggleGroup = (groupName: string) => {
+        setExpandedGroups(prev => {
+          const newSet = new Set(prev);
+          if (newSet.has(groupName)) {
+            newSet.delete(groupName);
+          } else {
+            newSet.add(groupName);
+          }
+          return newSet;
+        });
+      };
+
+      const handleChange = (optionKey: string) => (e: React.ChangeEvent<HTMLInputElement>) => {
+        if (optionKey.startsWith('filter:')) {
+          const kind = optionKey.substring('filter:'.length);
+          setOptions(prev => ({
+            ...prev,
+            displayFilters: { ...(prev.displayFilters ?? {}), [kind]: e.target.checked },
+          }));
+        } else {
+          setOptions(prev => ({ ...prev, [optionKey]: e.target.checked }));
+        }
+      };
+
+      const handleGroupChange = (keys: ReadonlyArray<string>) => (e: React.ChangeEvent<HTMLInputElement>) => {
+        const isChecked = e.target.checked;
+        setOptions(prev => {
+          const newOptions: FormattingOptions = { ...prev };
+          const newDisplayFilters = { ...(prev.displayFilters ?? {}) };
+
+          for (const key of keys) {
+            if (key.startsWith('filter:')) {
+              newDisplayFilters[key.substring('filter:'.length)] = isChecked;
+            } else {
+              newOptions[key as RegularOptionKey] = isChecked;
+            }
+          }
+          newOptions.displayFilters = newDisplayFilters;
+          return newOptions;
+        });
+      };
+
+      const renderItem = (item: OptionItem, level: number): React.ReactNode => {
+        if (typeof item === 'string') {
+          const key = item as string;
+          const isFilter = key.startsWith('filter:');
+          const filterKind = isFilter ? key.substring('filter:'.length) : null;
+          const labelKey = filterKind ?? key;
+
+          return (
+            <div key={key} style={{ paddingLeft: `${level * 1.5}rem` }}>
+              <OptionCheckbox
+                id={key}
+                label={optionLabels[labelKey as keyof typeof optionLabels] ?? labelKey}
+                checked={
+                  isFilter ? options.displayFilters?.[filterKind!] ?? true : options[key as RegularOptionKey] ?? true
+                }
+                onChange={handleChange(key)}
+              />
+            </div>
+          );
+        }
+
+        const { name, children } = item;
+        const isExpanded = expandedGroups.has(name);
+        const allKeys = getAllKeys(item);
+        const allChecked = allKeys.every(key => {
+          if (key.startsWith('filter:')) {
+            return options.displayFilters?.[key.substring('filter:'.length)] ?? true;
+          }
+          return options[key as RegularOptionKey] ?? true;
+        });
+
+        return (
+          <div key={name}>
+            <div
+              className="flex items-center space-x-1.5 py-1 rounded-md hover:bg-accent/50 cursor-pointer select-none -mx-2 px-2"
+              style={{ paddingLeft: `calc(${level * 1.5}rem + 0.5rem)` }}
+              onClick={() => toggleGroup(name)}
+            >
+              {isExpanded ? <ChevronDown className="h-4 w-4 flex-shrink-0" /> : <ChevronRight className="h-4 w-4 flex-shrink-0" />}
+              <input
+                type="checkbox"
+                id={`group-${name.replace(/\s+/g, '-')}`}
+                title={`Toggle all in ${name}`}
+                checked={allChecked}
+                onChange={handleGroupChange(allKeys)}
+                onClick={(e) => e.stopPropagation()} // Prevent row click from firing
+                className="h-4 w-4 rounded border-muted-foreground/50 bg-transparent text-primary focus:ring-primary cursor-pointer"
+              />
+              <span className="font-semibold text-sm">{name}</span>
+            </div>
+            {isExpanded && (
+              <div className="pt-1.5 space-y-1.5">
+                {children.map(child => renderItem(child, level + 1))}
+              </div>
+            )}
+          </div>
+        );
+      };
+
+      return (
+        <div className="space-y-2">
+          <div className="flex items-center space-x-2 -mx-2">
+            <Button variant="ghost" size="sm" onClick={expandAll} className="text-muted-foreground hover:text-foreground h-auto px-2 py-1 text-xs">
+              <Expand className="mr-1.5 h-3.5 w-3.5" />
+              Expand all
+            </Button>
+            <Button variant="ghost" size="sm" onClick={collapseAll} className="text-muted-foreground hover:text-foreground h-auto px-2 py-1 text-xs">
+              <Collapse className="mr-1.5 h-3.5 w-3.5" />
+              Collapse all
+            </Button>
+          </div>
+          <div className="space-y-1">
+            {optionTree.map(item => renderItem(item, 0))}
+          </div>
+        </div>
+      );
+    };
+
+
+    export default OutputOptions;
+approved: true

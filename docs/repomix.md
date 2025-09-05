@@ -27,6 +27,8 @@ packages/
     tsconfig.json
     tsconfig.node.json
     vite.config.ts
+scripts/
+  ast.ts
 src/
   queries/
     css.ts
@@ -258,7 +260,7 @@ export { Textarea }
 
 ## File: packages/scn-ts-web-demo/src/components/LogViewer.tsx
 ```typescript
-import React, { useEffect, useRef, useState, useCallback } from 'react';
+import React, { useRef, useState, useCallback } from 'react';
 import { cn } from '../lib/utils';
 import type { LogEntry } from '../types';
 import { levelColorMap } from '../constants';
@@ -364,7 +366,7 @@ export default LogViewer;
 ```typescript
 import * as React from 'react';
 import type { FormattingOptions } from '../types';
-import { ChevronDown, ChevronRight, Expand, Collapse } from 'lucide-react';
+import { ChevronDown, ChevronRight, Expand, Shrink } from 'lucide-react';
 import { Button } from './ui/button';
 
 interface OutputOptionsProps {
@@ -642,7 +644,7 @@ const OutputOptions: React.FC<OutputOptionsProps> = ({ options, setOptions }) =>
           Expand all
         </Button>
         <Button variant="ghost" size="sm" onClick={collapseAll} className="text-muted-foreground hover:text-foreground h-auto px-2 py-1 text-xs">
-          <Collapse className="mr-1.5 h-3.5 w-3.5" />
+          <Shrink className="mr-1.5 h-3.5 w-3.5" />
           Collapse all
         </Button>
       </div>
@@ -1385,7 +1387,6 @@ const workerApi = {
 
     this.abortController = new AbortController();
 
-    const startTime = performance.now();
     logger.setLogHandler((level, ...args) => {
       const message = args.map(arg => typeof arg === 'object' ? JSON.stringify(arg, null, 2) : String(arg)).join(' ');
       onLog({ level, message, timestamp: Date.now() });
@@ -1401,14 +1402,12 @@ const workerApi = {
         throw new Error(`Invalid JSON input: ${error instanceof Error ? error.message : String(error)}`);
       }
 
-      const analysisResult = await analyzeProject({
+      const { sourceFiles: analysisResult, analysisTime } = await analyzeProject({
         files,
         onProgress,
         logLevel,
         signal: this.abortController.signal,
       });
-
-      const analysisTime = performance.now() - startTime;
 
       // Sanitize the result to make it structured-clonable.
       analysisResult.forEach(file => {
@@ -2178,6 +2177,158 @@ export const rustQueries = `
 `;
 ```
 
+## File: scripts/ast.ts
+```typescript
+import { initializeParser, parse } from '../src/parser';
+import { getLanguageForFile } from '../src/languages';
+import path from 'node:path';
+
+async function main() {
+  const wasmDir = path.join(process.cwd(), 'test', 'wasm');
+  await initializeParser({ wasmBaseUrl: wasmDir });
+
+  const samples: Array<{file: string, code: string, title: string}> = [
+    {
+      file: 'sample.ts',
+      title: 'TS class/interface snippet',
+      code: `
+export interface User { id: number; name: string; }
+export type UserId = number | string;
+export class ApiClient { private apiKey: string; constructor(key: string) { this.apiKey = key; } async fetchUser(id: UserId): Promise<User> { return { id: 1, name: 'x' }; } }
+      `.trim()
+    },
+    {
+      file: 'iife.js',
+      title: 'IIFE and prototype',
+      code: `
+(function(){
+  function Widget(name){ this.name = name }
+  Widget.prototype.render = function(){ return 'x' }
+  function * idGenerator(){ let i=0; while(true) yield i++; }
+  window.Widget = Widget; window.idGenerator = idGenerator;
+})();
+      `.trim()
+    },
+    {
+      file: 'cjs.js',
+      title: 'CJS require',
+      code: `
+const cjs = require('./cjs_module');
+      `.trim()
+    },
+    {
+      file: 'cjs_exports.js',
+      title: 'CJS module.exports',
+      code: `
+function cjsFunc() { console.log('cjs'); }
+module.exports = {
+  value: 42,
+  run: () => cjsFunc()
+};
+      `.trim()
+    },
+    {
+      file: 'tagged.js',
+      title: 'Tagged template',
+      code: `
+function styler(strings, ...values) { return '' }
+const name = 'a';
+document.body.innerHTML = styler\`Hello, \${name}!\`;
+      `.trim()
+    },
+    {
+      file: 'abstract_class.ts',
+      title: 'Abstract Class',
+      code: `
+abstract class BaseEntity {
+  readonly id: string;
+  static species: string;
+  protected constructor(id: string) { this.id = id; }
+  abstract getDescription(): string;
+  static getSpeciesName(): string { return this.species; }
+}
+      `.trim()
+    },
+    {
+      file: 'advanced_types.ts',
+      title: 'Advanced Types',
+      code: `
+type EventName = 'click' | 'scroll' | 'mousemove';
+type Style = 'bold' | 'italic';
+type CssClass = \`text-\${Style}\`;
+type HandlerMap = { [K in EventName]: (event: K) => void };
+type UnpackPromise<T> = T extends Promise<infer U> ? U : T;
+interface User { id: number; name: string; }
+const config = { user: { id: 1, name: 'a' } satisfies User };
+      `.trim()
+    },
+    {
+        file: 'proxy.js',
+        title: 'JS Proxy',
+        code: `
+const hiddenProp = Symbol('hidden');
+const user = { name: 'John', [hiddenProp]: 'secret' };
+const userProxy = new Proxy(user, {
+  get(target, prop) {
+    return prop in target ? target[prop] : 'N/A';
+  }
+});
+        `.trim()
+    }
+  ];
+
+  for (const sample of samples) {
+    const lang = getLanguageForFile(sample.file)!;
+    const tree = parse(sample.code, lang)!;
+    console.log(`\n===== ${sample.title} (${sample.file}) =====`);
+    
+    // Run analysis
+    console.log('ANALYSIS:');
+    const { analyzeProject, generateScn } = await import('../src/main');
+    try {
+      const analyzedFiles = await analyzeProject({
+        files: [{
+          path: sample.file,
+          content: sample.code
+        }]
+      });
+      const scnOutput = generateScn(analyzedFiles);
+      console.log('SCN Output:');
+      console.log(scnOutput);
+    } catch (error) {
+      console.log('Analysis error:', error);
+    }
+    
+    console.log('\nAST:');
+    printAST(tree.rootNode);
+  }
+}
+
+function printAST(node: any, depth = 0) {
+  const indent = '  '.repeat(depth);
+  const isNamed = typeof node.isNamed === 'function' ? node.isNamed() : true;
+  console.log(`${indent}${node.type}${isNamed ? '' : ' [anon]'} [${node.startPosition.row}:${node.startPosition.column}-${node.endPosition.row}:${node.endPosition.column}]`);
+
+  const fieldNames: string[] = node.fieldNames || [];
+  for (const fieldName of fieldNames) {
+    const child = node.childForFieldName(fieldName);
+    if (child) {
+      console.log(`${indent}  ${fieldName}:`);
+      printAST(child, depth + 2);
+    }
+  }
+
+  for (let i = 0; i < node.childCount; i++) {
+    const child = node.child(i);
+    if (!fieldNames.some(fn => node.childForFieldName(fn) === child)) {
+      printAST(child, depth + 1);
+    }
+  }
+}
+
+main().catch(e => { console.error(e); process.exit(1); });
+```
+
 ## File: src/parser.ts
 ```typescript
 import type { ParserInitOptions, LanguageConfig } from './types';
@@ -2390,7 +2541,7 @@ export const generateScn = (analyzedFiles: SourceFile[], options?: FormattingOpt
  * Legacy API: Generate SCN from config (for backward compatibility)
  */
 export const generateScnFromConfig = async (config: ScnTsConfig): Promise<string> => {
-    const analyzedFiles = await analyzeProject({
+    const { sourceFiles: analyzedFiles } = await analyzeProject({
         files: config.files,
         tsconfig: config.tsconfig,
         root: config.root,
@@ -2401,14 +2552,17 @@ export const generateScnFromConfig = async (config: ScnTsConfig): Promise<string
 /**
  * Parses and analyzes a project's files to build a dependency graph.
  */
-export const analyzeProject = async ({
-    files,
-    tsconfig,
-    root = '/',
-    onProgress,
-    logLevel,
-    signal,
-}: AnalyzeProjectOptions): Promise<SourceFile[]> => {
+export const analyzeProject = async (
+    {
+        files,
+        tsconfig,
+        root = '/',
+        onProgress,
+        logLevel,
+        signal,
+    }: AnalyzeProjectOptions
+): Promise<{ sourceFiles: SourceFile[], analysisTime: number }> => {
+    const startTime = performance.now();
     if (logLevel) {
         logger.setLevel(logLevel);
     }
@@ -2483,7 +2637,8 @@ export const analyzeProject = async ({
     
     onProgress?.({ percentage: 100, message: 'Analysis complete.' });
     logger.info('Graph resolution complete. Project analysis finished.');
-    return resolvedGraph;
+    const analysisTime = performance.now() - startTime;
+    return { sourceFiles: resolvedGraph, analysisTime };
 };
 ```
 

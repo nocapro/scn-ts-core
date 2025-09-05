@@ -105,7 +105,7 @@ const userProxy = new Proxy(user, {
     console.log('ANALYSIS:');
     const { analyzeProject, generateScn } = await import('../src/main');
     try {
-      const analyzedFiles = await analyzeProject({
+      const { sourceFiles: analyzedFiles } = await analyzeProject({
         files: [{
           path: sample.file,
           content: sample.code

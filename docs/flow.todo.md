@@ -1,4 +1,4 @@
-===
+=== DONE
 
 scn-ts-core should has index.ts
 
@@ -13,6 +13,10 @@ show legend in formatting options
 ---
 
 show legend in output area as small float window just like vscode navigator, not in formatting options.
+
+---
+
+show legend in output area as small float window just like vscode navigator, not in output header... also replace with copy iconbutton that legend iconbutton
 
 === DONE
 

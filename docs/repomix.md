@@ -71,7 +71,7 @@ const AccordionItem = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <AccordionPrimitive.Item
     ref={ref}
-    className={cn("border-b", className)}
+    className={cn(className)}
     {...props}
   />
 ))
@@ -81,7 +81,7 @@ const AccordionTrigger = React.forwardRef<
   React.ElementRef<typeof AccordionPrimitive.Trigger>,
   React.ComponentPropsWithoutRef<typeof AccordionPrimitive.Trigger>
 >(({ className, children, ...props }, ref) => (
-  <AccordionPrimitive.Header className="flex">
+  <AccordionPrimitive.Header className="flex sticky top-0 z-10 border-b bg-background">
     <AccordionPrimitive.Trigger
       ref={ref}
       className={cn(
@@ -365,6 +365,7 @@ import * as React from 'react';
 import type { FormattingOptions } from '../types';
 import { ChevronDown, ChevronRight, Expand, Shrink } from 'lucide-react';
 import { Button } from './ui/button';
+import { ICONS, SCN_SYMBOLS } from '../../../../index';
 
 interface OutputOptionsProps {
   options: FormattingOptions;
@@ -388,6 +389,69 @@ const OptionCheckbox: React.FC<{
     <label htmlFor={id} className="cursor-pointer select-none text-sm text-muted-foreground">
       {label}
     </label>
+  </div>
+);
+
+const symbolIcons = [
+  { symbol: ICONS.class, description: 'Class or Component' },
+  { symbol: ICONS.react_component, description: 'Class or Component' },
+  { symbol: ICONS.interface, description: 'Interface or Trait' },
+  { symbol: ICONS.rust_trait, description: 'Interface or Trait' },
+  { symbol: ICONS.function, description: 'Function or Method' },
+  { symbol: ICONS.method, description: 'Function or Method' },
+  { symbol: ICONS.styled_component, description: 'Function or Method' },
+  { symbol: ICONS.variable, description: 'Variable or Property' },
+  { symbol: ICONS.property, description: 'Variable or Property' },
+  { symbol: ICONS.enum, description: 'Enum' },
+  { symbol: ICONS.type_alias, description: 'Type Alias' },
+  { symbol: ICONS.jsx_element, description: 'JSX Element' },
+  { symbol: ICONS.css_class, description: 'CSS Selector' },
+];
+
+const legendSections = [
+  {
+    title: 'Prefixes',
+    items: [
+      { symbol: SCN_SYMBOLS.FILE_PREFIX, description: 'File path' },
+      { symbol: SCN_SYMBOLS.EXPORTED_PREFIX, description: 'Exported symbol' },
+      { symbol: SCN_SYMBOLS.PRIVATE_PREFIX, description: 'Private/unexported symbol' },
+    ],
+  },
+  {
+    title: 'Symbol Icons',
+    items: Array.from(new Map(symbolIcons.map(item => [item.symbol, item])).values()),
+  },
+  {
+    title: 'Relationships',
+    items: [
+      { symbol: SCN_SYMBOLS.OUTGOING_ARROW, description: 'Outgoing dependency' },
+      { symbol: SCN_SYMBOLS.INCOMING_ARROW, description: 'Incoming dependency' },
+    ],
+  },
+  {
+    title: 'Modifiers & Tags',
+    items: [
+      { symbol: SCN_SYMBOLS.ASYNC, description: 'Async' },
+      { symbol: SCN_SYMBOLS.THROWS, description: 'Throws error' },
+      { symbol: SCN_SYMBOLS.PURE, description: 'Pure (no side-effects)' },
+      { symbol: SCN_SYMBOLS.TAG_STYLED, description: 'Styled component' },
+      { symbol: SCN_SYMBOLS.TAG_DYNAMIC, description: 'Dynamic import' },
+      { symbol: SCN_SYMBOLS.TAG_GENERATED, description: 'Generated file' },
+    ],
+  },
+];
+
+const LegendItem: React.FC<{ symbol: string; description: string }> = ({ symbol, description }) => (
+  <div className="grid grid-cols-[3rem_1fr] items-center gap-x-3 text-sm">
+    <code className="font-mono text-base font-bold text-foreground/90 justify-self-center">{symbol}</code>
+    <span className="text-muted-foreground">{description}</span>
+  </div>
+);
+
+const LegendSection: React.FC<{ title: string; children: React.ReactNode }> = ({ title, children }) => (
+  <div className="pt-3 first:pt-0">
+    <h4 className="text-sm font-semibold mb-2 text-foreground">{title}</h4>
+    <div className="space-y-1.5">{children}</div>
   </div>
 );
 
@@ -648,6 +712,18 @@ const OutputOptions: React.FC<OutputOptionsProps> = ({ options, setOptions }) =>
       <div className="space-y-1">
         {optionTree.map(item => renderItem(item, 0))}
       </div>
+      <div className="pt-4 mt-4 border-t">
+        <h3 className="text-base font-semibold mb-2">Legend</h3>
+        <div className="space-y-2">
+          {legendSections.map(({title, items}) => (
+            <LegendSection key={title} title={title}>
+              {items.map(({symbol, description}) => (
+                <LegendItem key={`${symbol}-${description}`} symbol={symbol} description={description} />
+              ))}
+            </LegendSection>
+          ))}
+        </div>
+      </div>
     </div>
   );
 };
@@ -686,6 +762,7 @@ import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from './
 function App() {
   const [isInitialized, setIsInitialized] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [sidebarWidth, setSidebarWidth] = useState(480);
   const [filesInput, setFilesInput] = useState(defaultFilesJSON);
   const [scnOutput, setScnOutput] = useState('');
   const [analysisResult, setAnalysisResult] = useState<SourceFile[] | null>(null);
@@ -710,6 +787,7 @@ function App() {
   const [analysisTime, setAnalysisTime] = useState<number | null>(null);
   const [tokenCounts, setTokenCounts] = useState({ input: 0, output: 0 });
   
+  const isResizing = useRef(false);
   const workerRef = useRef<Remote<WorkerApi> | null>(null);
 
   useEffect(() => {
@@ -782,6 +860,33 @@ function App() {
     }
   }, [isLoading]);
 
+  const handleMouseDown = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    isResizing.current = true;
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+
+    const handleMouseMove = (event: MouseEvent) => {
+      if (isResizing.current) {
+        const newWidth = event.clientX;
+        const minWidth = 320; // 20rem
+        const maxWidth = window.innerWidth * 0.8;
+        setSidebarWidth(Math.min(maxWidth, Math.max(minWidth, newWidth)));
+      }
+    };
+
+    const handleMouseUp = () => {
+      isResizing.current = false;
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
+    };
+
+    window.addEventListener('mousemove', handleMouseMove);
+    window.addEventListener('mouseup', handleMouseUp);
+  }, []);
+
   const handleAnalyze = useCallback(async () => {
     if (!isInitialized || !workerRef.current) {
       setLogs(prev => [...prev, { level: 'warn', message: 'Analysis worker not ready.', timestamp: Date.now() }]);
@@ -825,10 +930,10 @@ function App() {
   }, [filesInput, isInitialized, isLoading]);
 
   return (
-    <div className="h-screen w-screen flex bg-background text-foreground">
+    <div className="h-screen w-screen flex bg-background text-foreground overflow-hidden">
       {/* Sidebar */}
-      <aside className="w-[30rem] max-w-[40%] flex-shrink-0 flex flex-col border-r">
-        <div className="flex-shrink-0 flex items-center justify-between p-4 border-b">
+      <aside style={{ width: `${sidebarWidth}px` }} className="max-w-[80%] min-w-[320px] flex-shrink-0 flex flex-col border-r">
+        <div className="flex-shrink-0 flex items-center justify-between p-4 border-b bg-background relative z-20">
           <h1 className="text-xl font-bold tracking-tight">SCN-TS Web Demo</h1>
           <div className="flex items-center space-x-2">
             {isLoading ? (
@@ -880,7 +985,7 @@ function App() {
               </AccordionContent>
             </AccordionItem>
 
-            <AccordionItem value="logs" className="border-b-0">
+            <AccordionItem value="logs">
               <AccordionTrigger className="px-4 text-sm font-semibold hover:no-underline">Logs</AccordionTrigger>
               <AccordionContent className="px-4">
                 <LogViewer logs={logs} />
@@ -889,6 +994,13 @@ function App() {
           </Accordion>
         </div>
       </aside>
+
+      {/* Resizer */}
+      <div
+        role="separator"
+        onMouseDown={handleMouseDown}
+        className="w-1.5 flex-shrink-0 cursor-col-resize hover:bg-primary/20 transition-colors duration-200"
+      />
 
       {/* Main Content Area */}
       <main className="flex-grow flex flex-col overflow-hidden">
@@ -2512,6 +2624,7 @@ import path from './utils/path';
 import { getPathResolver } from './utils/tsconfig';
 import { resolveGraph } from './graph-resolver';
 import { logger } from './logger';
+import { ICONS, SCN_SYMBOLS } from './constants';
 
 /**
  * Public API to initialize the parser. Must be called before any other APIs.
@@ -2523,7 +2636,7 @@ export type { ParserInitOptions, SourceFile, LogLevel, InputFile, TsConfig, ScnT
 export type FileContent = InputFile;
 
 // Exports for web demo
-export { logger };
+export { logger, ICONS, SCN_SYMBOLS };
 
 /**
  * Generate SCN from analyzed source files

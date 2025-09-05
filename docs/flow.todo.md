@@ -1,8 +1,12 @@
 ===
 
+make the codebase radically DRY without regression
+
+=== DONE
+
 show legend in formatting options
 
-===
+=== DONE
 
 sidebar;
 1. resizeable sidebar.

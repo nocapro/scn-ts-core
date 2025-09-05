@@ -7,6 +7,7 @@ import path from './utils/path';
 import { getPathResolver } from './utils/tsconfig';
 import { resolveGraph } from './graph-resolver';
 import { logger } from './logger';
+import { ICONS, SCN_SYMBOLS } from './constants';
 
 /**
  * Public API to initialize the parser. Must be called before any other APIs.
@@ -18,7 +19,7 @@ export type { ParserInitOptions, SourceFile, LogLevel, InputFile, TsConfig, ScnT
 export type FileContent = InputFile;
 
 // Exports for web demo
-export { logger };
+export { logger, ICONS, SCN_SYMBOLS };
 
 /**
  * Generate SCN from analyzed source files

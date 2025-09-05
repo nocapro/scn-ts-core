@@ -1,0 +1,189 @@
+uuid: b0e6e11c-2c9e-4e45-8f47-c0f5f7f8d672
+projectId: scn-ts-core
+createdAt: '2025-09-05T14:41:02.413Z'
+linesAdded: 112
+linesRemoved: 1
+gitCommitMsg: 'test(core): add unit tests for token impact calculation'
+promptSummary: >-
+  This is the final phase of implementing the token impact feature. I've added
+  unit tests for the `calculateTokenImpact` function in `scn-ts-core` to ensure
+  its correctness and guard against regressions.
+reasoning:
+  - >-
+    Okay, time for the final push. We've got the core logic and the UI wired up.
+    Now, we need to lock this down with some unit tests to make sure it stays
+    solid. This is phase three, where I'll add tests for the
+    `calculateTokenImpact` function.
+  - '### Phase 3: Unit Testing'
+  - >-
+    First, I'll update the `package.json` in the core library to include a
+    `test` script.
+  - >-
+    Next, I'll create the new test file with our unit tests. I'll mock up some
+    source file data and test how toggling different formatting options affects
+    the token count. This will ensure the delta calculation is working as
+    expected.
+  - >-
+    And that's a wrap. The feature is implemented, integrated, and now has tests
+    to keep it from breaking. This should give users a much better handle on
+    their token usage.
+operations:
+  - type: write
+    path: package.json
+    content: |-
+      <<<<<<< SEARCH
+        "scripts": {
+          "check": "tsc --build"
+        },
+      =======
+        "scripts": {
+          "check": "tsc --build",
+          "test": "bun test"
+        },
+      >>>>>>> REPLACE
+    patchStrategy: multi-search-replace
+  - type: write
+    path: test/unit/calculateTokenImpact.test.ts
+    content: >-
+      import { describe, it, expect, beforeAll } from 'bun:test';
+
+      import { calculateTokenImpact, initializeTokenizer } from
+      '../../src/main';
+
+      import type { SourceFile, FormattingOptions, CodeSymbol } from
+      '../../src/types';
+
+
+      const mockFile: SourceFile = {
+          id: 1,
+          relativePath: 'test.ts',
+          absolutePath: '/test.ts',
+          sourceCode: `
+              export class MyClass {
+                  myMethod() {}
+              }
+              export const myVar = 1;
+          `,
+          language: { id: 'typescript', name: 'TypeScript', extensions: ['.ts'], wasmPath: '' } as any,
+          symbols: [
+              {
+                  id: '1.1',
+                  fileId: 1,
+                  name: 'MyClass',
+                  kind: 'class',
+                  isExported: true,
+                  dependencies: [],
+                  range: { start: { line: 1, column: 8 }, end: { line: 1, column: 15 } },
+                  scopeRange: { start: { line: 1, column: 17 }, end: { line: 3, column: 9 } },
+              } as CodeSymbol,
+              {
+                  id: '1.2',
+                  fileId: 1,
+                  name: 'myMethod',
+                  kind: 'method',
+                  isExported: false,
+                  dependencies: [],
+                  range: { start: { line: 2, column: 12 }, end: { line: 2, column: 20 } },
+                  scopeRange: { start: { line: 2, column: 24 }, end: { line: 2, column: 26 } },
+              } as CodeSymbol,
+              {
+                  id: '1.3',
+                  fileId: 1,
+                  name: 'myVar',
+                  kind: 'variable',
+                  isExported: true,
+                  dependencies: [],
+                  range: { start: { line: 4, column: 20 }, end: { line: 4, column: 25 } },
+                  scopeRange: { start: { line: 4, column: 8 }, end: { line: 4, column: 29 } },
+              } as CodeSymbol,
+          ],
+          parseError: false,
+      };
+
+      const mockSourceFiles: SourceFile[] = [mockFile];
+
+
+      describe('calculateTokenImpact', () => {
+          beforeAll(() => {
+              initializeTokenizer();
+          });
+
+          it('should calculate negative impact for disabling a default-on option (showIcons)', () => {
+              const baseOptions: FormattingOptions = {}; // Defaults to true
+              const impact = calculateTokenImpact(mockSourceFiles, baseOptions);
+              
+              expect(impact.options.showIcons).toBeDefined();
+              expect(impact.options.showIcons).toBeLessThan(0);
+          });
+
+          it('should calculate positive impact for enabling an option that was off', () => {
+              const baseOptions: FormattingOptions = { showIcons: false };
+              const impact = calculateTokenImpact(mockSourceFiles, baseOptions);
+
+              expect(impact.options.showIcons).toBeDefined();
+              expect(impact.options.showIcons).toBeGreaterThan(0);
+          });
+
+          it('should calculate negative impact for disabling showExportedIndicator', () => {
+              const baseOptions: FormattingOptions = {};
+              const impact = calculateTokenImpact(mockSourceFiles, baseOptions);
+
+              expect(impact.options.showExportedIndicator).toBeDefined();
+              expect(impact.options.showExportedIndicator).toBeLessThan(0);
+          });
+
+          it('should calculate negative impact for disabling groupMembers', () => {
+              const baseOptions: FormattingOptions = {};
+              const impact = calculateTokenImpact(mockSourceFiles, baseOptions);
+
+              // Disabling grouping should change whitespace, likely reducing tokens
+              expect(impact.options.groupMembers).toBeDefined();
+              // The impact could be small, or even zero if whitespace changes don't cross token boundaries, but it shouldn't be positive.
+              expect(impact.options.groupMembers).toBeLessThanOrEqual(0);
+          });
+
+          it('should calculate impact for displayFilters', () => {
+              const baseOptions: FormattingOptions = {};
+              const impact = calculateTokenImpact(mockSourceFiles, baseOptions);
+
+              // Hiding a symbol kind should reduce tokens
+              expect(impact.displayFilters.class).toBeDefined();
+              expect(impact.displayFilters.class).toBeLessThan(0);
+              expect(impact.displayFilters.method).toBeDefined();
+              expect(impact.displayFilters.method).toBeLessThan(0);
+              expect(impact.displayFilters.variable).toBeDefined();
+              expect(impact.displayFilters.variable).toBeLessThan(0);
+          });
+
+          it('should return zero impact for a symbol kind not present in the source', () => {
+              const baseOptions: FormattingOptions = {};
+              const impact = calculateTokenImpact(mockSourceFiles, baseOptions);
+              
+              expect(impact.displayFilters.interface).toBeUndefined();
+          });
+      });
+    patchStrategy: replace
+snapshot:
+  test/unit/calculateTokenImpact.test.ts: null
+  package.json: |
+    {
+      "name": "scn-ts-core",
+      "module": "src/index.ts",
+      "type": "module",
+      "private": true,
+      "dependencies": {
+        "js-tiktoken": "^1.0.21"
+      },
+      "scripts": {
+        "check": "tsc --build"
+      },
+      "devDependencies": {
+        "@types/bun": "latest",
+        "web-tree-sitter": "0.25.6",
+        "typescript": "^5.4.5"
+      },
+      "peerDependencies": {
+        "typescript": "^5"
+      }
+    }
+approved: true

@@ -1,16 +1,17 @@
 import * as Comlink from 'comlink';
 import type { WorkerApi } from '../worker';
 import type { LogEntry, ProgressData } from '../types';
-import type { LogLevel, SourceFile } from 'scn-ts-core';
+import type { LogLevel, SourceFile, FormattingOptions, FormattingOptionsTokenImpact } from 'scn-ts-core';
 
 export type AnalysisServiceAPI = {
   init: () => Promise<void>;
   analyze: (
     filesInput: string,
     logLevel: LogLevel,
+    formattingOptions: FormattingOptions,
     onProgress: (progress: ProgressData) => void,
     onLog: (log: LogEntry) => void,
-  ) => Promise<{ result: SourceFile[]; analysisTime: number }>;
+  ) => Promise<{ result: SourceFile[]; analysisTime: number, tokenImpact: FormattingOptionsTokenImpact }>;
   cancel: () => Promise<void>;
   cleanup: () => void;
 };
@@ -26,10 +27,11 @@ export function createAnalysisService(): AnalysisServiceAPI {
   const analyze = async (
     filesInput: string,
     logLevel: LogLevel,
+    formattingOptions: FormattingOptions,
     onProgress: (progress: ProgressData) => void,
     onLog: (log: LogEntry) => void,
-  ): Promise<{ result: SourceFile[]; analysisTime: number }> => {
-    return workerApi.analyze({ filesInput, logLevel }, Comlink.proxy(onProgress), Comlink.proxy(onLog));
+  ): Promise<{ result: SourceFile[]; analysisTime: number, tokenImpact: FormattingOptionsTokenImpact }> => {
+    return workerApi.analyze({ filesInput, logLevel, formattingOptions }, Comlink.proxy(onProgress), Comlink.proxy(onLog));
   };
 
   const cancel = async (): Promise<void> => {

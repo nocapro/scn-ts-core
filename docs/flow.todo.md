@@ -10,9 +10,35 @@ the feature should be provided by scn-ts-core instead as core api level so web d
 
 ===
 
-formatting options
+formatting options;
 
-show token cost for each item
+implement feature where user can see token cost for each toggling item so they know how much token will they use towards the final output. this will provide better user experience and control over token usage.
+
+1. named it as tokenImpact.
+2. guardrail it as unit(not e2e) test cases to verify the implementation. in test/unit/*.test.ts files use bun test
+3. show token cost at the right side of items, even for nested parent items.
+
+the backend should be handled by scn-ts-core instead as core api level so web demo can directly use it
+
+----
+
+give me the transaction in 3 phase. first, tell me your plan on each phase
+
+
+ "src/main.ts",
+      "src/index.ts",
+      "src/formatter.ts",
+      "src/tokenizer.ts",
+      "src/types.ts",
+      "test/test.util.ts",
+      "test/ts/e2e/01-core.test.ts",
+      "test/ts/fixtures/01.core-ts.fixture.yaml",
+      "packages/scn-ts-web-demo/src/worker.ts",
+      "packages/scn-ts-web-demo/src/services/analysis.service.ts",
+      "packages/scn-ts-web-demo/src/hooks/useAnalysis.hook.ts",
+      "packages/scn-ts-web-demo/src/App.tsx",
+      "packages/scn-ts-web-demo/src/components/OutputOptions.tsx"
+
 
 === DONE
 

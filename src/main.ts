@@ -1,6 +1,6 @@
 import { getLanguageForFile } from './languages';
 import { initializeParser as init, parse } from './parser';
-import type { ParserInitOptions, SourceFile, InputFile, ScnTsConfig, AnalyzeProjectOptions, FormattingOptions } from './types';
+import type { ParserInitOptions, SourceFile, InputFile, ScnTsConfig, AnalyzeProjectOptions, FormattingOptions, FormattingOptionsTokenImpact, SymbolKind } from './types';
 import { analyze } from './analyzer';
 import { formatScn } from './formatter';
 import path from './utils/path';
@@ -15,13 +15,13 @@ import { initializeTokenizer as initTokenizer, countTokens as countTokensInterna
 export const initializeParser = (options: ParserInitOptions): Promise<void> => init(options);
 
 /**
- * Initializes the tokenizer. Call this for consistency, although `countTokens` will auto-initialize.
+ * Initializes the tokenizer. Call this for consistency, although `countTokens` will auto-initialize on first use.
  * It's a synchronous and lightweight operation.
  */
 export const initializeTokenizer = (): boolean => initTokenizer();
 
 // Types for web demo
-export type { ParserInitOptions, SourceFile, LogLevel, InputFile, TsConfig, ScnTsConfig, AnalyzeProjectOptions, LogHandler, FormattingOptions, CodeSymbol, SymbolKind } from './types';
+export type { ParserInitOptions, SourceFile, LogLevel, InputFile, TsConfig, ScnTsConfig, AnalyzeProjectOptions, LogHandler, FormattingOptions, FormattingOptionsTokenImpact, CodeSymbol, SymbolKind } from './types';
 export type FileContent = InputFile;
 
 // Exports for web demo. The constants are exported from index.ts directly.
@@ -37,6 +37,62 @@ export const countTokens = (text: string): number => countTokensInternal(text);
  */
 export const generateScn = (analyzedFiles: SourceFile[], options?: FormattingOptions): string => {
     return formatScn(analyzedFiles, options);
+};
+
+/**
+ * Calculates the token impact of toggling each formatting option.
+ * This can be slow as it re-generates the SCN for each option.
+ * @param analyzedFiles The result from `analyzeProject`.
+ * @param baseOptions The formatting options to calculate deltas from.
+ * @returns An object detailing the token change for toggling each option.
+ */
+export const calculateTokenImpact = (
+    analyzedFiles: SourceFile[],
+    baseOptions: FormattingOptions
+): FormattingOptionsTokenImpact => {
+    logger.debug('Calculating token impact...');
+    const startTime = performance.now();
+
+    const baseScn = formatScn(analyzedFiles, baseOptions);
+    const baseTokens = countTokensInternal(baseScn);
+
+    const impact: FormattingOptionsTokenImpact = {
+        options: {},
+        displayFilters: {},
+    };
+
+    const simpleOptionKeys: Array<keyof Omit<FormattingOptions, 'displayFilters'>> = [
+        'showOutgoing', 'showIncoming', 'showIcons', 'showExportedIndicator',
+        'showPrivateIndicator', 'showModifiers', 'showTags', 'showSymbolIds',
+        'groupMembers', 'showFilePrefix', 'showFileIds'
+    ];
+
+    for (const key of simpleOptionKeys) {
+        // All boolean options default to true.
+        const currentValue = baseOptions[key] ?? true;
+        const newOptions = { ...baseOptions, [key]: !currentValue };
+        const newScn = formatScn(analyzedFiles, newOptions);
+        const newTokens = countTokensInternal(newScn);
+        impact.options[key] = newTokens - baseTokens;
+    }
+
+    const allSymbolKinds = new Set<SymbolKind>(analyzedFiles.flatMap(file => file.symbols.map(s => s.kind)));
+
+    for (const kind of allSymbolKinds) {
+        const currentFilterValue = baseOptions.displayFilters?.[kind] ?? true;
+        const newOptions = {
+            ...baseOptions,
+            displayFilters: { ...(baseOptions.displayFilters ?? {}), [kind]: !currentFilterValue }
+        };
+        const newScn = formatScn(analyzedFiles, newOptions);
+        const newTokens = countTokensInternal(newScn);
+        impact.displayFilters[kind] = newTokens - baseTokens;
+    }
+
+    const duration = performance.now() - startTime;
+    logger.debug(`Token impact calculation finished in ${duration.toFixed(2)}ms`);
+
+    return impact;
 };
 
 /**

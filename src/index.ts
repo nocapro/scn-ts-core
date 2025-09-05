@@ -2,6 +2,7 @@ export {
     initializeParser,
     generateScn,
     generateScnFromConfig,
+    calculateTokenImpact,
     analyzeProject,
     logger,
     initializeTokenizer,
@@ -20,6 +21,7 @@ export type {
     AnalyzeProjectOptions,
     LogHandler,
     FormattingOptions,
+    FormattingOptionsTokenImpact,
     FileContent,
     CodeSymbol,
     SymbolKind

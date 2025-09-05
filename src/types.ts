@@ -41,6 +41,16 @@ export interface FormattingOptions {
 }
 
 /**
+ * Represents the token cost of toggling each formatting option.
+ * The value is the delta when an option is toggled from its state in the `baseOptions`.
+ * e.g. `new_token_count - base_token_count`.
+ */
+export interface FormattingOptionsTokenImpact {
+    options: Partial<{ [K in keyof Omit<FormattingOptions, 'displayFilters'>]: number }>;
+    displayFilters: Partial<Record<string, number>>;
+}
+
+/**
  * Represents a file to be processed.
  */
 export interface InputFile {

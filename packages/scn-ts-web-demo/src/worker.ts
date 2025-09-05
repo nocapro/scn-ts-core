@@ -1,6 +1,6 @@
 import * as Comlink from 'comlink';
-import { initializeParser, analyzeProject, logger } from 'scn-ts-core';
-import type { FileContent, LogLevel, SourceFile } from 'scn-ts-core';
+import { initializeParser, analyzeProject, logger, calculateTokenImpact } from 'scn-ts-core';
+import type { FileContent, LogLevel, SourceFile, FormattingOptions, FormattingOptionsTokenImpact } from 'scn-ts-core';
 import type { LogEntry, ProgressData } from './types';
 
 function sanitizeAnalysisResult(result: SourceFile[]): SourceFile[] {
@@ -32,10 +32,10 @@ function createWorkerApi() {
   }
 
   async function analyze(
-    { filesInput, logLevel }: { filesInput: string; logLevel: LogLevel },
+    { filesInput, logLevel, formattingOptions }: { filesInput: string; logLevel: LogLevel, formattingOptions: FormattingOptions },
     onProgress: (progress: ProgressData) => void,
     onLog: (log: LogEntry) => void
-  ): Promise<{ result: SourceFile[], analysisTime: number }> {
+  ): Promise<{ result: SourceFile[], analysisTime: number, tokenImpact: FormattingOptionsTokenImpact }> {
     if (!isInitialized) {
       throw new Error('Worker not initialized.');
     }
@@ -64,7 +64,9 @@ function createWorkerApi() {
         signal: abortController.signal,
       });
 
-      return { result: sanitizeAnalysisResult(analysisResult), analysisTime };
+      const tokenImpact = calculateTokenImpact(analysisResult, formattingOptions);
+
+      return { result: sanitizeAnalysisResult(analysisResult), analysisTime, tokenImpact };
     } finally {
       logger.setLogHandler(null);
       abortController = null;

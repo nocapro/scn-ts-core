@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import type { SourceFile } from 'scn-ts-core';
+import type { SourceFile, FormattingOptions, FormattingOptionsTokenImpact } from 'scn-ts-core';
 import type { LogEntry, ProgressData } from '../types';
 import { createAnalysisService, type AnalysisServiceAPI } from '../services/analysis.service';
 
@@ -10,6 +10,7 @@ export function useAnalysis() {
   const [progress, setProgress] = useState<ProgressData | null>(null);
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [analysisTime, setAnalysisTime] = useState<number | null>(null);
+  const [tokenImpact, setTokenImpact] = useState<FormattingOptionsTokenImpact | null>(null);
   const serviceRef = useRef<AnalysisServiceAPI | null>(null);
 
   const onLog = useCallback((log: LogEntry) => {
@@ -47,10 +48,11 @@ export function useAnalysis() {
     setAnalysisResult(null);
     setAnalysisTime(null);
     setProgress(null);
+    setTokenImpact(null);
     setLogs([]);
   }, []);
 
-  const handleAnalyze = useCallback(async (filesInput: string) => {
+  const handleAnalyze = useCallback(async (filesInput: string, formattingOptions: FormattingOptions) => {
     if (!isInitialized || !serviceRef.current) {
       onLogPartial({ level: 'warn', message: 'Analysis worker not ready.' });
       return;
@@ -64,14 +66,16 @@ export function useAnalysis() {
     resetAnalysisState();
     
     try {
-      const { result, analysisTime } = await serviceRef.current.analyze(
+      const { result, analysisTime, tokenImpact } = await serviceRef.current.analyze(
         filesInput,
         'debug',
+        formattingOptions,
         setProgress,
         onLog
       );
       setAnalysisResult(result);
       setAnalysisTime(analysisTime);
+      setTokenImpact(tokenImpact);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       if ((error as Error).name === 'AbortError') {
@@ -98,6 +102,7 @@ export function useAnalysis() {
     progress,
     logs,
     analysisTime,
+    tokenImpact,
     handleAnalyze,
     handleStop,
     onLogPartial,

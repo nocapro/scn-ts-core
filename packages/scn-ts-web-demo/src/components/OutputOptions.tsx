@@ -1,6 +1,7 @@
 import * as React from 'react';
 import type { FormattingOptions } from '../types';
 import { ChevronDown, ChevronRight } from 'lucide-react';
+import type { FormattingOptionsTokenImpact } from 'scn-ts-core';
 
 import { Checkbox } from './ui/checkbox';
 import { Label } from './ui/label';
@@ -8,6 +9,7 @@ import { Label } from './ui/label';
 interface OutputOptionsProps {
   options: FormattingOptions;
   setOptions: React.Dispatch<React.SetStateAction<FormattingOptions>>;
+  tokenImpact: FormattingOptionsTokenImpact | null;
 }
 
 
@@ -140,7 +142,7 @@ const getAllGroupNames = (items: OptionItem[]): string[] => {
   });
 }
 
-const OutputOptions = React.forwardRef<OutputOptionsHandle, OutputOptionsProps>(({ options, setOptions }, ref) => {
+const OutputOptions = React.forwardRef<OutputOptionsHandle, OutputOptionsProps>(({ options, setOptions, tokenImpact }, ref) => {
   const [expandedGroups, setExpandedGroups] = React.useState<Set<string>>(
     () =>
       new Set([
@@ -224,8 +226,21 @@ const OutputOptions = React.forwardRef<OutputOptionsHandle, OutputOptionsProps>(
             }
             onCheckedChange={handleChange(key)}
           />
-          <Label htmlFor={key} className="cursor-pointer select-none text-sm text-muted-foreground font-normal">
-            {optionLabels[labelKey as keyof typeof optionLabels] ?? labelKey}
+          <Label htmlFor={key} className="flex-1 cursor-pointer select-none text-sm text-muted-foreground font-normal">
+            <div className="flex justify-between items-center">
+              <span>{optionLabels[labelKey as keyof typeof optionLabels] ?? labelKey}</span>
+              {tokenImpact && (
+                <span className="text-xs font-mono tabular-nums text-foreground/50">
+                  {(() => {
+                    const impact = isFilter
+                      ? tokenImpact.displayFilters?.[filterKind!]
+                      : tokenImpact.options?.[key as RegularOptionKey];
+                    if (impact === undefined) return null;
+                    return `${impact > 0 ? '+' : ''}${impact}`;
+                  })()}
+                </span>
+              )}
+            </div>
           </Label>
         </div>
       );
@@ -240,6 +255,26 @@ const OutputOptions = React.forwardRef<OutputOptionsHandle, OutputOptionsProps>(
       }
       return options[key as RegularOptionKey] ?? true;
     });
+    const groupTokenImpact = tokenImpact ? allKeys.reduce((sum, key) => {
+      let impact: number | undefined;
+      if (key.startsWith('filter:')) {
+        const kind = key.substring('filter:'.length);
+        impact = tokenImpact.displayFilters?.[kind];
+      } else {
+        impact = tokenImpact.options?.[key as RegularOptionKey];
+      }
+      return sum + (impact ?? 0);
+    }, 0) : null;
+
+    const impactDisplay = tokenImpact && groupTokenImpact !== null ? (
+      <span className="text-xs font-mono tabular-nums text-foreground/50 ml-auto mr-2">
+        {(() => {
+          const impact = groupTokenImpact;
+          if (impact === undefined) return null;
+          return `${impact > 0 ? '+' : ''}${impact}`;
+        })()}
+      </span>
+    ) : null;
 
     return (
       <div key={name}>
@@ -257,10 +292,11 @@ const OutputOptions = React.forwardRef<OutputOptionsHandle, OutputOptionsProps>(
             onClick={(e: React.MouseEvent) => e.stopPropagation()} // Prevent row click from firing
           />
           <Label
-            htmlFor={`group-${name.replace(/\s+/g, '-')}`}
-            className="font-semibold text-sm cursor-pointer select-none"
+            htmlFor={`group-${name.replace(/\s+/g, '-')}`} // The label itself is clickable
+            className="flex-1 font-semibold text-sm cursor-pointer select-none"
           >
-            {name}
+            <div className="flex justify-between items-center">
+              <span>{name}</span> {impactDisplay}</div>
           </Label>
         </div>
         {isExpanded && (

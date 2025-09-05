@@ -1,0 +1,1256 @@
+uuid: e79c933b-8255-46ab-b003-fc5c9578efcc
+projectId: scn-ts-core
+createdAt: '2025-09-05T14:40:52.399Z'
+linesAdded: 67
+linesRemoved: 21
+gitCommitMsg: 'feat(web): integrate and display token impact of formatting options'
+promptSummary: >-
+  This is phase two of implementing the token impact feature. I've integrated
+  the core logic into the web demo, passing data from the web worker up to the
+  React components to display the token cost of each formatting option.
+reasoning:
+  - >-
+    Alright, phase two coming in hot. We've got the core logic ready, so now
+    it's time to thread it through the web worker and up into the React
+    components. This will get the token impact numbers from the backend logic
+    onto the user's screen.
+  - '### Phase 2: Web Demo Integration'
+  - >-
+    First, I'll update the web worker. It needs to accept the current formatting
+    options, call our new `calculateTokenImpact` function after the main
+    analysis, and send the results back to the main thread.
+  - >-
+    Next, the `analysis.service` needs to be updated to handle passing the
+    formatting options down and returning the token impact up.
+  - Now, let's update the `useAnalysis` hook to manage the token impact state.
+  - With the hook updated, I'll pipe the data through the main `App` component.
+  - >-
+    Finally, the star of the show: `OutputOptions.tsx`. I'll update it to
+    display the token impact numbers next to each option and group. I'll use
+    flexbox to keep things tidy.
+  - >-
+    That's phase two wrapped. The token impact data is now flowing from the core
+    library, through the worker, and is being rendered in the UI. Next, I'll add
+    the unit tests to lock in this behavior.
+operations:
+  - type: write
+    path: packages/scn-ts-web-demo/src/worker.ts
+    content: >-
+      --- packages/scn-ts-web-demo/src/worker.ts
+
+      +++ packages/scn-ts-web-demo/src/worker.ts
+
+      @@ -1,6 +1,6 @@
+       import * as Comlink from 'comlink';
+      -import { initializeParser, analyzeProject, logger } from 'scn-ts-core';
+
+      -import type { FileContent, LogLevel, SourceFile } from 'scn-ts-core';
+
+      +import { initializeParser, analyzeProject, logger, calculateTokenImpact }
+      from 'scn-ts-core';
+
+      +import type { FileContent, LogLevel, SourceFile, FormattingOptions,
+      FormattingOptionsTokenImpact } from 'scn-ts-core';
+       import type { LogEntry, ProgressData } from './types';
+       
+       function sanitizeAnalysisResult(result: SourceFile[]): SourceFile[] {
+      @@ -34,10 +34,10 @@
+         }
+       
+         async function analyze(
+      -    { filesInput, logLevel }: { filesInput: string; logLevel: LogLevel },
+
+      +    { filesInput, logLevel, formattingOptions }: { filesInput: string;
+      logLevel: LogLevel, formattingOptions: FormattingOptions },
+           onProgress: (progress: ProgressData) => void,
+           onLog: (log: LogEntry) => void
+      -  ): Promise<{ result: SourceFile[], analysisTime: number }> {
+
+      +  ): Promise<{ result: SourceFile[], analysisTime: number, tokenImpact:
+      FormattingOptionsTokenImpact }> {
+           if (!isInitialized) {
+             throw new Error('Worker not initialized.');
+           }
+      @@ -64,7 +64,9 @@
+               signal: abortController.signal,
+             });
+       
+      -      return { result: sanitizeAnalysisResult(analysisResult),
+      analysisTime };
+
+      +      const tokenImpact = calculateTokenImpact(analysisResult,
+      formattingOptions);
+
+      +
+
+      +      return { result: sanitizeAnalysisResult(analysisResult),
+      analysisTime, tokenImpact };
+           } finally {
+             logger.setLogHandler(null);
+             abortController = null;
+    patchStrategy: new-unified
+  - type: write
+    path: packages/scn-ts-web-demo/src/services/analysis.service.ts
+    content: >-
+      --- packages/scn-ts-web-demo/src/services/analysis.service.ts
+
+      +++ packages/scn-ts-web-demo/src/services/analysis.service.ts
+
+      @@ -2,14 +2,15 @@
+       import * as Comlink from 'comlink';
+       import type { WorkerApi } from '../worker';
+       import type { LogEntry, ProgressData } from '../types';
+      -import type { LogLevel, SourceFile } from 'scn-ts-core';
+
+      +import type { LogLevel, SourceFile, FormattingOptions,
+      FormattingOptionsTokenImpact } from 'scn-ts-core';
+       
+       export type AnalysisServiceAPI = {
+         init: () => Promise<void>;
+         analyze: (
+           filesInput: string,
+           logLevel: LogLevel,
+      +    formattingOptions: FormattingOptions,
+           onProgress: (progress: ProgressData) => void,
+           onLog: (log: LogEntry) => void,
+      -  ) => Promise<{ result: SourceFile[]; analysisTime: number }>;
+
+      +  ) => Promise<{ result: SourceFile[]; analysisTime: number, tokenImpact:
+      FormattingOptionsTokenImpact }>;
+         cancel: () => Promise<void>;
+         cleanup: () => void;
+       };
+      @@ -25,10 +26,11 @@
+         const analyze = async (
+           filesInput: string,
+           logLevel: LogLevel,
+      +    formattingOptions: FormattingOptions,
+           onProgress: (progress: ProgressData) => void,
+           onLog: (log: LogEntry) => void,
+      -  ): Promise<{ result: SourceFile[]; analysisTime: number }> => {
+
+      -    return workerApi.analyze({ filesInput, logLevel, formattingOptions },
+      Comlink.proxy(onProgress), Comlink.proxy(onLog));
+
+      +  ): Promise<{ result: SourceFile[]; analysisTime: number, tokenImpact:
+      FormattingOptionsTokenImpact }> => {
+
+      +    return workerApi.analyze({ filesInput, logLevel, formattingOptions },
+      Comlink.proxy(onProgress), Comlink.proxy(onLog));
+         };
+       
+         const cancel = async (): Promise<void> => {
+    patchStrategy: new-unified
+  - type: write
+    path: packages/scn-ts-web-demo/src/hooks/useAnalysis.hook.ts
+    content: >-
+      --- packages/scn-ts-web-demo/src/hooks/useAnalysis.hook.ts
+
+      +++ packages/scn-ts-web-demo/src/hooks/useAnalysis.hook.ts
+
+      @@ -1,5 +1,5 @@
+       import { useState, useEffect, useCallback, useRef } from 'react';
+      -import type { SourceFile } from 'scn-ts-core';
+
+      +import type { SourceFile, FormattingOptions, FormattingOptionsTokenImpact
+      } from 'scn-ts-core';
+       import type { LogEntry, ProgressData } from '../types';
+       import { createAnalysisService, type AnalysisServiceAPI } from '../services/analysis.service';
+       
+      @@ -9,6 +9,7 @@
+         const [progress, setProgress] = useState<ProgressData | null>(null);
+         const [logs, setLogs] = useState<LogEntry[]>([]);
+         const [analysisTime, setAnalysisTime] = useState<number | null>(null);
+      +  const [tokenImpact, setTokenImpact] =
+      useState<FormattingOptionsTokenImpact | null>(null);
+         const serviceRef = useRef<AnalysisServiceAPI | null>(null);
+       
+         const onLog = useCallback((log: LogEntry) => {
+      @@ -46,10 +47,11 @@
+           setAnalysisResult(null);
+           setAnalysisTime(null);
+           setProgress(null);
+      +    setTokenImpact(null);
+           setLogs([]);
+         }, []);
+       
+      -  const handleAnalyze = useCallback(async (filesInput: string) => {
+
+      +  const handleAnalyze = useCallback(async (filesInput: string,
+      formattingOptions: FormattingOptions) => {
+           if (!isInitialized || !serviceRef.current) {
+             onLogPartial({ level: 'warn', message: 'Analysis worker not ready.' });
+             return;
+      @@ -63,14 +65,16 @@
+           resetAnalysisState();
+           
+           try {
+      -      const { result, analysisTime } = await serviceRef.current.analyze(
+
+      +      const { result, analysisTime, tokenImpact } = await
+      serviceRef.current.analyze(
+               filesInput,
+               'debug',
+      +        formattingOptions,
+               setProgress,
+               onLog
+             );
+             setAnalysisResult(result);
+             setAnalysisTime(analysisTime);
+      +      setTokenImpact(tokenImpact);
+           } catch (error) {
+             const message = error instanceof Error ? error.message : String(error);
+             if ((error as Error).name === 'AbortError') {
+      @@ -82,7 +86,7 @@
+             setIsLoading(false);
+             setProgress(null);
+           }
+      -  }, [isInitialized, isLoading, resetAnalysisState, onLog,
+      onLogPartial]);
+
+      +  }, [isInitialized, isLoading, resetAnalysisState, onLog,
+      onLogPartial]);
+       
+         const handleStop = useCallback(() => {
+           if (isLoading && serviceRef.current) {
+      @@ -96,6 +100,7 @@
+           progress,
+           logs,
+           analysisTime,
+      +    tokenImpact,
+           handleAnalyze,
+           handleStop,
+           onLogPartial,
+    patchStrategy: new-unified
+  - type: write
+    path: packages/scn-ts-web-demo/src/App.tsx
+    content: >-
+      --- packages/scn-ts-web-demo/src/App.tsx
+
+      +++ packages/scn-ts-web-demo/src/App.tsx
+
+      @@ -10,7 +10,7 @@
+       import { useResizableSidebar } from './hooks/useResizableSidebar.hook';
+       import { useAppStore } from './stores/app.store';
+       import { cn } from './lib/utils';
+      -import type { CodeSymbol } from 'scn-ts-core';
+
+      +import type { CodeSymbol, FormattingOptionsTokenImpact } from
+      'scn-ts-core';
+       
+       function App() {
+         const {
+      @@ -28,6 +28,7 @@
+           progress,
+           logs,
+           analysisTime,
+      +    tokenImpact,
+           handleAnalyze: performAnalysis,
+           handleStop,
+           onLogPartial,
+      @@ -62,8 +63,8 @@
+         }, [performCopy, scnOutput]);
+       
+         const handleAnalyze = useCallback(async () => {
+      -    performAnalysis(filesInput);
+
+      -  }, [performAnalysis, filesInput]);
+
+      +    performAnalysis(filesInput, formattingOptions);
+
+      +  }, [performAnalysis, filesInput, formattingOptions]);
+       
+         const handleExpandOptions = (e: React.MouseEvent) => {
+           e.stopPropagation();
+      @@ -154,7 +155,7 @@
+                       </div>
+                     </AccordionHeader>
+                     <AccordionContent className="px-4">
+      -                <OutputOptions ref={outputOptionsRef}
+      options={formattingOptions} setOptions={setFormattingOptions} />
+
+      +                <OutputOptions ref={outputOptionsRef}
+      options={formattingOptions} setOptions={setFormattingOptions}
+      tokenImpact={tokenImpact} />
+                     </AccordionContent>
+                   </AccordionItem>
+       
+      @@ -216,4 +217,4 @@
+         );
+       }
+       
+      -export default App;
+
+      +export default App;
+    patchStrategy: new-unified
+  - type: write
+    path: packages/scn-ts-web-demo/src/components/OutputOptions.tsx
+    content: >-
+      --- packages/scn-ts-web-demo/src/components/OutputOptions.tsx
+
+      +++ packages/scn-ts-web-demo/src/components/OutputOptions.tsx
+
+      @@ -1,13 +1,14 @@
+       import * as React from 'react';
+       import type { FormattingOptions } from '../types';
+       import { ChevronDown, ChevronRight } from 'lucide-react';
+      +import type { FormattingOptionsTokenImpact } from 'scn-ts-core';
+       
+       import { Checkbox } from './ui/checkbox';
+       import { Label } from './ui/label';
+       
+       interface OutputOptionsProps {
+         options: FormattingOptions;
+         setOptions: React.Dispatch<React.SetStateAction<FormattingOptions>>;
+      +  tokenImpact: FormattingOptionsTokenImpact | null;
+       }
+       
+       
+      @@ -128,7 +129,7 @@
+         });
+       }
+       
+      -const OutputOptions = React.forwardRef<OutputOptionsHandle,
+      OutputOptionsProps>(({ options, setOptions }, ref) => {
+
+      +const OutputOptions = React.forwardRef<OutputOptionsHandle,
+      OutputOptionsProps>(({ options, setOptions, tokenImpact }, ref) => {
+         const [expandedGroups, setExpandedGroups] = React.useState<Set<string>>(
+           () =>
+             new Set([
+      @@ -201,12 +202,23 @@
+                   }
+                   onCheckedChange={handleChange(key)}
+                 />
+      -          <Label htmlFor={key} className="cursor-pointer select-none
+      text-sm text-muted-foreground font-normal">
+
+      -            {optionLabels[labelKey as keyof typeof optionLabels] ??
+      labelKey}
+
+      +          <Label htmlFor={key} className="flex-1 cursor-pointer
+      select-none text-sm text-muted-foreground font-normal">
+
+      +            <div className="flex justify-between items-center">
+
+      +              <span>{optionLabels[labelKey as keyof typeof optionLabels]
+      ?? labelKey}</span>
+
+      +              {tokenImpact && (
+
+      +                <span className="text-xs font-mono tabular-nums
+      text-foreground/50">
+
+      +                  {(() => {
+
+      +                    const impact = isFilter
+
+      +                      ? tokenImpact.displayFilters?.[filterKind!]
+
+      +                      : tokenImpact.options?.[key as RegularOptionKey];
+
+      +                    if (impact === undefined) return null;
+
+      +                    return `${impact > 0 ? '+' : ''}${impact}`;
+
+      +                  })()}
+
+      +                </span>
+
+      +              )}
+
+      +            </div>
+                 </Label>
+               </div>
+             );
+           }
+       
+           const { name, children } = item;
+      @@ -219,6 +231,26 @@
+             }
+             return options[key as RegularOptionKey] ?? true;
+           });
+      +    const groupTokenImpact = tokenImpact ? allKeys.reduce((sum, key) => {
+
+      +      let impact: number | undefined;
+
+      +      if (key.startsWith('filter:')) {
+
+      +        const kind = key.substring('filter:'.length);
+
+      +        impact = tokenImpact.displayFilters?.[kind];
+
+      +      } else {
+
+      +        impact = tokenImpact.options?.[key as RegularOptionKey];
+
+      +      }
+
+      +      return sum + (impact ?? 0);
+
+      +    }, 0) : null;
+
+      +
+
+      +    const impactDisplay = tokenImpact && groupTokenImpact !== null ? (
+
+      +      <span className="text-xs font-mono tabular-nums text-foreground/50
+      ml-auto mr-2">
+
+      +        {(() => {
+
+      +          const impact = groupTokenImpact;
+
+      +          if (impact === undefined) return null;
+
+      +          return `${impact > 0 ? '+' : ''}${impact}`;
+
+      +        })()}
+
+      +      </span>
+
+      +    ) : null;
+       
+           return (
+             <div key={name}>
+      @@ -235,11 +267,12 @@
+                   onCheckedChange={handleGroupChange(allKeys)}
+                   onClick={(e: React.MouseEvent) => e.stopPropagation()} // Prevent row click from firing
+                 />
+                 <Label
+      -            htmlFor={`group-${name.replace(/\s+/g, '-')}`}
+
+      -            className="font-semibold text-sm cursor-pointer select-none"
+
+      +            htmlFor={`group-${name.replace(/\s+/g, '-')}`} // The label
+      itself is clickable
+
+      +            className="flex-1 font-semibold text-sm cursor-pointer
+      select-none"
+                 >
+      -            {name}
+
+      +            <div className="flex justify-between items-center">
+
+      +              <span>{name}</span> {impactDisplay}</div>
+                 </Label>
+               </div>
+               {isExpanded && (
+    patchStrategy: new-unified
+snapshot:
+  packages/scn-ts-web-demo/src/worker.ts: |-
+    import * as Comlink from 'comlink';
+    import { initializeParser, analyzeProject, logger } from 'scn-ts-core';
+    import type { FileContent, LogLevel, SourceFile } from 'scn-ts-core';
+    import type { LogEntry, ProgressData } from './types';
+
+    function sanitizeAnalysisResult(result: SourceFile[]): SourceFile[] {
+      // Sanitize the result to make it structured-clonable for Comlink.
+      result.forEach(file => {
+        delete file.ast;
+        if (file.language) {
+          // The language object on the source file is a reference to a global
+          // singleton. We must clone it before deleting non-serializable properties,
+          // otherwise the parser state is destroyed for subsequent analysis runs.
+          const sanitizedLanguage = { ...file.language };
+          delete sanitizedLanguage.parser;
+          delete sanitizedLanguage.loadedLanguage;
+          file.language = sanitizedLanguage;
+        }
+      });
+      return result;
+    }
+
+    // Define the API the worker will expose
+    function createWorkerApi() {
+      let isInitialized = false;
+      let abortController: AbortController | null = null;
+
+      async function init() {
+        if (isInitialized) return;
+        await initializeParser({ wasmBaseUrl: '/wasm/' });
+        isInitialized = true;
+      }
+
+      async function analyze(
+        { filesInput, logLevel }: { filesInput: string; logLevel: LogLevel },
+        onProgress: (progress: ProgressData) => void,
+        onLog: (log: LogEntry) => void
+      ): Promise<{ result: SourceFile[], analysisTime: number }> {
+        if (!isInitialized) {
+          throw new Error('Worker not initialized.');
+        }
+
+        abortController = new AbortController();
+
+        logger.setLogHandler((level, ...args) => {
+          const message = args.map(arg => typeof arg === 'object' ? JSON.stringify(arg, null, 2) : String(arg)).join(' ');
+          onLog({ level, message, timestamp: Date.now() });
+        });
+        logger.setLevel(logLevel);
+
+        try {
+          let files: FileContent[] = [];
+          try {
+            files = JSON.parse(filesInput);
+            if (!Array.isArray(files)) throw new Error("Input is not an array.");
+          } catch (error) {
+            throw new Error(`Invalid JSON input: ${error instanceof Error ? error.message : String(error)}`);
+          }
+
+          const { sourceFiles: analysisResult, analysisTime } = await analyzeProject({
+            files,
+            onProgress,
+            logLevel,
+            signal: abortController.signal,
+          });
+
+          return { result: sanitizeAnalysisResult(analysisResult), analysisTime };
+        } finally {
+          logger.setLogHandler(null);
+          abortController = null;
+        }
+      }
+
+      function cancel() {
+        abortController?.abort();
+      }
+      
+      return { init, analyze, cancel };
+    }
+
+    const workerApi = createWorkerApi();
+
+    Comlink.expose(workerApi);
+
+    export type WorkerApi = typeof workerApi;
+  packages/scn-ts-web-demo/src/services/analysis.service.ts: |
+    import * as Comlink from 'comlink';
+    import type { WorkerApi } from '../worker';
+    import type { LogEntry, ProgressData } from '../types';
+    import type { LogLevel, SourceFile } from 'scn-ts-core';
+
+    export type AnalysisServiceAPI = {
+      init: () => Promise<void>;
+      analyze: (
+        filesInput: string,
+        logLevel: LogLevel,
+        onProgress: (progress: ProgressData) => void,
+        onLog: (log: LogEntry) => void,
+      ) => Promise<{ result: SourceFile[]; analysisTime: number }>;
+      cancel: () => Promise<void>;
+      cleanup: () => void;
+    };
+
+    export function createAnalysisService(): AnalysisServiceAPI {
+      const worker = new Worker(new URL('../worker.ts', import.meta.url), { type: 'module' });
+      const workerApi = Comlink.wrap<WorkerApi>(worker);
+
+      const init = async (): Promise<void> => {
+        return workerApi.init();
+      };
+
+      const analyze = async (
+        filesInput: string,
+        logLevel: LogLevel,
+        onProgress: (progress: ProgressData) => void,
+        onLog: (log: LogEntry) => void,
+      ): Promise<{ result: SourceFile[]; analysisTime: number }> => {
+        return workerApi.analyze({ filesInput, logLevel }, Comlink.proxy(onProgress), Comlink.proxy(onLog));
+      };
+
+      const cancel = async (): Promise<void> => {
+        return workerApi.cancel();
+      };
+
+      const cleanup = (): void => {
+        workerApi[Comlink.releaseProxy]();
+        worker.terminate();
+      };
+
+      return {
+        init,
+        analyze,
+        cancel,
+        cleanup,
+      };
+    }
+  packages/scn-ts-web-demo/src/hooks/useAnalysis.hook.ts: >-
+    import { useState, useEffect, useCallback, useRef } from 'react';
+
+    import type { SourceFile } from 'scn-ts-core';
+
+    import type { LogEntry, ProgressData } from '../types';
+
+    import { createAnalysisService, type AnalysisServiceAPI } from
+    '../services/analysis.service';
+
+
+    export function useAnalysis() {
+      const [isInitialized, setIsInitialized] = useState(false);
+      const [isLoading, setIsLoading] = useState(false);
+      const [analysisResult, setAnalysisResult] = useState<SourceFile[] | null>(null);
+      const [progress, setProgress] = useState<ProgressData | null>(null);
+      const [logs, setLogs] = useState<LogEntry[]>([]);
+      const [analysisTime, setAnalysisTime] = useState<number | null>(null);
+      const serviceRef = useRef<AnalysisServiceAPI | null>(null);
+
+      const onLog = useCallback((log: LogEntry) => {
+        setLogs(prev => [...prev, log]);
+      }, []);
+
+      const onLogPartial = useCallback((log: Pick<LogEntry, 'level' | 'message'>) => {
+        onLog({ ...log, timestamp: Date.now() });
+      }, [onLog]);
+
+      useEffect(() => {
+        const service = createAnalysisService();
+        serviceRef.current = service;
+
+        const initializeWorker = async () => {
+          try {
+            await service.init();
+            setIsInitialized(true);
+            onLogPartial({ level: 'info', message: 'Analysis worker ready.' });
+          } catch (error) {
+            const message = error instanceof Error ? error.message : String(error);
+            onLogPartial({ level: 'error', message: `Worker failed to initialize: ${message}` });
+          }
+        };
+
+        initializeWorker();
+
+        return () => {
+          service.cleanup();
+          serviceRef.current = null;
+        };
+      }, [onLogPartial]);
+
+      const resetAnalysisState = useCallback(() => {
+        setAnalysisResult(null);
+        setAnalysisTime(null);
+        setProgress(null);
+        setLogs([]);
+      }, []);
+
+      const handleAnalyze = useCallback(async (filesInput: string) => {
+        if (!isInitialized || !serviceRef.current) {
+          onLogPartial({ level: 'warn', message: 'Analysis worker not ready.' });
+          return;
+        }
+        
+        if (isLoading) {
+          return; // Prevent multiple concurrent analyses
+        }
+        
+        setIsLoading(true);
+        resetAnalysisState();
+        
+        try {
+          const { result, analysisTime } = await serviceRef.current.analyze(
+            filesInput,
+            'debug',
+            setProgress,
+            onLog
+          );
+          setAnalysisResult(result);
+          setAnalysisTime(analysisTime);
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          if ((error as Error).name === 'AbortError') {
+            onLogPartial({ level: 'warn', message: 'Analysis canceled by user.' });
+          } else {
+            onLogPartial({ level: 'error', message: `Analysis error: ${message}` });
+          }
+        } finally {
+          setIsLoading(false);
+          setProgress(null);
+        }
+      }, [isInitialized, isLoading, resetAnalysisState, onLog, onLogPartial]);
+
+      const handleStop = useCallback(() => {
+        if (isLoading && serviceRef.current) {
+          serviceRef.current.cancel();
+        }
+      }, [isLoading]);
+
+      return {
+        isInitialized,
+        isLoading,
+        analysisResult,
+        progress,
+        logs,
+        analysisTime,
+        handleAnalyze,
+        handleStop,
+        onLogPartial,
+      };
+    }
+  packages/scn-ts-web-demo/src/App.tsx: >
+    import { useEffect, useCallback, useMemo, useRef } from 'react';
+
+    import { generateScn, initializeTokenizer, countTokens } from 'scn-ts-core';
+
+    import { Button } from './components/ui/button';
+
+    import { Textarea } from './components/ui/textarea';
+
+    import LogViewer from './components/LogViewer';
+
+    import OutputOptions, { type OutputOptionsHandle } from
+    './components/OutputOptions';
+
+    import { Legend } from './components/Legend'; 
+
+    import { Play, Loader, Copy, Check, StopCircle, ChevronsDown, ChevronsUp }
+    from 'lucide-react';
+
+    import { Accordion, AccordionContent, AccordionItem, AccordionHeader,
+    AccordionTrigger } from './components/ui/accordion';
+
+    import { useAnalysis } from './hooks/useAnalysis.hook';
+
+    import { useClipboard } from './hooks/useClipboard.hook';
+
+    import { useResizableSidebar } from './hooks/useResizableSidebar.hook';
+
+    import { useAppStore } from './stores/app.store';
+
+    import { cn } from './lib/utils';
+
+    import type { CodeSymbol } from 'scn-ts-core';
+
+
+    function App() {
+      const {
+        filesInput,
+        setFilesInput,
+        scnOutput,
+        setScnOutput,
+        formattingOptions,
+        setFormattingOptions,
+      } = useAppStore();
+
+      const {
+        isInitialized,
+        isLoading,
+        analysisResult,
+        progress,
+        logs,
+        analysisTime,
+        handleAnalyze: performAnalysis,
+        handleStop,
+        onLogPartial,
+      } = useAnalysis();
+
+      const outputOptionsRef = useRef<OutputOptionsHandle>(null);
+
+      const { sidebarWidth, handleMouseDown } = useResizableSidebar(480);
+      const { isCopied, handleCopy: performCopy } = useClipboard();
+
+      useEffect(() => {
+        if (!initializeTokenizer()) {
+          onLogPartial({ level: 'error', message: 'Failed to initialize tokenizer.' });
+        }
+      }, [onLogPartial]);
+
+      useEffect(() => {
+        if (analysisResult) {
+          setScnOutput(generateScn(analysisResult, formattingOptions));
+        } else {
+          setScnOutput('');
+        }
+      }, [analysisResult, formattingOptions]);
+
+      const { tokenCounts, tokenReductionPercent } = useMemo(() => {
+        const input = countTokens(filesInput);
+        const output = countTokens(scnOutput);
+        let reductionPercent: number | null = null;
+        if (input > 0) {
+          reductionPercent = ((input - output) / input) * 100;
+        }
+        return {
+          tokenCounts: { input, output },
+          tokenReductionPercent: reductionPercent,
+        };
+      }, [filesInput, scnOutput]);
+
+      const handleCopy = useCallback(() => {
+        performCopy(scnOutput);
+      }, [performCopy, scnOutput]);
+
+      const handleAnalyze = useCallback(async () => {
+        performAnalysis(filesInput);
+      }, [performAnalysis, filesInput]);
+
+      const handleExpandOptions = (e: React.MouseEvent) => {
+        e.stopPropagation();
+        outputOptionsRef.current?.expandAll();
+      };
+
+      const handleCollapseOptions = (e: React.MouseEvent) => {
+        e.stopPropagation();
+        outputOptionsRef.current?.collapseAll();
+      };
+
+      const { totalSymbols, visibleSymbols } = useMemo(() => {
+        if (!analysisResult) {
+          return { totalSymbols: 0, visibleSymbols: 0 };
+        }
+        const allSymbols: CodeSymbol[] = analysisResult.flatMap(file => file.symbols);
+        const total = allSymbols.length;
+        const visible = allSymbols.filter(symbol => {
+          return formattingOptions.displayFilters?.[symbol.kind] !== false;
+        }).length;
+        return { totalSymbols: total, visibleSymbols: visible };
+      }, [analysisResult, formattingOptions.displayFilters]);
+
+      return (
+        <div className="h-screen w-screen flex bg-background text-foreground overflow-hidden">
+          {/* Sidebar */}
+          <aside style={{ width: `${sidebarWidth}px` }} className="max-w-[80%] min-w-[320px] flex-shrink-0 flex flex-col border-r">
+            <div className="flex-shrink-0 flex items-center justify-between p-4 border-b bg-background relative z-20">
+              <h1 className="text-xl font-bold tracking-tight">SCN-TS Web Demo</h1>
+              <div className="flex items-center space-x-2">
+                {isLoading ? (
+                  <>
+                    <Button disabled className="w-32 justify-center">
+                      <Loader className="mr-2 h-4 w-4 animate-spin" />
+                      <span>{progress ? `${Math.round(progress.percentage)}%` : 'Analyzing...'}</span>
+                    </Button>
+                    <Button onClick={handleStop} variant="outline" size="icon" title="Stop analysis">
+                      <StopCircle className="h-4 w-4" />
+                    </Button>
+                  </>
+                ) : (
+                  <Button onClick={handleAnalyze} disabled={!isInitialized} className="w-32 justify-center">
+                    <Play className="mr-2 h-4 w-4" />
+                    <span>Analyze</span>
+                  </Button>
+                )}
+              </div>
+            </div>
+
+            <div className="flex-grow overflow-y-auto">
+              <Accordion type="multiple" defaultValue={['input', 'options', 'logs']} className="w-full">
+                <AccordionItem value="input">
+                  <AccordionHeader>
+                    <AccordionTrigger className="px-4 text-sm font-semibold hover:no-underline">
+                      <div className="flex w-full justify-between items-center">
+                        <span>Input Files (JSON)</span>
+                        <span className="text-xs font-normal text-muted-foreground tabular-nums">
+                          {tokenCounts.input.toLocaleString()} tokens
+                        </span>
+                      </div>
+                    </AccordionTrigger>
+                  </AccordionHeader>
+                  <AccordionContent>
+                    <div className="px-4 pb-4 h-96">
+                      <Textarea
+                        value={filesInput}
+                        onChange={(e) => setFilesInput(e.currentTarget.value)}
+                        className="h-full w-full font-mono text-xs resize-none"
+                        placeholder="Paste an array of FileContent objects here..."
+                      />
+                    </div>
+                  </AccordionContent>
+                </AccordionItem>
+
+                <AccordionItem value="options">
+                  <AccordionHeader className="items-center">
+                    <AccordionTrigger className="px-4 text-sm font-semibold hover:no-underline">
+                      <div className="flex w-full items-center justify-between">
+                        <span>Formatting Options</span>
+                          {analysisResult && (
+                            <span className="text-xs font-normal text-muted-foreground tabular-nums">
+                              {visibleSymbols} / {totalSymbols} symbols
+                            </span>
+                          )}
+                      </div>
+                    </AccordionTrigger>
+                    <div className="flex items-center gap-2 pr-4">
+                      <Button variant="ghost" size="icon" onClick={handleExpandOptions} title="Expand all" className="h-7 w-7 text-muted-foreground hover:text-foreground">
+                        <ChevronsDown className="h-4 w-4" />
+                      </Button>
+                      <Button variant="ghost" size="icon" onClick={handleCollapseOptions} title="Collapse all" className="h-7 w-7 text-muted-foreground hover:text-foreground">
+                        <ChevronsUp className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  </AccordionHeader>
+                  <AccordionContent className="px-4">
+                    <OutputOptions ref={outputOptionsRef} options={formattingOptions} setOptions={setFormattingOptions} />
+                  </AccordionContent>
+                </AccordionItem>
+
+                <AccordionItem value="logs">
+                  <AccordionHeader>
+                    <AccordionTrigger className="px-4 text-sm font-semibold hover:no-underline">Logs</AccordionTrigger>
+                  </AccordionHeader>
+                  <AccordionContent className="px-4">
+                    <LogViewer logs={logs} />
+                  </AccordionContent>
+                </AccordionItem>
+              </Accordion>
+            </div>
+          </aside>
+
+          {/* Resizer */}
+          <div
+            role="separator"
+            onMouseDown={handleMouseDown}
+            className="w-1.5 flex-shrink-0 cursor-col-resize hover:bg-primary/20 transition-colors duration-200"
+          />
+
+          {/* Main Content Area */}
+          <main className="flex-grow flex flex-col overflow-hidden relative">
+            <div className="flex justify-between items-center p-4 border-b flex-shrink-0">
+              <h2 className="text-lg font-semibold leading-none tracking-tight">Output (SCN)</h2>
+              <div className="flex items-center gap-4">
+                {analysisTime !== null && (
+                  <span className="text-sm text-muted-foreground">
+                    Analyzed in {(analysisTime / 1000).toFixed(2)}s
+                  </span>
+                )}
+                <span className="text-sm font-normal text-muted-foreground tabular-nums">{tokenCounts.output.toLocaleString()} tokens</span>
+                {tokenReductionPercent !== null && analysisResult && (
+                  <span
+                    className={cn(
+                      "text-sm font-medium tabular-nums",
+                      tokenReductionPercent >= 0 ? "text-green-500" : "text-red-500"
+                    )}
+                    title="Token count change from input to output"
+                  >
+                    {tokenReductionPercent >= 0 ? '▼' : '▲'}{' '}
+                    {Math.abs(tokenReductionPercent).toFixed(0)}%
+                  </span>
+                )}
+                <Button variant="ghost" size="icon" onClick={handleCopy} disabled={!scnOutput} title="Copy to clipboard">
+                  {isCopied ? <Check className="h-4 w-4 text-green-500" /> : <Copy className="h-4 w-4" />}
+                </Button>
+              </div>
+            </div>
+            <div className="p-4 flex-grow overflow-auto font-mono text-xs relative">
+              <Legend />
+              <pre className="whitespace-pre-wrap">
+                {scnOutput || (isLoading ? "Generating..." : "Output will appear here.")}
+              </pre>
+            </div>
+          </main>
+        </div>
+      );
+    }
+
+
+    export default App;
+  packages/scn-ts-web-demo/src/components/OutputOptions.tsx: >
+    import * as React from 'react';
+
+    import type { FormattingOptions } from '../types';
+
+    import { ChevronDown, ChevronRight } from 'lucide-react';
+
+
+    import { Checkbox } from './ui/checkbox';
+
+    import { Label } from './ui/label';
+
+
+    interface OutputOptionsProps {
+      options: FormattingOptions;
+      setOptions: React.Dispatch<React.SetStateAction<FormattingOptions>>;
+    }
+
+
+
+    export interface OutputOptionsHandle {
+      expandAll: () => void;
+      collapseAll: () => void;
+    }
+
+
+    type RegularOptionKey = keyof Omit<FormattingOptions, 'displayFilters'>;
+
+    type OptionItem = RegularOptionKey | string | { name: string; children:
+    OptionItem[] };
+
+
+    const symbolKindLabels: Record<string, string> = {
+      // TS/JS
+      class: 'Classes',
+      interface: 'Interfaces',
+      function: 'Functions',
+      method: 'Methods',
+      constructor: 'Constructors',
+      variable: 'Variables',
+      property: 'Properties',
+      enum: 'Enums',
+      enum_member: 'Enum Members',
+      type_alias: 'Type Aliases',
+      module: 'Modules',
+      // React
+      react_component: 'React Components',
+      styled_component: 'Styled Components',
+      jsx_element: 'JSX Elements',
+      // CSS
+      css_class: 'CSS Classes',
+      css_id: 'CSS IDs',
+      css_tag: 'CSS Tags',
+      css_at_rule: 'CSS At-Rules',
+      css_variable: 'CSS Variables',
+      // Go
+      go_package: 'Go Packages',
+      // Rust
+      rust_struct: 'Rust Structs',
+      rust_trait: 'Rust Traits',
+      rust_impl: 'Rust Impls',
+    };
+
+
+    const tsDeclarationKinds = ['class', 'interface', 'function', 'variable',
+    'enum', 'type_alias', 'module'];
+
+    const tsMemberKinds = ['method', 'constructor', 'property', 'enum_member'];
+
+    const reactKinds = ['react_component', 'styled_component', 'jsx_element'];
+
+    const cssKinds = ['css_class', 'css_id', 'css_tag', 'css_at_rule',
+    'css_variable'];
+
+    const goKinds = ['go_package'];
+
+    const rustKinds = ['rust_struct', 'rust_trait', 'rust_impl'];
+
+
+    const toFilter = (kind: string): string => `filter:${kind}`;
+
+
+    const symbolVisibilityTree: OptionItem = {
+      name: 'Symbol Visibility',
+      children: [
+        {
+          name: 'TypeScript/JavaScript',
+          children: [
+            { name: 'Declarations', children: tsDeclarationKinds.map(toFilter) },
+            { name: 'Members', children: tsMemberKinds.map(toFilter) },
+          ],
+        },
+        { name: 'React', children: reactKinds.map(toFilter) },
+        { name: 'CSS', children: cssKinds.map(toFilter) },
+        {
+          name: 'Other Languages',
+          children: [
+            { name: 'Go', children: goKinds.map(toFilter) },
+            { name: 'Rust', children: rustKinds.map(toFilter) },
+          ],
+        },
+      ],
+    };
+
+
+    const optionTree: OptionItem[] = [
+      {
+        name: 'Display Elements',
+        children: [
+          'showIcons',
+          {
+            name: 'Indicators',
+            children: ['showExportedIndicator', 'showPrivateIndicator'],
+          },
+          'showModifiers',
+          'showTags',
+          {
+            name: 'Identifiers',
+            children: ['showFilePrefix', 'showFileIds', 'showSymbolIds'],
+          },
+        ],
+      },
+      {
+        name: 'Relationships',
+        children: ['showOutgoing', 'showIncoming'],
+      },
+      {
+        name: 'Structure',
+        children: ['groupMembers'],
+      },
+      symbolVisibilityTree,
+    ];
+
+
+    const optionLabels: Record<RegularOptionKey, string> & Record<string,
+    string> = {
+      ...symbolKindLabels,
+      showIcons: 'Icons',
+      showExportedIndicator: 'Exported (+)',
+      showPrivateIndicator: 'Private (-)',
+      showModifiers: 'Modifiers',
+      showTags: 'Tags',
+      showSymbolIds: 'Symbol IDs',
+      showFilePrefix: 'File Prefix (§)',
+      showFileIds: 'File IDs',
+      showOutgoing: 'Outgoing',
+      showIncoming: 'Incoming',
+      groupMembers: 'Group Members',
+    };
+
+
+    function getAllKeys(item: OptionItem): string[] {
+      if (typeof item === 'string') {
+        return [item];
+      }
+      return item.children.flatMap(getAllKeys);
+    }
+
+
+    const getAllGroupNames = (items: OptionItem[]): string[] => {
+      return items.flatMap(item => {
+        if (typeof item === 'object' && 'name' in item) {
+          return [item.name, ...getAllGroupNames(item.children)];
+        }
+        return [];
+      });
+    }
+
+
+    const OutputOptions = React.forwardRef<OutputOptionsHandle,
+    OutputOptionsProps>(({ options, setOptions }, ref) => {
+      const [expandedGroups, setExpandedGroups] = React.useState<Set<string>>(
+        () =>
+          new Set([
+            'Display Elements', 'Indicators', 'Relationships', 'Structure',
+            'TypeScript/JavaScript',
+            'React', 'Identifiers',
+          ])
+      );
+
+      const allGroupNames = React.useMemo(() => getAllGroupNames(optionTree), []);
+
+      const expandAll = React.useCallback(() => {
+        setExpandedGroups(new Set(allGroupNames));
+      }, [allGroupNames]);
+
+      const collapseAll = React.useCallback(() => {
+        setExpandedGroups(new Set());
+      }, []);
+
+      React.useImperativeHandle(ref, () => ({
+        expandAll,
+        collapseAll,
+      }), [expandAll, collapseAll]);
+
+      const toggleGroup = (groupName: string) => {
+        setExpandedGroups(prev => {
+          const newSet = new Set(prev);
+          if (newSet.has(groupName)) {
+            newSet.delete(groupName);
+          } else {
+            newSet.add(groupName);
+          }
+          return newSet;
+        });
+      };
+
+      const handleChange = (optionKey: string) => (checked: boolean | 'indeterminate') => {
+        const isChecked = checked === true;
+        if (optionKey.startsWith('filter:')) {
+          const kind = optionKey.substring('filter:'.length);
+          setOptions(prev => ({
+            ...prev,
+            displayFilters: { ...(prev.displayFilters ?? {}), [kind]: isChecked },
+          }));
+        } else {
+          setOptions(prev => ({ ...prev, [optionKey]: isChecked }));
+        }
+      };
+
+      const handleGroupChange = (keys: ReadonlyArray<string>) => (checked: boolean | 'indeterminate') => {
+        const isChecked = checked === true;
+        setOptions(prev => {
+          const newOptions: FormattingOptions = { ...prev };
+          const newDisplayFilters = { ...(prev.displayFilters ?? {}) };
+
+          for (const key of keys) {
+            if (key.startsWith('filter:')) {
+              newDisplayFilters[key.substring('filter:'.length)] = isChecked;
+            } else {
+              newOptions[key as RegularOptionKey] = isChecked;
+            }
+          }
+          newOptions.displayFilters = newDisplayFilters;
+          return newOptions;
+        });
+      };
+
+      const renderItem = (item: OptionItem, level: number): React.ReactNode => {
+        if (typeof item === 'string') {
+          const key = item as string;
+          const isFilter = key.startsWith('filter:');
+          const filterKind = isFilter ? key.substring('filter:'.length) : null;
+          const labelKey = filterKind ?? key;
+
+          return (
+            <div key={key} style={{ paddingLeft: `${level * 1.5}rem` }} className="flex items-center space-x-1.5">
+              <Checkbox
+                id={key}
+                checked={
+                  isFilter ? options.displayFilters?.[filterKind!] ?? true : options[key as RegularOptionKey] ?? true
+                }
+                onCheckedChange={handleChange(key)}
+              />
+              <Label htmlFor={key} className="cursor-pointer select-none text-sm text-muted-foreground font-normal">
+                {optionLabels[labelKey as keyof typeof optionLabels] ?? labelKey}
+              </Label>
+            </div>
+          );
+        }
+
+        const { name, children } = item;
+        const isExpanded = expandedGroups.has(name);
+        const allKeys = getAllKeys(item);
+        const allChecked = allKeys.every(key => {
+          if (key.startsWith('filter:')) {
+            return options.displayFilters?.[key.substring('filter:'.length)] ?? true;
+          }
+          return options[key as RegularOptionKey] ?? true;
+        });
+
+        return (
+          <div key={name}>
+            <div
+              className="flex items-center space-x-1.5 py-1 rounded-md hover:bg-accent/50 cursor-pointer select-none -mx-2 px-2"
+              style={{ paddingLeft: `calc(${level * 1.5}rem + 0.5rem)` }}
+              onClick={() => toggleGroup(name)}
+            >
+              {isExpanded ? <ChevronDown className="h-4 w-4 flex-shrink-0" /> : <ChevronRight className="h-4 w-4 flex-shrink-0" />}
+              <Checkbox
+                id={`group-${name.replace(/\s+/g, '-')}`}
+                title={`Toggle all in ${name}`}
+                checked={allChecked}
+                onCheckedChange={handleGroupChange(allKeys)}
+                onClick={(e: React.MouseEvent) => e.stopPropagation()} // Prevent row click from firing
+              />
+              <Label
+                htmlFor={`group-${name.replace(/\s+/g, '-')}`}
+                className="font-semibold text-sm cursor-pointer select-none"
+              >
+                {name}
+              </Label>
+            </div>
+            {isExpanded && (
+              <div className="pt-1.5 space-y-1.5">
+                {children.map(child => renderItem(child, level + 1))}
+              </div>
+            )}
+          </div>
+        );
+      };
+
+      return (
+        <div className="space-y-1">
+          {optionTree.map(item => renderItem(item, 0))}
+        </div>
+      );
+    });
+
+
+    export default OutputOptions;
+approved: true

@@ -4,31 +4,13 @@ packages/
   scn-ts-web-demo/
     src/
       components/
-        ui/
-          accordion.tsx
-          button.tsx
-          card.tsx
-          checkbox.tsx
-          label.tsx
-          textarea.tsx
-        Legend.tsx
-        LogViewer.tsx
         OutputOptions.tsx
       hooks/
         useAnalysis.hook.ts
-        useClipboard.hook.ts
-        useResizableSidebar.hook.ts
-      lib/
-        utils.ts
       services/
         analysis.service.ts
-      stores/
-        app.store.ts
       App.tsx
       constants.ts
-      default-files.ts
-      index.css
-      main.tsx
       types.ts
       worker.ts
     index.html
@@ -39,617 +21,133 @@ packages/
     tsconfig.node.json
     vite.config.ts
 src/
-  queries/
-    css.ts
-    go.ts
-    rust.ts
-    typescript.ts
-  utils/
-    ast.ts
-    graph.ts
-    path.ts
-    tsconfig.ts
-  analyzer.ts
   constants.ts
   formatter.ts
-  graph-resolver.ts
   index.ts
-  languages.ts
-  logger.ts
   main.ts
-  parser.ts
   tokenizer.ts
   types.ts
+test/
+  unit/
+    calculateTokenImpact.test.ts
 package.json
 tsconfig.json
 ```
 
 # Files
 
-## File: packages/scn-ts-web-demo/src/components/ui/accordion.tsx
+## File: test/unit/calculateTokenImpact.test.ts
 ```typescript
-import * as React from "react"
-import * as AccordionPrimitive from "@radix-ui/react-accordion"
-import { ChevronDown } from "lucide-react"
+import { describe, it, expect, beforeAll } from 'bun:test';
+import { calculateTokenImpact, initializeTokenizer } from '../../src/main';
+import type { SourceFile, FormattingOptions, CodeSymbol } from '../../src/types';
 
-import { cn } from "../../lib/utils"
-
-const Accordion = AccordionPrimitive.Root
-
-const AccordionItem = React.forwardRef<
-  React.ElementRef<typeof AccordionPrimitive.Item>,
-  React.ComponentPropsWithoutRef<typeof AccordionPrimitive.Item>
->(({ className, ...props }, ref) => (
-  <AccordionPrimitive.Item
-    ref={ref}
-    className={cn(className)}
-    {...props}
-  />
-))
-AccordionItem.displayName = "AccordionItem"
-
-const AccordionTrigger = React.forwardRef<
-  React.ElementRef<typeof AccordionPrimitive.Trigger>,
-  React.ComponentPropsWithoutRef<typeof AccordionPrimitive.Trigger>
->(({ className, children, ...props }, ref) => (
-  <AccordionPrimitive.Header className="flex sticky top-0 z-10 border-b bg-background">
-    <AccordionPrimitive.Trigger
-      ref={ref}
-      className={cn(
-        "flex flex-1 items-center justify-between py-4 font-medium transition-all hover:underline [&[data-state=open]>svg]:rotate-180",
-        className
-      )}
-      {...props}
-    >
-      {children}
-      <ChevronDown className="h-4 w-4 shrink-0 transition-transform duration-200" />
-    </AccordionPrimitive.Trigger>
-  </AccordionPrimitive.Header>
-))
-AccordionTrigger.displayName = AccordionPrimitive.Trigger.displayName
-
-const AccordionContent = React.forwardRef<
-  React.ElementRef<typeof AccordionPrimitive.Content>,
-  React.ComponentPropsWithoutRef<typeof AccordionPrimitive.Content>
->(({ className, children, ...props }, ref) => (
-  <AccordionPrimitive.Content
-    ref={ref}
-    className="overflow-hidden text-sm transition-all data-[state=closed]:animate-accordion-up data-[state=open]:animate-accordion-down"
-    {...props}
-  >
-    <div className={cn("pb-4 pt-0", className)}>{children}</div>
-  </AccordionPrimitive.Content>
-))
-
-AccordionContent.displayName = AccordionPrimitive.Content.displayName
-
-export { Accordion, AccordionItem, AccordionTrigger, AccordionContent }
-```
-
-## File: packages/scn-ts-web-demo/src/components/ui/button.tsx
-```typescript
-import * as React from "react"
-import { Slot } from "@radix-ui/react-slot"
-import { cva, type VariantProps } from "class-variance-authority"
-import { cn } from "../../lib/utils"
-
-const buttonVariants = cva(
-  "inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50",
-  {
-    variants: {
-      variant: {
-        default: "bg-primary text-primary-foreground hover:bg-primary/90",
-        destructive:
-          "bg-destructive text-destructive-foreground hover:bg-destructive/90",
-        outline:
-          "border border-input bg-background hover:bg-accent hover:text-accent-foreground",
-        secondary:
-          "bg-secondary text-secondary-foreground hover:bg-secondary/80",
-        ghost: "hover:bg-accent hover:text-accent-foreground",
-        link: "text-primary underline-offset-4 hover:underline",
-      },
-      size: {
-        default: "h-10 px-4 py-2",
-        sm: "h-9 rounded-md px-3",
-        lg: "h-11 rounded-md px-8",
-        icon: "h-10 w-10",
-      },
-    },
-    defaultVariants: {
-      variant: "default",
-      size: "default",
-    },
-  }
-)
-
-export interface ButtonProps
-  extends React.ButtonHTMLAttributes<HTMLButtonElement>,
-    VariantProps<typeof buttonVariants> {
-  asChild?: boolean
-}
-
-const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
-  ({ className, variant, size, asChild = false, ...props }, ref) => {
-    const Comp = asChild ? Slot : "button"
-    return (
-      <Comp
-        className={cn(buttonVariants({ variant, size, className }))}
-        ref={ref}
-        {...props}
-      />
-    )
-  }
-)
-Button.displayName = "Button"
-
-export { Button, buttonVariants }
-```
-
-## File: packages/scn-ts-web-demo/src/components/ui/card.tsx
-```typescript
-import * as React from "react"
-import { cn } from "../../lib/utils"
-
-const Card = React.forwardRef<
-  HTMLDivElement,
-  React.HTMLAttributes<HTMLDivElement>
->(({ className, ...props }, ref) => (
-  <div
-    ref={ref}
-    className={cn(
-      "rounded-lg border bg-card text-card-foreground shadow-sm",
-      className
-    )}
-    {...props}
-  />
-))
-Card.displayName = "Card"
-
-const CardHeader = React.forwardRef<
-  HTMLDivElement,
-  React.HTMLAttributes<HTMLDivElement>
->(({ className, ...props }, ref) => (
-  <div
-    ref={ref}
-    className={cn("flex flex-col space-y-1.5 p-6", className)}
-    {...props}
-  />
-))
-CardHeader.displayName = "CardHeader"
-
-const CardTitle = React.forwardRef<
-  HTMLHeadingElement,
-  React.HTMLAttributes<HTMLHeadingElement>
->(({ className, ...props }, ref) => (
-  <h3
-    ref={ref}
-    className={cn("text-lg font-semibold leading-none tracking-tight", className)}
-    {...props}
-  />
-))
-CardTitle.displayName = "CardTitle"
-
-
-const CardContent = React.forwardRef<
-  HTMLDivElement,
-  React.HTMLAttributes<HTMLDivElement>
->(({ className, ...props }, ref) => (
-  <div ref={ref} className={cn("p-6 pt-0", className)} {...props} />
-))
-CardContent.displayName = "CardContent"
-
-
-export { Card, CardHeader, CardTitle, CardContent }
-```
-
-## File: packages/scn-ts-web-demo/src/components/ui/checkbox.tsx
-```typescript
-import * as React from "react"
-import * as CheckboxPrimitive from "@radix-ui/react-checkbox"
-import { Check } from "lucide-react"
-
-import { cn } from "../../lib/utils"
-
-const Checkbox = React.forwardRef<
-  React.ElementRef<typeof CheckboxPrimitive.Root>,
-  React.ComponentPropsWithoutRef<typeof CheckboxPrimitive.Root>
->(({ className, ...props }, ref) => (
-  <CheckboxPrimitive.Root
-    ref={ref}
-    className={cn(
-      "peer h-4 w-4 shrink-0 rounded-sm border border-primary ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 data-[state=checked]:bg-primary data-[state=checked]:text-primary-foreground",
-      className
-    )}
-    {...props}
-  >
-    <CheckboxPrimitive.Indicator
-      className={cn("flex items-center justify-center text-current")}
-    >
-      <Check className="h-4 w-4" />
-    </CheckboxPrimitive.Indicator>
-  </CheckboxPrimitive.Root>
-))
-Checkbox.displayName = CheckboxPrimitive.Root.displayName
-
-export { Checkbox }
-```
-
-## File: packages/scn-ts-web-demo/src/components/ui/label.tsx
-```typescript
-import * as React from "react"
-import * as LabelPrimitive from "@radix-ui/react-label"
-import { cva, type VariantProps } from "class-variance-authority"
-
-import { cn } from "../../lib/utils"
-
-const labelVariants = cva(
-  "text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
-)
-
-const Label = React.forwardRef<
-  React.ElementRef<typeof LabelPrimitive.Root>,
-  React.ComponentPropsWithoutRef<typeof LabelPrimitive.Root> &
-    VariantProps<typeof labelVariants>
->(({ className, ...props }, ref) => (
-  <LabelPrimitive.Root
-    ref={ref}
-    className={cn(labelVariants(), className)}
-    {...props}
-  />
-))
-Label.displayName = LabelPrimitive.Root.displayName
-
-export { Label }
-```
-
-## File: packages/scn-ts-web-demo/src/components/ui/textarea.tsx
-```typescript
-import * as React from "react"
-import { cn } from "../../lib/utils"
-
-export interface TextareaProps
-  extends React.TextareaHTMLAttributes<HTMLTextAreaElement> {}
-
-const Textarea = React.forwardRef<HTMLTextAreaElement, TextareaProps>(
-  ({ className, ...props }, ref) => {
-    return (
-      <textarea
-        className={cn(
-          "flex min-h-[80px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50",
-          className
-        )}
-        ref={ref}
-        {...props}
-      />
-    )
-  }
-)
-Textarea.displayName = "Textarea"
-
-export { Textarea }
-```
-
-## File: packages/scn-ts-web-demo/src/components/Legend.tsx
-```typescript
-import * as React from 'react';
-import { Button } from './ui/button';
-import { HelpCircle, X } from 'lucide-react';
-import { ICONS, SCN_SYMBOLS } from 'scn-ts-core';
-import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
-import {
-  Accordion,
-  AccordionContent,
-  AccordionItem,
-  AccordionTrigger,
-} from "./ui/accordion"
-
-const symbolIconGroups: Record<string, (keyof typeof ICONS)[]> = {
-  'Class or Component': ['class', 'react_component'],
-  'Interface or Trait': ['interface', 'rust_trait'],
-  'Function or Method': ['function', 'method', 'styled_component'],
-  'Variable or Property': ['variable', 'property'],
-  Enum: ['enum'],
-  'Type Alias': ['type_alias'],
-  'JSX Element': ['jsx_element'],
-  'CSS Selector': ['css_class'],
+const mockFile: SourceFile = {
+    id: 1,
+    relativePath: 'test.ts',
+    absolutePath: '/test.ts',
+    sourceCode: `
+        export class MyClass {
+            myMethod() {}
+        }
+        export const myVar = 1;
+    `,
+    language: { id: 'typescript', name: 'TypeScript', extensions: ['.ts'], wasmPath: '' } as any,
+    symbols: [
+        {
+            id: '1.1',
+            fileId: 1,
+            name: 'MyClass',
+            kind: 'class',
+            isExported: true,
+            dependencies: [],
+            range: { start: { line: 1, column: 8 }, end: { line: 1, column: 15 } },
+            scopeRange: { start: { line: 1, column: 17 }, end: { line: 3, column: 9 } },
+        } as CodeSymbol,
+        {
+            id: '1.2',
+            fileId: 1,
+            name: 'myMethod',
+            kind: 'method',
+            isExported: false,
+            dependencies: [],
+            range: { start: { line: 2, column: 12 }, end: { line: 2, column: 20 } },
+            scopeRange: { start: { line: 2, column: 24 }, end: { line: 2, column: 26 } },
+        } as CodeSymbol,
+        {
+            id: '1.3',
+            fileId: 1,
+            name: 'myVar',
+            kind: 'variable',
+            isExported: true,
+            dependencies: [],
+            range: { start: { line: 4, column: 20 }, end: { line: 4, column: 25 } },
+            scopeRange: { start: { line: 4, column: 8 }, end: { line: 4, column: 29 } },
+        } as CodeSymbol,
+    ],
+    parseError: false,
 };
+const mockSourceFiles: SourceFile[] = [mockFile];
 
-const symbolIcons = Object.entries(symbolIconGroups).flatMap(([description, iconKeys]) =>
-  iconKeys.map(key => ({ symbol: ICONS[key], description }))
-);
-
-const legendSections = [
-  {
-    title: 'Prefixes',
-    items: [
-      { symbol: SCN_SYMBOLS.FILE_PREFIX, description: 'File path' },
-      { symbol: SCN_SYMBOLS.EXPORTED_PREFIX, description: 'Exported symbol' },
-      { symbol: SCN_SYMBOLS.PRIVATE_PREFIX, description: 'Private/unexported symbol' },
-    ],
-  },
-  {
-    title: 'Symbol Icons',
-    items: Array.from(new Map(symbolIcons.map(item => [item.symbol, item])).values()),
-  },
-  {
-    title: 'Relationships',
-    items: [
-      { symbol: SCN_SYMBOLS.OUTGOING_ARROW, description: 'Outgoing dependency' },
-      { symbol: SCN_SYMBOLS.INCOMING_ARROW, description: 'Incoming dependency' },
-    ],
-  },
-  {
-    title: 'Modifiers & Tags',
-    items: [
-      { symbol: SCN_SYMBOLS.ASYNC, description: 'Async' },
-      { symbol: SCN_SYMBOLS.THROWS, description: 'Throws error' },
-      { symbol: SCN_SYMBOLS.PURE, description: 'Pure (no side-effects)' },
-      { symbol: SCN_SYMBOLS.TAG_STYLED, description: 'Styled component' },
-      { symbol: SCN_SYMBOLS.TAG_DYNAMIC, description: 'Dynamic import' },
-      { symbol: SCN_SYMBOLS.TAG_GENERATED, description: 'Generated file' },
-    ],
-  },
-];
-
-const LegendItem: React.FC<{ symbol: string; description: string }> = ({ symbol, description }) => (
-  <div className="grid grid-cols-[3rem_1fr] items-center gap-x-3 text-sm">
-    <code className="font-mono text-base font-bold text-foreground/90 justify-self-center">{symbol}</code>
-    <span className="text-muted-foreground">{description}</span>
-  </div>
-);
-
-export const Legend: React.FC = () => {
-  const [isOpen, setIsOpen] = React.useState(false);
-
-  if (!isOpen) {
-    return (
-      <div className="sticky top-4 right-4 z-30 float-right">
-        <Button
-          variant="secondary"
-          size="icon"
-          onClick={() => setIsOpen(true)}
-          title="Show Legend"
-          className="rounded-full shadow-lg"
-        >
-          <HelpCircle className="h-5 w-5" />
-        </Button>
-      </div>
-    );
-  }
-
-  return (
-    <div className="sticky top-4 right-4 z-30 float-right">
-      <Card className="w-80 max-h-[80vh] flex flex-col shadow-2xl bg-background/90 backdrop-blur-sm">
-        <CardHeader className="flex flex-row items-center justify-between py-3 px-4 border-b">
-          <CardTitle className="text-base">Legend</CardTitle>
-          <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setIsOpen(false)}>
-            <X className="h-4 w-4" />
-          </Button>
-        </CardHeader>
-        <CardContent className="p-0 overflow-y-auto">
-          <Accordion type="multiple" defaultValue={legendSections.map(s => s.title)} className="w-full">
-            {legendSections.map(({ title, items }) => (
-              <AccordionItem key={title} value={title}>
-                <AccordionTrigger className="px-4 py-2 text-sm hover:no-underline">{title}</AccordionTrigger>
-                <AccordionContent className="px-4 pb-3">
-                  <div className="space-y-1.5">
-                    {items.map(({ symbol, description }) =>
-                      symbol && <LegendItem key={`${symbol}-${description}`} symbol={symbol} description={description} />
-                    )}
-                  </div>
-                </AccordionContent>
-              </AccordionItem>
-            ))}
-          </Accordion>
-        </CardContent>
-      </Card>
-    </div>
-  );
-};
-```
-
-## File: packages/scn-ts-web-demo/src/components/LogViewer.tsx
-```typescript
-import React, { useRef, useState, useCallback } from 'react';
-import { cn } from '../lib/utils';
-import type { LogEntry } from '../types';
-import { levelColorMap } from '../constants';
-import { Button } from './ui/button';
-import { Copy, Check } from 'lucide-react';
-import type { LogLevel } from 'scn-ts-core';
-
-const LOG_LEVELS: Exclude<LogLevel, 'silent'>[] = ['error', 'warn', 'info', 'debug'];
-
-const LogViewer: React.FC<{ logs: readonly LogEntry[] }> = ({ logs }) => {
-  const scrollContainerRef = useRef<HTMLDivElement>(null);
-  const [isCopied, setIsCopied] = useState(false);
-  const [visibleLevels, setVisibleLevels] = useState<Set<Exclude<LogLevel, 'silent'>>>(
-    new Set(LOG_LEVELS),
-  );
-
-  const handleCopy = useCallback(() => {
-    const logsToCopy = logs.filter(log => visibleLevels.has(log.level));
-    if (logsToCopy.length > 0) {
-      const logText = logsToCopy
-        .map(
-          log =>
-            `${new Date(log.timestamp).toLocaleTimeString()} [${log.level.toUpperCase()}] ${log.message}`,
-        )
-        .join('\n');
-      navigator.clipboard.writeText(logText).then(() => {
-        setIsCopied(true);
-        setTimeout(() => setIsCopied(false), 2000);
-      });
-    }
-  }, [logs, visibleLevels]);
-
-  const toggleLevel = (level: Exclude<LogLevel, 'silent'>) => {
-    setVisibleLevels(prev => {
-      const newSet = new Set(prev);
-      if (newSet.has(level)) {
-        newSet.delete(level);
-      } else {
-        newSet.add(level);
-      }
-      return newSet;
+describe('calculateTokenImpact', () => {
+    beforeAll(() => {
+        initializeTokenizer();
     });
-  };
 
-  const filteredLogs = logs.filter(log => visibleLevels.has(log.level));
+    it('should calculate negative impact for disabling a default-on option (showIcons)', () => {
+        const baseOptions: FormattingOptions = {}; // Defaults to true
+        const impact = calculateTokenImpact(mockSourceFiles, baseOptions);
+        
+        expect(impact.options.showIcons).toBeDefined();
+        expect(impact.options.showIcons).toBeLessThan(0);
+    });
 
-  return (
-    <div className="flex flex-col">
-      <div className="flex items-center space-x-2 pb-2 border-b mb-2 flex-shrink-0">
-        <span className="text-xs font-medium text-muted-foreground">Show levels:</span>
-        {LOG_LEVELS.map(level => (
-          <Button
-            key={level}
-            variant={visibleLevels.has(level) ? 'secondary' : 'ghost'}
-            size="sm"
-            className={cn(
-              'h-6 px-2 text-xs capitalize',
-              !visibleLevels.has(level) && 'opacity-50',
-              levelColorMap[level],
-            )}
-            onClick={() => toggleLevel(level)}
-          >
-            {level}
-          </Button>
-        ))}
-      </div>
-      <div className="relative">
-        <div ref={scrollContainerRef} className="font-mono text-xs pr-10">
-          {filteredLogs.length === 0 && (
-            <p className="text-muted-foreground">
-              {logs.length === 0 ? 'No logs yet. Click "Analyze" to start.' : 'No logs match the current filter.'}
-            </p>
-          )}
-          {filteredLogs.map((log, index) => (
-            <div key={index} className="flex items-start">
-              <span className="text-muted-foreground/80 mr-4 flex-shrink-0">
-                {new Date(log.timestamp).toLocaleTimeString()}
-              </span>
-              <span className={cn('font-bold w-14 flex-shrink-0', levelColorMap[log.level])}>
-                [{log.level.toUpperCase()}]
-              </span>
-              <span className="whitespace-pre-wrap break-all text-foreground">{log.message}</span>
-            </div>
-          ))}
-        </div>
-        {logs.length > 0 && (
-          <Button variant="ghost" size="icon" className="absolute top-0 right-0 h-8 w-8" onClick={handleCopy} title="Copy logs to clipboard">
-            {isCopied ? <Check className="h-4 w-4 text-green-500" /> : <Copy className="h-4 w-4" />}
-          </Button>
-        )}
-      </div>
-    </div>
-  );
-};
+    it('should calculate positive impact for enabling an option that was off', () => {
+        const baseOptions: FormattingOptions = { showIcons: false };
+        const impact = calculateTokenImpact(mockSourceFiles, baseOptions);
 
-export default LogViewer;
-```
+        expect(impact.options.showIcons).toBeDefined();
+        expect(impact.options.showIcons).toBeGreaterThan(0);
+    });
 
-## File: packages/scn-ts-web-demo/src/hooks/useClipboard.hook.ts
-```typescript
-import { useState, useCallback } from 'react';
+    it('should calculate negative impact for disabling showExportedIndicator', () => {
+        const baseOptions: FormattingOptions = {};
+        const impact = calculateTokenImpact(mockSourceFiles, baseOptions);
 
-export function useClipboard(timeout = 2000) {
-  const [isCopied, setIsCopied] = useState(false);
+        expect(impact.options.showExportedIndicator).toBeDefined();
+        expect(impact.options.showExportedIndicator).toBeLessThan(0);
+    });
 
-  const handleCopy = useCallback((text: string) => {
-    if (text) {
-      navigator.clipboard.writeText(text).then(() => {
-        setIsCopied(true);
-        setTimeout(() => setIsCopied(false), timeout);
-      });
-    }
-  }, [timeout]);
+    it('should calculate negative impact for disabling groupMembers', () => {
+        const baseOptions: FormattingOptions = {};
+        const impact = calculateTokenImpact(mockSourceFiles, baseOptions);
 
-  return { isCopied, handleCopy };
-}
-```
+        // Disabling grouping should change whitespace, likely reducing tokens
+        expect(impact.options.groupMembers).toBeDefined();
+        // The impact could be small, or even zero if whitespace changes don't cross token boundaries, but it shouldn't be positive.
+        expect(impact.options.groupMembers).toBeLessThanOrEqual(0);
+    });
 
-## File: packages/scn-ts-web-demo/src/hooks/useResizableSidebar.hook.ts
-```typescript
-import { useState, useCallback, useRef } from 'react';
+    it('should calculate impact for displayFilters', () => {
+        const baseOptions: FormattingOptions = {};
+        const impact = calculateTokenImpact(mockSourceFiles, baseOptions);
 
-export function useResizableSidebar(initialWidth: number, minWidth = 320, maxWidthPercent = 0.8) {
-  const [sidebarWidth, setSidebarWidth] = useState(initialWidth);
-  const isResizing = useRef(false);
+        // Hiding a symbol kind should reduce tokens
+        expect(impact.displayFilters.class).toBeDefined();
+        expect(impact.displayFilters.class).toBeLessThan(0);
+        expect(impact.displayFilters.method).toBeDefined();
+        expect(impact.displayFilters.method).toBeLessThan(0);
+        expect(impact.displayFilters.variable).toBeDefined();
+        expect(impact.displayFilters.variable).toBeLessThan(0);
+    });
 
-  const handleMouseDown = useCallback((e: React.MouseEvent) => {
-    e.preventDefault();
-    isResizing.current = true;
-    document.body.style.cursor = 'col-resize';
-    document.body.style.userSelect = 'none';
-
-    const handleMouseMove = (event: MouseEvent) => {
-      if (isResizing.current) {
-        const newWidth = event.clientX;
-        const maxWidth = window.innerWidth * maxWidthPercent;
-        setSidebarWidth(Math.min(maxWidth, Math.max(minWidth, newWidth)));
-      }
-    };
-
-    const handleMouseUp = () => {
-      isResizing.current = false;
-      document.body.style.cursor = '';
-      document.body.style.userSelect = '';
-      window.removeEventListener('mousemove', handleMouseMove);
-      window.removeEventListener('mouseup', handleMouseUp);
-    };
-
-    window.addEventListener('mousemove', handleMouseMove);
-    window.addEventListener('mouseup', handleMouseUp);
-  }, [minWidth, maxWidthPercent]);
-
-  return { sidebarWidth, handleMouseDown };
-}
-```
-
-## File: packages/scn-ts-web-demo/src/lib/utils.ts
-```typescript
-import { type ClassValue, clsx } from "clsx"
-import { twMerge } from "tailwind-merge"
-
-export function cn(...inputs: ClassValue[]) {
-  return twMerge(clsx(inputs))
-}
-```
-
-## File: packages/scn-ts-web-demo/src/stores/app.store.ts
-```typescript
-import { useState } from 'react';
-import { defaultFilesJSON } from '../default-files';
-import type { FormattingOptions } from '../types';
-
-export function useAppStore() {
-  const [filesInput, setFilesInput] = useState(defaultFilesJSON);
-  const [scnOutput, setScnOutput] = useState('');
-  const [formattingOptions, setFormattingOptions] = useState<FormattingOptions>({
-    showOutgoing: true,
-    showIncoming: true,
-    showIcons: true,
-    showExportedIndicator: true,
-    showPrivateIndicator: true,
-    showModifiers: true,
-    showTags: true,
-    showSymbolIds: true,
-    groupMembers: true,
-    displayFilters: {},
-    showFilePrefix: true,
-    showFileIds: true,
-  });
-
-  return {
-    filesInput,
-    setFilesInput,
-    scnOutput,
-    setScnOutput,
-    formattingOptions,
-    setFormattingOptions,
-  };
-}
+    it('should return zero impact for a symbol kind not present in the source', () => {
+        const baseOptions: FormattingOptions = {};
+        const impact = calculateTokenImpact(mockSourceFiles, baseOptions);
+        
+        expect(impact.displayFilters.interface).toBeUndefined();
+    });
+});
 ```
 
 ## File: packages/scn-ts-web-demo/src/constants.ts
@@ -662,99 +160,6 @@ export const levelColorMap: Record<Exclude<LogLevel, 'silent'>, string> = {
   info: 'text-blue-400',
   debug: 'text-gray-500',
 };
-```
-
-## File: packages/scn-ts-web-demo/src/index.css
-```css
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
-
-@layer base {
-  :root {
-    --background: 0 0% 100%;
-    --foreground: 222.2 84% 4.9%;
-    --card: 0 0% 100%;
-    --card-foreground: 222.2 84% 4.9%;
-    --popover: 0 0% 100%;
-    --popover-foreground: 222.2 84% 4.9%;
-    --primary: 222.2 47.4% 11.2%;
-    --primary-foreground: 210 40% 98%;
-    --secondary: 210 40% 96.1%;
-    --secondary-foreground: 215.4 16.3% 46.9%;
-    --muted: 210 40% 96.1%;
-    --muted-foreground: 215.4 16.3% 46.9%;
-    --accent: 210 40% 96.1%;
-    --accent-foreground: 222.2 47.4% 11.2%;
-    --destructive: 0 84.2% 60.2%;
-    --destructive-foreground: 210 40% 98%;
-    --border: 214.3 31.8% 91.4%;
-    --input: 214.3 31.8% 91.4%;
-    --ring: 222.2 84% 4.9%;
-    --radius: 0.5rem;
-  }
-
-  .dark {
-    --background: 222.2 84% 4.9%;
-    --foreground: 210 40% 98%;
-    --card: 222.2 84% 4.9%;
-    --card-foreground: 210 40% 98%;
-    --popover: 222.2 84% 4.9%;
-    --popover-foreground: 210 40% 98%;
-    --primary: 210 40% 98%;
-    --primary-foreground: 222.2 47.4% 11.2%;
-    --secondary: 217.2 32.6% 17.5%;
-    --secondary-foreground: 210 40% 98%;
-    --muted: 217.2 32.6% 17.5%;
-    --muted-foreground: 215 20.2% 65.1%;
-    --accent: 217.2 32.6% 17.5%;
-    --accent-foreground: 210 40% 98%;
-    --destructive: 0 62.8% 30.6%;
-    --destructive-foreground: 210 40% 98%;
-    --border: 217.2 32.6% 17.5%;
-    --input: 217.2 32.6% 17.5%;
-    --ring: 212.7 26.8% 83.9%;
-  }
-}
-
-@layer base {
-  * {
-    @apply border-border;
-  }
-  body {
-    @apply bg-background text-foreground;
-  }
-}
-
-/* For custom scrollbars */
-::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
-}
-::-webkit-scrollbar-track {
-  background: transparent;
-}
-::-webkit-scrollbar-thumb {
-  background: hsl(var(--border));
-  border-radius: 4px;
-}
-::-webkit-scrollbar-thumb:hover {
-  background: hsl(var(--accent-foreground));
-}
-```
-
-## File: packages/scn-ts-web-demo/src/main.tsx
-```typescript
-import React from 'react'
-import ReactDOM from 'react-dom/client'
-import App from './App'
-import './index.css'
-
-ReactDOM.createRoot(document.getElementById('root')!).render(
-  <React.StrictMode>
-    <App />
-  </React.StrictMode>,
-)
 ```
 
 ## File: packages/scn-ts-web-demo/src/types.ts
@@ -930,148 +335,6 @@ export default {
 }
 ```
 
-## File: src/utils/graph.ts
-```typescript
-import type { SourceFile } from '../types';
-
-export const topologicalSort = (sourceFiles: SourceFile[]): SourceFile[] => {
-    const adj = new Map<number, Set<number>>();
-    const inDegree = new Map<number, number>();
-    const idToFile = new Map<number, SourceFile>();
-
-    for (const file of sourceFiles) {
-        adj.set(file.id, new Set());
-        inDegree.set(file.id, 0);
-        idToFile.set(file.id, file);
-    }
-
-    for (const file of sourceFiles) {
-        for (const symbol of file.symbols) {
-            for (const dep of symbol.dependencies) {
-                // Create a directed edge from the dependency to the current file
-                if (dep.resolvedFileId !== undefined && dep.resolvedFileId !== file.id) {
-                    if (!adj.get(dep.resolvedFileId)?.has(file.id)) {
-                         adj.get(dep.resolvedFileId)!.add(file.id);
-                         inDegree.set(file.id, (inDegree.get(file.id) || 0) + 1);
-                    }
-                }
-            }
-        }
-    }
-
-    const queue: number[] = [];
-    for (const [id, degree] of inDegree.entries()) {
-        if (degree === 0) {
-            queue.push(id);
-        }
-    }
-    queue.sort((a,b) => a - b);
-
-    const sorted: SourceFile[] = [];
-    while (queue.length > 0) {
-        const u = queue.shift()!;
-        sorted.push(idToFile.get(u)!);
-
-        const neighbors = Array.from(adj.get(u) || []).sort((a,b) => a-b);
-        for (const v of neighbors) {
-            inDegree.set(v, (inDegree.get(v) || 1) - 1);
-            if (inDegree.get(v) === 0) {
-                queue.push(v);
-            }
-        }
-        queue.sort((a,b) => a - b);
-    }
-
-    if (sorted.length < sourceFiles.length) {
-        const sortedIds = new Set(sorted.map(f => f.id));
-        sourceFiles.forEach(f => {
-            if (!sortedIds.has(f.id)) {
-                sorted.push(f);
-            }
-        });
-    }
-
-    // The fixtures expect a specific order that seems to be a standard topological sort,
-    // not a reverse one. Let's stick with the standard sort.
-    return sorted;
-};
-```
-
-## File: src/utils/path.ts
-```typescript
-// A simplified path utility for browser environments that assumes POSIX-style paths.
-export default {
-    join(...parts: string[]): string {
-        const path = parts.join('/');
-        // Replace multiple slashes, but keep leading slashes for absolute paths
-        return path.replace(/[/]+/g, '/');
-    },
-
-    dirname(p: string): string {
-        const i = p.lastIndexOf('/');
-        if (i === -1) return '.';
-        if (i === 0) return '/'; // root directory
-        const result = p.substring(0, i);
-        return result || '/';
-    },
-
-    extname(p: string): string {
-        const i = p.lastIndexOf('.');
-        // ensure it's not the first char and a slash doesn't appear after it
-        if (i <= 0 || p.lastIndexOf('/') > i) return '';
-        return p.substring(i);
-    },
-
-    resolve(...args: string[]): string {
-        let resolvedPath = '';
-        let resolvedAbsolute = false;
-        
-        for (let i = args.length - 1; i >= -1 && !resolvedAbsolute; i--) {
-            const path = (i >= 0 ? args[i] : '/')!; // CWD is root for web
-            if (path.length === 0 && i >= 0) continue;
-            
-            resolvedPath = path + '/' + resolvedPath;
-            resolvedAbsolute = path.charAt(0) === '/';
-        }
-        
-        const parts = resolvedPath.split('/').filter(p => p);
-        const stack: string[] = [];
-        for (const p of parts) {
-            if (p === '..') {
-                stack.pop();
-            } else if (p !== '.') {
-                stack.push(p);
-            }
-        }
-        
-        let result = stack.join('/');
-        if (resolvedAbsolute) {
-            result = '/' + result;
-        }
-        
-        return result || (resolvedAbsolute ? '/' : '.');
-    },
-
-    relative(from: string, to: string): string {
-        const fromParts = from.split('/').filter(p => p && p !== '.');
-        const toParts = to.split('/').filter(p => p && p !== '.');
-        
-        let i = 0;
-        while(i < fromParts.length && i < toParts.length && fromParts[i] === toParts[i]) {
-            i++;
-        }
-        
-        const upCount = fromParts.length - i;
-        const remainingTo = toParts.slice(i);
-        
-        const ups = Array(upCount).fill('..');
-        const resultParts = [...ups, ...remainingTo];
-        
-        return resultParts.join('/') || '.';
-    }
-};
-```
-
 ## File: src/constants.ts
 ```typescript
 export const ICONS: Record<string, string> = {
@@ -1168,16 +431,17 @@ export function countTokens(text: string): number {
 import * as Comlink from 'comlink';
 import type { WorkerApi } from '../worker';
 import type { LogEntry, ProgressData } from '../types';
-import type { LogLevel, SourceFile } from 'scn-ts-core';
+import type { LogLevel, SourceFile, FormattingOptions, FormattingOptionsTokenImpact } from 'scn-ts-core';
 
 export type AnalysisServiceAPI = {
   init: () => Promise<void>;
   analyze: (
     filesInput: string,
     logLevel: LogLevel,
+    formattingOptions: FormattingOptions,
     onProgress: (progress: ProgressData) => void,
     onLog: (log: LogEntry) => void,
-  ) => Promise<{ result: SourceFile[]; analysisTime: number }>;
+  ) => Promise<{ result: SourceFile[]; analysisTime: number, tokenImpact: FormattingOptionsTokenImpact }>;
   cancel: () => Promise<void>;
   cleanup: () => void;
 };
@@ -1193,10 +457,11 @@ export function createAnalysisService(): AnalysisServiceAPI {
   const analyze = async (
     filesInput: string,
     logLevel: LogLevel,
+    formattingOptions: FormattingOptions,
     onProgress: (progress: ProgressData) => void,
     onLog: (log: LogEntry) => void,
-  ): Promise<{ result: SourceFile[]; analysisTime: number }> => {
-    return workerApi.analyze({ filesInput, logLevel }, Comlink.proxy(onProgress), Comlink.proxy(onLog));
+  ): Promise<{ result: SourceFile[]; analysisTime: number, tokenImpact: FormattingOptionsTokenImpact }> => {
+    return workerApi.analyze({ filesInput, logLevel, formattingOptions }, Comlink.proxy(onProgress), Comlink.proxy(onLog));
   };
 
   const cancel = async (): Promise<void> => {
@@ -1217,307 +482,11 @@ export function createAnalysisService(): AnalysisServiceAPI {
 }
 ```
 
-## File: packages/scn-ts-web-demo/src/default-files.ts
-```typescript
-import type { FileContent } from "scn-ts-core";
-
-const files: FileContent[] = [
-  {
-    path: "src/main.tsx",
-    content: `import React from 'react';
-import { Page } from './components/layout/Page';
-import { UserProfile } from './components/UserProfile';
-import { getUser } from './api/client';
-import { Log } from './services/logger';
-import { createTokenProvider } from './auth/token';
-import './styles/main.css';
-
-async function main() {
-    Log('App starting...');
-
-    const tokenProvider = createTokenProvider();
-    console.log('Auth token:', tokenProvider.getToken());
-
-    const user = await getUser('1');
-    
-    const App = () => (
-        <Page>
-            <UserProfile initialUser={user} />
-        </Page>
-    );
-    
-    console.log('App ready to be rendered.');
-    // The existence of <App /> is enough for analysis.
-    // In a real app: ReactDOM.render(<App />, document.getElementById('root'));
-    Log('App finished setup.');
-}
-
-main();
-`
-  },
-  {
-    path: "src/api/client.ts",
-    content: `import type { User } from '../types';
-import { capitalize } from '../utils/string';
-
-const API_BASE = '/api/v1';
-
-export async function getUser(id: string): Promise<User> {
-    console.log(\`Fetching user \${id} from \${API_BASE}\`);
-    await new Promise(res => setTimeout(res, 100));
-    return {
-        id,
-        name: capitalize('john doe'),
-        email: 'john.doe@example.com',
-    };
-}
-
-export const updateUser = async (user: Partial<User> & { id: string }): Promise<User> => {
-    console.log(\`Updating user \${user.id}\`);
-    await new Promise(res => setTimeout(res, 100));
-    const fullUser = await getUser(user.id);
-    return { ...fullUser, ...user };
-};
-`
-  },
-  {
-    path: "src/components/Button.tsx",
-    content: `import React from 'react';
-import './../styles/components/button.css';
-
-type ButtonVariant = 'primary' | 'secondary';
-
-export interface ButtonProps {
-    text: string;
-    variant?: ButtonVariant;
-    onClick?: () => void;
-}
-
-export const Button: React.FC<ButtonProps> = ({ text, variant = 'primary', onClick }) => {
-    return (
-        <button className={\`btn btn-\${variant}\`} onClick={onClick}>
-            {text}
-        </button>
-    );
-};
-`
-  },
-  {
-    path: "src/components/UserProfile.tsx",
-    content: `import React from 'react';
-import type { User } from '../types';
-import { useUser } from '../hooks/useUser';
-
-// Fake styled-component to test parser. In a real app this would be \`import styled from 'styled-components';\`
-const styled = {
-  div: (template: TemplateStringsArray) => (props: any) => React.createElement('div', props)
-};
-
-const UserCard = styled.div\`
-  border: 1px solid #ccc;
-  padding: 1rem;
-  border-radius: 8px;
-\`;
-
-interface UserProfileProps {
-    initialUser: User;
-}
-
-export function UserProfile({ initialUser }: UserProfileProps): React.ReactElement {
-    const { user, updateUser } = useUser(initialUser.id, initialUser);
-
-    if (!user) {
-        return <div>Loading...</div>;
-    }
-
-    return (
-        <UserCard>
-            <h2>{user.name}</h2>
-            <p>{user.email}</p>
-            <button onClick={() => updateUser({ name: 'Jane Doe' })}>
-                Change Name
-            </button>
-        </UserCard>
-    );
-}
-`
-  },
-  {
-    path: "src/components/layout/Page.tsx",
-    content: `import React from 'react';
-import { Button } from '../Button';
-import type { Theme } from '../../types';
-
-interface PageProps {
-    children: React.ReactNode;
-}
-
-const theme: Theme = 'light';
-
-export const Page = ({ children }: PageProps): React.ReactElement => {
-    return (
-        <div className={\`page-container theme-\${theme}\`}>
-            <header>
-                <h1>My App</h1>
-                <Button text="Logout" />
-            </header>
-            <main>
-                {children}
-            </main>
-        </div>
-    );
-};
-`
-  },
-  {
-    path: "src/hooks/useUser.ts",
-    content: `import { getUser, updateUser as apiUpdateUser } from '../api/client';
-import type { User } from '../types';
-
-// This is a fake hook for dependency analysis purposes.
-export function useUser(userId: string, initialUser?: User) {
-    let user: User | null = initialUser || null;
-
-    const fetchUser = async () => {
-        user = await getUser(userId);
-    };
-
-    if (!user) {
-        fetchUser();
-    }
-
-    const updateUser = async (data: Partial<User>) => {
-        if (!user) return;
-        const updatedUser = await apiUpdateUser({ ...data, id: userId });
-        user = updatedUser;
-    };
-
-    return { user, updateUser };
-}
-`
-  },
-  {
-    path: "src/styles/main.css",
-    content: `@import url('./components/button.css');
-
-:root {
-    --primary-color: #007bff;
-}
-
-body {
-    font-family: sans-serif;
-    background-color: #f0f0f0;
-}
-
-.page-container {
-    max-width: 960px;
-    margin: 0 auto;
-}
-`
-  },
-  {
-    path: "src/styles/components/button.css",
-    content: `.btn {
-    padding: 0.5rem 1rem;
-    border: none;
-    border-radius: 4px;
-    cursor: pointer;
-}
-
-.btn-primary {
-    background-color: var(--primary-color);
-    color: white;
-}
-
-.btn-secondary {
-    background-color: gray;
-    color: white;
-}
-`
-  },
-  {
-    path: "src/types/index.ts",
-    content: `export interface User {
-    id: string;
-    name: string;
-    email: string;
-}
-
-export type Theme = 'light' | 'dark';
-`
-  },
-  {
-    path: "src/utils/string.ts",
-    content: `/**
- * Capitalizes the first letter of a string.
- */
-export function capitalize(str: string): string {
-    if (!str) return '';
-    return str.charAt(0).toUpperCase() + str.slice(1);
-}
-`
-  },
-  {
-    path: "src/auth/token.ts",
-    content: `import { generate_secret } from '../services/auth'; // fake import from .rs
-
-export function createTokenProvider() {
-    const secret = generate_secret();
-    return {
-        getToken(): string {
-            return \`fake-token-with-\${secret}\`;
-        }
-    };
-}
-`
-  },
-  {
-    path: "src/services/logger.go",
-    content: `package services
-
-import "fmt"
-
-// Log prints a message to the console.
-func Log(message string) {
-	fmt.Println("[Go Logger]", message)
-}
-`
-  },
-  {
-    path: "src/services/auth.rs",
-    content: `// A simple auth service mock
-pub struct AuthService {
-    secret_key: String,
-}
-
-impl AuthService {
-    pub fn new(secret: &str) -> Self {
-        AuthService {
-            secret_key: secret.to_string(),
-        }
-    }
-
-    pub fn verify_token(&self, token: &str) -> bool {
-        // In a real app, you'd have complex logic here.
-        token.len() > 10 && self.secret_key != ""
-    }
-}
-
-pub fn generate_secret() -> String {
-    "super_secret_key_from_rust".to_string()
-}
-`
-  },
-];
-
-export const defaultFilesJSON = JSON.stringify(files, null, 2);
-```
-
 ## File: packages/scn-ts-web-demo/src/worker.ts
 ```typescript
 import * as Comlink from 'comlink';
-import { initializeParser, analyzeProject, logger } from 'scn-ts-core';
-import type { FileContent, LogLevel, SourceFile } from 'scn-ts-core';
+import { initializeParser, analyzeProject, logger, calculateTokenImpact } from 'scn-ts-core';
+import type { FileContent, LogLevel, SourceFile, FormattingOptions, FormattingOptionsTokenImpact } from 'scn-ts-core';
 import type { LogEntry, ProgressData } from './types';
 
 function sanitizeAnalysisResult(result: SourceFile[]): SourceFile[] {
@@ -1549,10 +518,10 @@ function createWorkerApi() {
   }
 
   async function analyze(
-    { filesInput, logLevel }: { filesInput: string; logLevel: LogLevel },
+    { filesInput, logLevel, formattingOptions }: { filesInput: string; logLevel: LogLevel, formattingOptions: FormattingOptions },
     onProgress: (progress: ProgressData) => void,
     onLog: (log: LogEntry) => void
-  ): Promise<{ result: SourceFile[], analysisTime: number }> {
+  ): Promise<{ result: SourceFile[], analysisTime: number, tokenImpact: FormattingOptionsTokenImpact }> {
     if (!isInitialized) {
       throw new Error('Worker not initialized.');
     }
@@ -1581,7 +550,9 @@ function createWorkerApi() {
         signal: abortController.signal,
       });
 
-      return { result: sanitizeAnalysisResult(analysisResult), analysisTime };
+      const tokenImpact = calculateTokenImpact(analysisResult, formattingOptions);
+
+      return { result: sanitizeAnalysisResult(analysisResult), analysisTime, tokenImpact };
     } finally {
       logger.setLogHandler(null);
       abortController = null;
@@ -1652,6 +623,7 @@ export type WorkerApi = typeof workerApi;
 import * as React from 'react';
 import type { FormattingOptions } from '../types';
 import { ChevronDown, ChevronRight } from 'lucide-react';
+import type { FormattingOptionsTokenImpact } from 'scn-ts-core';
 
 import { Checkbox } from './ui/checkbox';
 import { Label } from './ui/label';
@@ -1659,6 +631,7 @@ import { Label } from './ui/label';
 interface OutputOptionsProps {
   options: FormattingOptions;
   setOptions: React.Dispatch<React.SetStateAction<FormattingOptions>>;
+  tokenImpact: FormattingOptionsTokenImpact | null;
 }
 
 
@@ -1791,7 +764,7 @@ const getAllGroupNames = (items: OptionItem[]): string[] => {
   });
 }
 
-const OutputOptions = React.forwardRef<OutputOptionsHandle, OutputOptionsProps>(({ options, setOptions }, ref) => {
+const OutputOptions = React.forwardRef<OutputOptionsHandle, OutputOptionsProps>(({ options, setOptions, tokenImpact }, ref) => {
   const [expandedGroups, setExpandedGroups] = React.useState<Set<string>>(
     () =>
       new Set([
@@ -1875,8 +848,21 @@ const OutputOptions = React.forwardRef<OutputOptionsHandle, OutputOptionsProps>(
             }
             onCheckedChange={handleChange(key)}
           />
-          <Label htmlFor={key} className="cursor-pointer select-none text-sm text-muted-foreground font-normal">
-            {optionLabels[labelKey as keyof typeof optionLabels] ?? labelKey}
+          <Label htmlFor={key} className="flex-1 cursor-pointer select-none text-sm text-muted-foreground font-normal">
+            <div className="flex justify-between items-center">
+              <span>{optionLabels[labelKey as keyof typeof optionLabels] ?? labelKey}</span>
+              {tokenImpact && (
+                <span className="text-xs font-mono tabular-nums text-foreground/50">
+                  {(() => {
+                    const impact = isFilter
+                      ? tokenImpact.displayFilters?.[filterKind!]
+                      : tokenImpact.options?.[key as RegularOptionKey];
+                    if (impact === undefined) return null;
+                    return `${impact > 0 ? '+' : ''}${impact}`;
+                  })()}
+                </span>
+              )}
+            </div>
           </Label>
         </div>
       );
@@ -1891,6 +877,26 @@ const OutputOptions = React.forwardRef<OutputOptionsHandle, OutputOptionsProps>(
       }
       return options[key as RegularOptionKey] ?? true;
     });
+    const groupTokenImpact = tokenImpact ? allKeys.reduce((sum, key) => {
+      let impact: number | undefined;
+      if (key.startsWith('filter:')) {
+        const kind = key.substring('filter:'.length);
+        impact = tokenImpact.displayFilters?.[kind];
+      } else {
+        impact = tokenImpact.options?.[key as RegularOptionKey];
+      }
+      return sum + (impact ?? 0);
+    }, 0) : null;
+
+    const impactDisplay = tokenImpact && groupTokenImpact !== null ? (
+      <span className="text-xs font-mono tabular-nums text-foreground/50 ml-auto mr-2">
+        {(() => {
+          const impact = groupTokenImpact;
+          if (impact === undefined) return null;
+          return `${impact > 0 ? '+' : ''}${impact}`;
+        })()}
+      </span>
+    ) : null;
 
     return (
       <div key={name}>
@@ -1908,10 +914,11 @@ const OutputOptions = React.forwardRef<OutputOptionsHandle, OutputOptionsProps>(
             onClick={(e: React.MouseEvent) => e.stopPropagation()} // Prevent row click from firing
           />
           <Label
-            htmlFor={`group-${name.replace(/\s+/g, '-')}`}
-            className="font-semibold text-sm cursor-pointer select-none"
+            htmlFor={`group-${name.replace(/\s+/g, '-')}`} // The label itself is clickable
+            className="flex-1 font-semibold text-sm cursor-pointer select-none"
           >
-            {name}
+            <div className="flex justify-between items-center">
+              <span>{name}</span> {impactDisplay}</div>
           </Label>
         </div>
         {isExpanded && (
@@ -1936,7 +943,7 @@ export default OutputOptions;
 ## File: packages/scn-ts-web-demo/src/hooks/useAnalysis.hook.ts
 ```typescript
 import { useState, useEffect, useCallback, useRef } from 'react';
-import type { SourceFile } from 'scn-ts-core';
+import type { SourceFile, FormattingOptions, FormattingOptionsTokenImpact } from 'scn-ts-core';
 import type { LogEntry, ProgressData } from '../types';
 import { createAnalysisService, type AnalysisServiceAPI } from '../services/analysis.service';
 
@@ -1947,6 +954,7 @@ export function useAnalysis() {
   const [progress, setProgress] = useState<ProgressData | null>(null);
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [analysisTime, setAnalysisTime] = useState<number | null>(null);
+  const [tokenImpact, setTokenImpact] = useState<FormattingOptionsTokenImpact | null>(null);
   const serviceRef = useRef<AnalysisServiceAPI | null>(null);
 
   const onLog = useCallback((log: LogEntry) => {
@@ -1984,10 +992,11 @@ export function useAnalysis() {
     setAnalysisResult(null);
     setAnalysisTime(null);
     setProgress(null);
+    setTokenImpact(null);
     setLogs([]);
   }, []);
 
-  const handleAnalyze = useCallback(async (filesInput: string) => {
+  const handleAnalyze = useCallback(async (filesInput: string, formattingOptions: FormattingOptions) => {
     if (!isInitialized || !serviceRef.current) {
       onLogPartial({ level: 'warn', message: 'Analysis worker not ready.' });
       return;
@@ -2001,14 +1010,16 @@ export function useAnalysis() {
     resetAnalysisState();
     
     try {
-      const { result, analysisTime } = await serviceRef.current.analyze(
+      const { result, analysisTime, tokenImpact } = await serviceRef.current.analyze(
         filesInput,
         'debug',
+        formattingOptions,
         setProgress,
         onLog
       );
       setAnalysisResult(result);
       setAnalysisTime(analysisTime);
+      setTokenImpact(tokenImpact);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       if ((error as Error).name === 'AbortError') {
@@ -2035,6 +1046,7 @@ export function useAnalysis() {
     progress,
     logs,
     analysisTime,
+    tokenImpact,
     handleAnalyze,
     handleStop,
     onLogPartial,
@@ -2086,308 +1098,13 @@ export default defineConfig({
 })
 ```
 
-## File: src/utils/ast.ts
-```typescript
-import type { Range } from '../types';
-import type { Node as SyntaxNode } from 'web-tree-sitter';
-
-export const getNodeText = (node: SyntaxNode, sourceCode: string): string => {
-    return sourceCode.substring(node.startIndex, node.endIndex);
-};
-
-export const getNodeRange = (node: SyntaxNode): Range => {
-    return {
-        start: { line: node.startPosition.row, column: node.startPosition.column },
-        end: { line: node.endPosition.row, column: node.endPosition.column },
-    };
-};
-
-export const findChild = (node: SyntaxNode, type: string | string[]): SyntaxNode | null => {
-    const types = Array.isArray(type) ? type : [type];
-    return node.children.find((c): c is SyntaxNode => !!c && types.includes(c.type)) || null;
-}
-
-export const findChildByFieldName = (node: SyntaxNode, fieldName: string): SyntaxNode | null => {
-    return node.childForFieldName(fieldName);
-};
-
-export const getIdentifier = (node: SyntaxNode, sourceCode: string, defaultName: string = '<anonymous>'): string => {
-    if (node.type === 'member_expression') {
-        return getNodeText(node, sourceCode);
-    }
-    const nameNode = findChildByFieldName(node, 'name') ?? findChild(node, ['identifier', 'property_identifier']);
-    return nameNode ? getNodeText(nameNode, sourceCode) : defaultName;
-};
-```
-
-## File: src/utils/tsconfig.ts
-```typescript
-import path from './path';
-import type { TsConfig } from '../types';
-
-const createPathResolver = (baseUrl: string, paths: Record<string, string[]>) => {
-    const aliasEntries = Object.entries(paths).map(([alias, resolutions]) => {
-        return {
-            pattern: new RegExp(`^${alias.replace('*', '(.*)')}$`),
-            resolutions,
-        };
-    });
-
-    return (importPath: string): string | null => {
-        for (const { pattern, resolutions } of aliasEntries) {
-            const match = importPath.match(pattern);
-            if (match && resolutions[0]) {
-                const captured = match[1] || '';
-                // Return the first resolved path.
-                const resolvedPath = resolutions[0].replace('*', captured);
-                return path.join(baseUrl, resolvedPath).replace(/\\/g, '/');
-            }
-        }
-        return null; // Not an alias
-    };
-};
-
-export type PathResolver = ReturnType<typeof createPathResolver>;
-
-export const getPathResolver = (tsconfig?: TsConfig | null): PathResolver => {
-    const baseUrl = tsconfig?.compilerOptions?.baseUrl || '.';
-    const paths = tsconfig?.compilerOptions?.paths ?? {};
-    // The baseUrl from tsconfig is relative to the tsconfig file itself (the root).
-    // The final paths we create should be relative to the root to match our file list.
-    return createPathResolver(baseUrl, paths);
-};
-```
-
-## File: src/languages.ts
-```typescript
-import type { LanguageConfig } from './types';
-import path from './utils/path';
-import { typescriptQueries, typescriptReactQueries } from './queries/typescript';
-import { cssQueries } from './queries/css';
-import { goQueries } from './queries/go';
-import { rustQueries } from './queries/rust';
-
-// Based on test/wasm and test/fixtures
-export const languages: LanguageConfig[] = [
-    {
-        id: 'typescript',
-        name: 'TypeScript',
-        extensions: ['.ts', '.mts', '.cts'],
-        wasmPath: 'tree-sitter-typescript.wasm',
-        queries: { main: typescriptQueries },
-    },
-    {
-        id: 'tsx',
-        name: 'TypeScriptReact',
-        extensions: ['.tsx'],
-        wasmPath: 'tree-sitter-tsx.wasm',
-        queries: { main: typescriptReactQueries },
-    },
-    {
-        id: 'javascript',
-        name: 'JavaScript',
-        extensions: ['.js', '.mjs', '.cjs'],
-        wasmPath: 'tree-sitter-typescript.wasm',
-        queries: { main: typescriptQueries },
-    },
-    {
-        id: 'css',
-        name: 'CSS',
-        extensions: ['.css'],
-        wasmPath: 'tree-sitter-css.wasm',
-        queries: { main: cssQueries },
-    },
-    {
-        id: 'go',
-        name: 'Go',
-        extensions: ['.go'],
-        wasmPath: 'tree-sitter-go.wasm',
-        queries: { main: goQueries },
-    },
-    {
-        id: 'java',
-        name: 'Java',
-        extensions: ['.java'],
-        wasmPath: 'tree-sitter-java.wasm',
-        queries: {},
-    },
-    {
-        id: 'python',
-        name: 'Python',
-        extensions: ['.py'],
-        wasmPath: 'tree-sitter-python.wasm',
-        queries: {},
-    },
-    {
-        id: 'rust',
-        name: 'Rust',
-        extensions: ['.rs'],
-        wasmPath: 'tree-sitter-rust.wasm',
-        queries: { main: rustQueries },
-    },
-    {
-        id: 'c',
-        name: 'C',
-        extensions: ['.c'],
-        wasmPath: 'tree-sitter-c.wasm',
-        queries: {},
-    },
-    {
-        id: 'graphql',
-        name: 'GraphQL',
-        extensions: ['.graphql', '.gql'],
-        wasmPath: '', // No wasm file provided in the list
-        queries: {},
-    },
-];
-
-const createLanguageMap = (): Map<string, LanguageConfig> => {
-    const map = new Map<string, LanguageConfig>();
-    languages.forEach(lang => {
-        lang.extensions.forEach(ext => {
-            map.set(ext, lang);
-        });
-    });
-    return map;
-};
-
-const languageMap = createLanguageMap();
-
-export const getLanguageForFile = (filePath: string): LanguageConfig | undefined => {
-    const extension = path.extname(filePath);
-    return languageMap.get(extension);
-};
-```
-
-## File: src/logger.ts
-```typescript
-import type { LogLevel, LogHandler } from './types';
-
-class Logger {
-  private handler: LogHandler | null = null;
-  private level: LogLevel = 'info';
-
-  private logLevels: Record<LogLevel, number> = {
-    error: 0,
-    warn: 1,
-    info: 2,
-    debug: 3,
-    silent: -1,
-  };
-
-  setLogHandler(handler: LogHandler | null) {
-    this.handler = handler;
-  }
-
-  setLevel(level: LogLevel) {
-    this.level = level;
-  }
-
-  private shouldLog(level: Exclude<LogLevel, 'silent'>): boolean {
-    if (this.level === 'silent') return false;
-    return this.logLevels[level] <= this.logLevels[this.level];
-  }
-
-  private log(level: Exclude<LogLevel, 'silent'>, ...args: any[]) {
-    if (this.shouldLog(level)) {
-      if (this.handler) {
-        this.handler(level, ...args);
-      } else {
-        const consoleMethod = console[level] || console.log;
-        consoleMethod(`[scn-ts-core:${level}]`, ...args);
-      }
-    }
-  }
-
-  error(...args: any[]) {
-    this.log('error', ...args);
-  }
-
-  warn(...args: any[]) {
-    this.log('warn', ...args);
-  }
-
-  info(...args: any[]) {
-    this.log('info', ...args);
-  }
-
-  debug(...args: any[]) {
-    this.log('debug', ...args);
-  }
-}
-
-export const logger = new Logger();
-```
-
-## File: src/queries/go.ts
-```typescript
-export const goQueries = `
-(package_clause
-  (package_identifier) @symbol.go_package.def) @scope.go_package.def
-
-(function_declaration
- name: (identifier) @symbol.function.def) @scope.function.def
-
-(go_statement
-  (call_expression
-    function: (_) @rel.goroutine))
-
-(call_expression
-  function: (_) @rel.call)
-
-(import_spec
-  path: (interpreted_string_literal) @rel.import.source)
-`;
-```
-
-## File: src/queries/rust.ts
-```typescript
-export const rustQueries = `
-(struct_item
-  name: (type_identifier) @symbol.rust_struct.def) @scope.rust_struct.def
-
-(trait_item
-  name: (type_identifier) @symbol.rust_trait.def) @scope.rust_trait.def
-  
-(impl_item) @symbol.rust_impl.def @scope.rust_impl.def
-
-(impl_item
-  trait: (type_identifier) @rel.implements
-  type: (type_identifier) @rel.references
-)
-
-(attribute_item
-  (attribute . (token_tree (identifier) @rel.macro)))
-
-(function_item
-  name: (identifier) @symbol.function.def) @scope.function.def
-
-(impl_item
-  body: (declaration_list
-    (function_item
-      name: (identifier) @symbol.method.def) @scope.method.def))
-
-; For parameters like '&impl Trait'
-(parameter type: (reference_type (_ (type_identifier) @rel.references)))
-; For simple trait parameters
-(parameter type: (type_identifier) @rel.references)
-
-(call_expression
-  function: (field_expression
-    field: (field_identifier) @rel.call))
-
-((struct_item (visibility_modifier) @mod.export))
-((trait_item (visibility_modifier) @mod.export))
-((function_item (visibility_modifier) @mod.export))
-`;
-```
-
 ## File: src/index.ts
 ```typescript
 export {
     initializeParser,
     generateScn,
     generateScnFromConfig,
+    calculateTokenImpact,
     analyzeProject,
     logger,
     initializeTokenizer,
@@ -2406,6 +1123,7 @@ export type {
     AnalyzeProjectOptions,
     LogHandler,
     FormattingOptions,
+    FormattingOptionsTokenImpact,
     FileContent,
     CodeSymbol,
     SymbolKind
@@ -2457,9 +1175,9 @@ import { Button } from './components/ui/button';
 import { Textarea } from './components/ui/textarea';
 import LogViewer from './components/LogViewer';
 import OutputOptions, { type OutputOptionsHandle } from './components/OutputOptions';
-import { Legend } from './components/Legend';
+import { Legend } from './components/Legend'; 
 import { Play, Loader, Copy, Check, StopCircle, ChevronsDown, ChevronsUp } from 'lucide-react';
-import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from './components/ui/accordion';
+import { Accordion, AccordionContent, AccordionItem, AccordionHeader, AccordionTrigger } from './components/ui/accordion';
 import { useAnalysis } from './hooks/useAnalysis.hook';
 import { useClipboard } from './hooks/useClipboard.hook';
 import { useResizableSidebar } from './hooks/useResizableSidebar.hook';
@@ -2484,6 +1202,7 @@ function App() {
     progress,
     logs,
     analysisTime,
+    tokenImpact,
     handleAnalyze: performAnalysis,
     handleStop,
     onLogPartial,
@@ -2526,8 +1245,8 @@ function App() {
   }, [performCopy, scnOutput]);
 
   const handleAnalyze = useCallback(async () => {
-    performAnalysis(filesInput);
-  }, [performAnalysis, filesInput]);
+    performAnalysis(filesInput, formattingOptions);
+  }, [performAnalysis, filesInput, formattingOptions]);
 
   const handleExpandOptions = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -2580,14 +1299,16 @@ function App() {
         <div className="flex-grow overflow-y-auto">
           <Accordion type="multiple" defaultValue={['input', 'options', 'logs']} className="w-full">
             <AccordionItem value="input">
-              <AccordionTrigger className="px-4 text-sm font-semibold hover:no-underline">
-                <div className="flex w-full justify-between items-center">
-                  <span>Input Files (JSON)</span>
-                  <span className="text-xs font-normal text-muted-foreground tabular-nums">
-                    {tokenCounts.input.toLocaleString()} tokens
-                  </span>
-                </div>
-              </AccordionTrigger>
+              <AccordionHeader>
+                <AccordionTrigger className="px-4 text-sm font-semibold hover:no-underline">
+                  <div className="flex w-full justify-between items-center">
+                    <span>Input Files (JSON)</span>
+                    <span className="text-xs font-normal text-muted-foreground tabular-nums">
+                      {tokenCounts.input.toLocaleString()} tokens
+                    </span>
+                  </div>
+                </AccordionTrigger>
+              </AccordionHeader>
               <AccordionContent>
                 <div className="px-4 pb-4 h-96">
                   <Textarea
@@ -2601,31 +1322,35 @@ function App() {
             </AccordionItem>
 
             <AccordionItem value="options">
-              <AccordionTrigger className="px-4 text-sm font-semibold hover:no-underline">
-                <div className="flex w-full justify-between items-center">
-                  <span>Formatting Options</span>
-                  <div className="flex items-center gap-2">
-                    {analysisResult && (
-                      <span className="text-xs font-normal text-muted-foreground tabular-nums">
-                        {visibleSymbols} / {totalSymbols} symbols
-                      </span>
-                    )}
-                    <Button variant="ghost" size="icon" onClick={handleExpandOptions} title="Expand all" className="h-7 w-7 text-muted-foreground hover:text-foreground">
-                      <ChevronsDown className="h-4 w-4" />
-                    </Button>
-                    <Button variant="ghost" size="icon" onClick={handleCollapseOptions} title="Collapse all" className="h-7 w-7 text-muted-foreground hover:text-foreground">
-                      <ChevronsUp className="h-4 w-4" />
-                    </Button>
+              <AccordionHeader className="items-center">
+                <AccordionTrigger className="px-4 text-sm font-semibold hover:no-underline">
+                  <div className="flex w-full items-center justify-between">
+                    <span>Formatting Options</span>
+                      {analysisResult && (
+                        <span className="text-xs font-normal text-muted-foreground tabular-nums">
+                          {visibleSymbols} / {totalSymbols} symbols
+                        </span>
+                      )}
                   </div>
+                </AccordionTrigger>
+                <div className="flex items-center gap-2 pr-4">
+                  <Button variant="ghost" size="icon" onClick={handleExpandOptions} title="Expand all" className="h-7 w-7 text-muted-foreground hover:text-foreground">
+                    <ChevronsDown className="h-4 w-4" />
+                  </Button>
+                  <Button variant="ghost" size="icon" onClick={handleCollapseOptions} title="Collapse all" className="h-7 w-7 text-muted-foreground hover:text-foreground">
+                    <ChevronsUp className="h-4 w-4" />
+                  </Button>
                 </div>
-              </AccordionTrigger>
+              </AccordionHeader>
               <AccordionContent className="px-4">
-                <OutputOptions ref={outputOptionsRef} options={formattingOptions} setOptions={setFormattingOptions} />
+                <OutputOptions ref={outputOptionsRef} options={formattingOptions} setOptions={setFormattingOptions} tokenImpact={tokenImpact} />
               </AccordionContent>
             </AccordionItem>
 
             <AccordionItem value="logs">
-              <AccordionTrigger className="px-4 text-sm font-semibold hover:no-underline">Logs</AccordionTrigger>
+              <AccordionHeader>
+                <AccordionTrigger className="px-4 text-sm font-semibold hover:no-underline">Logs</AccordionTrigger>
+              </AccordionHeader>
               <AccordionContent className="px-4">
                 <LogViewer logs={logs} />
               </AccordionContent>
@@ -2683,166 +1408,6 @@ function App() {
 export default App;
 ```
 
-## File: src/parser.ts
-```typescript
-import type { ParserInitOptions, LanguageConfig } from './types';
-import { Parser, Language, type Tree } from 'web-tree-sitter';
-import path from './utils/path';
-import { languages } from './languages';
-import { logger } from './logger';
-
-let initializePromise: Promise<void> | null = null;
-let isInitialized = false;
-
-const doInitialize = async (options: ParserInitOptions): Promise<void> => {
-    await Parser.init({
-        locateFile: (scriptName: string, _scriptDirectory: string) => {
-            return path.join(options.wasmBaseUrl, scriptName);
-        }
-    });
-
-    const languageLoaders = languages
-        .filter(lang => lang.wasmPath)
-        .map(async (lang: LanguageConfig) => {
-            const wasmPath = path.join(options.wasmBaseUrl, lang.wasmPath);
-            try {
-                const loadedLang = await Language.load(wasmPath);
-                const parser = new Parser();
-                parser.setLanguage(loadedLang);
-                lang.parser = parser;
-                lang.loadedLanguage = loadedLang;
-            } catch (error) {
-                logger.error(`Failed to load parser for ${lang.name} from ${wasmPath}`, error);
-                throw error;
-            }
-        });
-    
-    await Promise.all(languageLoaders);
-    isInitialized = true;
-};
-
-export const initializeParser = (options: ParserInitOptions): Promise<void> => {
-    if (initializePromise) {
-        return initializePromise;
-    }
-    initializePromise = doInitialize(options);
-    return initializePromise;
-};
-
-export const parse = (sourceCode: string, lang: LanguageConfig): Tree | null => {
-    if (!isInitialized || !lang.parser) {
-        return null;
-    }
-    return lang.parser.parse(sourceCode);
-};
-```
-
-## File: src/queries/css.ts
-```typescript
-export const cssQueries = `
-(rule_set) @symbol.css_class.def @scope.css_class.def
-(at_rule) @symbol.css_at_rule.def @scope.css_at_rule.def
-(declaration (property_name) @symbol.css_variable.def
-  (#match? @symbol.css_variable.def "^--"))
-(call_expression 
-  (function_name) @__fn
-  (arguments (plain_value) @rel.references)
-  (#eq? @__fn "var"))
-`;
-```
-
-## File: src/graph-resolver.ts
-```typescript
-import type { SourceFile, PathResolver, Relationship } from './types';
-import path from './utils/path';
-import { RESOLVE_EXTENSIONS } from './constants';
-
-type FileMap = Map<string, SourceFile>;
-type SymbolMap = Map<number, Map<string, string>>;
-
-const findFileByImportPath = (importPath: string, currentFile: SourceFile, fileMap: FileMap, pathResolver: PathResolver, root: string): SourceFile | undefined => {
-    const currentDir = path.dirname(currentFile.absolutePath);
-    const aliasedPath = pathResolver(importPath);
-
-    const resolvedPath = aliasedPath ? path.resolve(root, aliasedPath) : path.resolve(currentDir, importPath);
-
-    for (const ext of RESOLVE_EXTENSIONS) {
-        const tryPath = (resolvedPath + ext).replace(/\\/g, '/');
-        const relative = path.relative(root, tryPath).replace(/\\/g, '/');
-        if (fileMap.has(relative)) return fileMap.get(relative);
-        
-        const tryIndexPath = path.join(resolvedPath, 'index' + ext).replace(/\\/g, '/');
-        const relativeIndex = path.relative(root, tryIndexPath).replace(/\\/g, '/');
-        if(fileMap.has(relativeIndex)) return fileMap.get(relativeIndex);
-    }
-    return undefined;
-};
-
-
-const resolveRelationship = (rel: Relationship, sourceFile: SourceFile, fileMap: FileMap, symbolMap: SymbolMap, pathResolver: PathResolver, root: string) => {
-    if (rel.kind === 'import') {
-        const targetFile = findFileByImportPath(rel.targetName, sourceFile, fileMap, pathResolver, root);
-        if (targetFile) rel.resolvedFileId = targetFile.id;
-        return;
-    }
-    
-    // Handle dynamic imports
-    if (rel.kind === 'dynamic_import') {
-        const targetFile = findFileByImportPath(rel.targetName, sourceFile, fileMap, pathResolver, root);
-        if (targetFile) rel.resolvedFileId = targetFile.id;
-        return;
-    }
-    
-    // Attempt intra-file resolution first
-    const intraFileSymbol = sourceFile.symbols.find(s => s.name === rel.targetName);
-    if (intraFileSymbol) {
-        rel.resolvedSymbolId = intraFileSymbol.id;
-        rel.resolvedFileId = sourceFile.id;
-        return;
-    }
-    
-    // Attempt inter-file resolution via explicit imports of the current file
-    if (sourceFile.fileRelationships) {
-        for (const importRel of sourceFile.fileRelationships) {
-            // We only care about resolved imports that bring in symbols
-            if ((importRel.kind === 'import' || importRel.kind === 'dynamic_import') && importRel.resolvedFileId !== undefined) {
-                const targetFileSymbols = symbolMap.get(importRel.resolvedFileId);
-                // Does the file we imported from export a symbol with the name we're looking for?
-                if (targetFileSymbols?.has(rel.targetName)) {
-                    rel.resolvedFileId = importRel.resolvedFileId;
-                    rel.resolvedSymbolId = targetFileSymbols.get(rel.targetName);
-                    return; // Found it!
-                }
-            }
-        }
-    }
-};
-
-export const resolveGraph = (sourceFiles: SourceFile[], pathResolver: PathResolver, root: string): SourceFile[] => {
-    const fileMap: FileMap = new Map(sourceFiles.map(f => [f.relativePath.replace(/\\/g, '/'), f]));
-    const symbolMap: SymbolMap = new Map();
-    for(const file of sourceFiles) {
-        const fileSymbolMap = new Map(file.symbols.filter(s => s.isExported).map(s => [s.name, s.id]));
-        symbolMap.set(file.id, fileSymbolMap);
-    }
-    
-    for (const sourceFile of sourceFiles) {
-        // Resolve file-level relationships (e.g., imports that aren't tied to a symbol)
-        if (sourceFile.fileRelationships) {
-            for (const rel of sourceFile.fileRelationships) {
-                resolveRelationship(rel, sourceFile, fileMap, symbolMap, pathResolver, root);
-            }
-        }
-        for (const symbol of sourceFile.symbols) {
-            for (const rel of symbol.dependencies) {
-                resolveRelationship(rel, sourceFile, fileMap, symbolMap, pathResolver, root);
-            }
-        }
-    }
-    return sourceFiles;
-};
-```
-
 ## File: package.json
 ```json
 {
@@ -2854,7 +1419,8 @@ export const resolveGraph = (sourceFiles: SourceFile[], pathResolver: PathResolv
     "js-tiktoken": "^1.0.21"
   },
   "scripts": {
-    "check": "tsc --build"
+    "check": "tsc --build",
+    "test": "bun test"
   },
   "devDependencies": {
     "@types/bun": "latest",
@@ -2871,7 +1437,7 @@ export const resolveGraph = (sourceFiles: SourceFile[], pathResolver: PathResolv
 ```typescript
 import { getLanguageForFile } from './languages';
 import { initializeParser as init, parse } from './parser';
-import type { ParserInitOptions, SourceFile, InputFile, ScnTsConfig, AnalyzeProjectOptions, FormattingOptions } from './types';
+import type { ParserInitOptions, SourceFile, InputFile, ScnTsConfig, AnalyzeProjectOptions, FormattingOptions, FormattingOptionsTokenImpact, SymbolKind } from './types';
 import { analyze } from './analyzer';
 import { formatScn } from './formatter';
 import path from './utils/path';
@@ -2886,13 +1452,13 @@ import { initializeTokenizer as initTokenizer, countTokens as countTokensInterna
 export const initializeParser = (options: ParserInitOptions): Promise<void> => init(options);
 
 /**
- * Initializes the tokenizer. Call this for consistency, although `countTokens` will auto-initialize.
+ * Initializes the tokenizer. Call this for consistency, although `countTokens` will auto-initialize on first use.
  * It's a synchronous and lightweight operation.
  */
 export const initializeTokenizer = (): boolean => initTokenizer();
 
 // Types for web demo
-export type { ParserInitOptions, SourceFile, LogLevel, InputFile, TsConfig, ScnTsConfig, AnalyzeProjectOptions, LogHandler, FormattingOptions, CodeSymbol, SymbolKind } from './types';
+export type { ParserInitOptions, SourceFile, LogLevel, InputFile, TsConfig, ScnTsConfig, AnalyzeProjectOptions, LogHandler, FormattingOptions, FormattingOptionsTokenImpact, CodeSymbol, SymbolKind } from './types';
 export type FileContent = InputFile;
 
 // Exports for web demo. The constants are exported from index.ts directly.
@@ -2908,6 +1474,62 @@ export const countTokens = (text: string): number => countTokensInternal(text);
  */
 export const generateScn = (analyzedFiles: SourceFile[], options?: FormattingOptions): string => {
     return formatScn(analyzedFiles, options);
+};
+
+/**
+ * Calculates the token impact of toggling each formatting option.
+ * This can be slow as it re-generates the SCN for each option.
+ * @param analyzedFiles The result from `analyzeProject`.
+ * @param baseOptions The formatting options to calculate deltas from.
+ * @returns An object detailing the token change for toggling each option.
+ */
+export const calculateTokenImpact = (
+    analyzedFiles: SourceFile[],
+    baseOptions: FormattingOptions
+): FormattingOptionsTokenImpact => {
+    logger.debug('Calculating token impact...');
+    const startTime = performance.now();
+
+    const baseScn = formatScn(analyzedFiles, baseOptions);
+    const baseTokens = countTokensInternal(baseScn);
+
+    const impact: FormattingOptionsTokenImpact = {
+        options: {},
+        displayFilters: {},
+    };
+
+    const simpleOptionKeys: Array<keyof Omit<FormattingOptions, 'displayFilters'>> = [
+        'showOutgoing', 'showIncoming', 'showIcons', 'showExportedIndicator',
+        'showPrivateIndicator', 'showModifiers', 'showTags', 'showSymbolIds',
+        'groupMembers', 'showFilePrefix', 'showFileIds'
+    ];
+
+    for (const key of simpleOptionKeys) {
+        // All boolean options default to true.
+        const currentValue = baseOptions[key] ?? true;
+        const newOptions = { ...baseOptions, [key]: !currentValue };
+        const newScn = formatScn(analyzedFiles, newOptions);
+        const newTokens = countTokensInternal(newScn);
+        impact.options[key] = newTokens - baseTokens;
+    }
+
+    const allSymbolKinds = new Set<SymbolKind>(analyzedFiles.flatMap(file => file.symbols.map(s => s.kind)));
+
+    for (const kind of allSymbolKinds) {
+        const currentFilterValue = baseOptions.displayFilters?.[kind] ?? true;
+        const newOptions = {
+            ...baseOptions,
+            displayFilters: { ...(baseOptions.displayFilters ?? {}), [kind]: !currentFilterValue }
+        };
+        const newScn = formatScn(analyzedFiles, newOptions);
+        const newTokens = countTokensInternal(newScn);
+        impact.displayFilters[kind] = newTokens - baseTokens;
+    }
+
+    const duration = performance.now() - startTime;
+    logger.debug(`Token impact calculation finished in ${duration.toFixed(2)}ms`);
+
+    return impact;
 };
 
 /**
@@ -3015,739 +1637,6 @@ export const analyzeProject = async (
 };
 ```
 
-## File: src/analyzer.ts
-```typescript
-import type { SourceFile, CodeSymbol, Relationship, SymbolKind, RelationshipKind, Range } from './types';
-import { getNodeRange, getNodeText, getIdentifier, findChildByFieldName } from './utils/ast';
-import { SCN_SYMBOLS } from './constants';
-import { Query, type Node as SyntaxNode, type QueryCapture } from 'web-tree-sitter';
-
-const getSymbolName = (node: SyntaxNode, sourceCode: string): string => {
-    if (node.type === 'rule_set' || node.type === 'at_rule') {
-        const text = getNodeText(node, sourceCode);
-        const bodyStart = text.indexOf('{');
-        const name = (bodyStart === -1 ? text : text.substring(0, bodyStart)).trim();
-        // for at-rules, the name is the @keyword, so we need the full line.
-        return name.endsWith(';') ? name.slice(0, -1) : name;
-    }
-    if (node.type === 'jsx_opening_element' || node.type === 'jsx_self_closing_element') {
-        const nameNode = findChildByFieldName(node, 'name');
-        return nameNode ? getNodeText(nameNode, sourceCode) : '<fragment>';
-    }
-    if (node.type === 'impl_item') {
-        const trait = findChildByFieldName(node, 'trait');
-        const type = findChildByFieldName(node, 'type');
-        if (trait && type) {
-            return `impl ${getNodeText(trait, sourceCode)} for ${getNodeText(type, sourceCode)}`;
-        }
-        return 'impl';
-    }
-    if (node.type === 'variable_declarator') {
-        const valueNode = findChildByFieldName(node, 'value');
-        if (valueNode?.type === 'arrow_function' || valueNode?.type.startsWith('class')) {
-            return getIdentifier(node, sourceCode);
-        }
-    }
-    // Handle arrow functions in JSX expressions (render props)
-    if (node.type === 'arrow_function' && node.parent?.type === 'jsx_expression') {
-        const params = findChildByFieldName(node, 'formal_parameters');
-        if (params) {
-            const paramsText = getNodeText(params, sourceCode);
-            // Extract parameter types for better display
-            const cleanParams = paramsText.replace(/\s+/g, ' ').trim();
-            // For object destructuring, extract the inner content
-            if (cleanParams.includes('{') && cleanParams.includes('}')) {
-                // Extract everything between the outer parentheses
-                const innerMatch = cleanParams.match(/\(\s*\{\s*([^}]+)\s*\}\s*\)/);
-                if (innerMatch && innerMatch[1]) {
-                    const destructured = innerMatch[1]!.split(',').map(p => p.trim()).join(', ');
-                    return `<anonymous>({ ${destructured} })`;
-                }
-            }
-            return `<anonymous>${cleanParams}`;
-        }
-        return '<anonymous>()';
-    }
-    
-    // Handle styled components
-    if ((node as any)._styledTag) {
-        const componentName = getIdentifier(node.parent || node, sourceCode);
-        return `${componentName}`;
-    }
-    
-    return getIdentifier(node.parent || node, sourceCode);
-};
-
-const containsJSXReturn = (node: SyntaxNode): boolean => {
-    // Check if this node or any of its children contain a return statement with JSX
-    if (node.type === 'return_statement') {
-        for (let i = 0; i < node.childCount; i++) {
-            const child = node.child(i);
-            if (child && (child.type.startsWith('jsx_') || containsJSX(child))) {
-                return true;
-            }
-        }
-    }
-    
-    // Recursively check children
-    for (let i = 0; i < node.childCount; i++) {
-        const child = node.child(i);
-        if (child && containsJSXReturn(child)) {
-            return true;
-        }
-    }
-    
-    return false;
-};
-
-const containsJSX = (node: SyntaxNode): boolean => {
-    // Check if this node contains JSX elements
-    if (node.type.startsWith('jsx_')) {
-        return true;
-    }
-    
-    // Recursively check children
-    for (let i = 0; i < node.childCount; i++) {
-        const child = node.child(i);
-        if (child && containsJSX(child)) {
-            return true;
-        }
-    }
-    
-    return false;
-};
-
-const processCapture = (
-    capture: QueryCapture,
-    sourceFile: SourceFile,
-    symbols: CodeSymbol[],
-    relationships: Relationship[]
-) => {
-    const { node, name: captureName } = capture;
-    const [cat, kind, role] = captureName.split('.');
-
-    if (cat === 'symbol' && role === 'def') {
-        const parentType = node.parent?.type || '';
-        const scopeNode = (
-            parentType.endsWith('_declaration') ||
-            parentType === 'method_definition' ||
-            parentType === 'method_signature' ||
-            parentType === 'property_signature' ||
-            parentType === 'public_field_definition' ||
-            parentType === 'field_definition' ||
-            parentType === 'variable_declarator'
-        ) ? (node.parent as SyntaxNode) : node;
-        const range = getNodeRange(node);
-        const hasExportAncestor = (n: SyntaxNode | null | undefined): boolean => {
-            let cur = n?.parent || null;
-            while (cur) {
-                if (cur.type === 'export_statement') return true;
-                cur = cur.parent;
-            }
-            return false;
-        };
-        let symbolKind = kind as SymbolKind;
-        if (symbolKind === 'variable' && scopeNode.type === 'variable_declarator') {
-            const valueNode = findChildByFieldName(scopeNode, 'value');
-            if (valueNode?.type === 'arrow_function') {
-                const body = findChildByFieldName(valueNode, 'body');
-                if (body && (body.type.startsWith('jsx_'))) {
-                     symbolKind = 'react_component';
-                } else if (body && body.type === 'statement_block') {
-                    // Check if arrow function with block body returns JSX
-                    if (containsJSXReturn(body)) {
-                        symbolKind = 'react_component';
-                    } else {
-                        symbolKind = 'function';
-                    }
-                } else {
-                    symbolKind = 'function';
-                }
-            } else if (valueNode?.type === 'call_expression') {
-                const callee = findChildByFieldName(valueNode, 'function');
-                if (callee && getNodeText(callee, sourceFile.sourceCode).endsWith('forwardRef')) {
-                    symbolKind = 'react_component';
-                }
-            }
-        }
-        
-        // Handle function declarations that return JSX
-        if (symbolKind === 'function' && scopeNode.type === 'function_declaration') {
-            const body = findChildByFieldName(scopeNode, 'body');
-            if (body && containsJSXReturn(body)) {
-                symbolKind = 'react_component';
-            }
-        }
-        
-        // Handle arrow functions in JSX expressions (render props)
-        // Note: render props should remain as 'function' type, not 'react_component'
-        if (symbolKind === 'function' && scopeNode.type === 'arrow_function' && node.parent?.type === 'jsx_expression') {
-            // Render props are functions that return JSX, but they should be marked as functions, not components
-            // Keep them as 'function' type
-        } else if (symbolKind === 'function' && scopeNode.type === 'arrow_function') {
-            const body = findChildByFieldName(scopeNode, 'body');
-            if (body && (body.type.startsWith('jsx_') || containsJSX(body) || containsJSXReturn(body))) {
-                symbolKind = 'react_component';
-            }
-        }
-        
-        // Handle styled components - extract tag name for later use
-        let styledTag: string | undefined;
-        if (symbolKind === 'styled_component') {
-            // Extract the HTML tag from styled.div, styled.h1, etc.
-            const valueNode = findChildByFieldName(scopeNode, 'value');
-            if (valueNode?.type === 'call_expression') {
-                const functionNode = findChildByFieldName(valueNode, 'function');
-                if (functionNode?.type === 'member_expression') {
-                    const propertyNode = findChildByFieldName(functionNode, 'property');
-                    if (propertyNode) {
-                        styledTag = getNodeText(propertyNode, sourceFile.sourceCode);
-                    }
-                }
-            }
-        }
-        
-        const symbol: CodeSymbol = {
-            id: `${range.start.line + 1}:${range.start.column}`,
-            fileId: sourceFile.id,
-            name: getSymbolName(node, sourceFile.sourceCode),
-            kind: symbolKind,
-            range: range,
-            scopeRange: getNodeRange(scopeNode),
-            isExported: hasExportAncestor(scopeNode) || /^\s*export\b/.test(getNodeText(scopeNode, sourceFile.sourceCode)),
-            dependencies: [],
-            labels: styledTag ? [SCN_SYMBOLS.TAG_STYLED.slice(1, -1)] : undefined
-        };
-        
-        // Store styled tag for formatter
-        if (styledTag) {
-            (symbol as any)._styledTag = styledTag;
-        }
-        
-        if ((symbol.kind === 'type_alias' || symbol.kind === 'interface' || symbol.kind === 'class') && (scopeNode.type.endsWith('_declaration'))) {
-            const typeParamsNode = findChildByFieldName(scopeNode, 'type_parameters');
-            if (typeParamsNode) {
-                symbol.name += getNodeText(typeParamsNode, sourceFile.sourceCode);
-            }
-        }
-
-        // Derive type information and signatures from surrounding scope text
-        const scopeText = getNodeText(scopeNode, sourceFile.sourceCode);
-
-        const normalizeType = (t: string): string => {
-            const cleaned = t.trim().replace(/;\s*$/, '');
-            // Remove spaces around union bars
-            return cleaned.replace(/\s*\|\s*/g, '|').replace(/\s*\?\s*/g, '?').replace(/\s*:\s*/g, ':');
-        };
-
-        // Accessibility for class members (public/private/protected)
-        if (symbol.kind === 'method' || symbol.kind === 'constructor' || symbol.kind === 'property') {
-            const accMatch = scopeText.match(/^\s*(public|private|protected)\b/);
-            if (accMatch) {
-                const acc = accMatch[1] as 'public' | 'private' | 'protected';
-                symbol.accessibility = acc;
-            }
-        }
-
-        // Properties (interface property_signature or class field definitions)
-        if (symbol.kind === 'property') {
-            // interface/class fields
-            const match = scopeText.match(/:\s*([^;\n]+)/); 
-            if (match && match[1]) {
-                symbol.typeAnnotation = `#${normalizeType(match[1])}`;
-            }
-            // detect readonly/static from text
-            if (/\breadonly\b/.test(scopeText)) symbol.isReadonly = true;
-            if (/^\s*static\b/.test(scopeText)) symbol.isStatic = true;
-        }
-
-        // Special handling for abstract classes
-        if (symbol.kind === 'class' && /\babstract\b/.test(scopeText)) {
-            symbol.isAbstract = true;
-        }
-
-        // Special handling for abstract methods
-        if (symbol.kind === 'method' && /\babstract\b/.test(scopeText)) {
-            symbol.isAbstract = true;
-        }
-
-        // Type alias value (right-hand side after '=')
-        if (symbol.kind === 'type_alias') {
-            const m = scopeText.match(/=\s*([^;\n]+)/); 
-            if (m && m[1]) {
-                // Remove quotes from string literal unions
-                let typeValue = normalizeType(m[1]!);
-                typeValue = typeValue.replace(/'([^']+)'/g, '$1');
-                typeValue = typeValue.replace(/"([^"]+)"/g, '$1');
-                
-                // Handle mapped types to the compact form
-                if (typeValue.startsWith('{') && typeValue.endsWith('}')) {
-                    const inner = typeValue.slice(1, -1).trim();
-                    const mappedMatch = inner.match(/\[\s*([^:]+)\s*in\s*([^:]+)\s*\]\s*:\s*(.*)/);
-                    if (mappedMatch && mappedMatch[1] && mappedMatch[2] && mappedMatch[3]) {
-                        const [, key, inType, valueType] = mappedMatch;
-                        typeValue = `${key.trim()} in ${inType.trim()}:${valueType.trim()}`;
-                    }
-                }
-                
-                symbol.typeAliasValue = `#${typeValue}`;
-            }
-        }
-
-        // Functions/methods/constructors signatures
-        if (symbol.kind === 'function' || symbol.kind === 'method' || symbol.kind === 'constructor') {
-            const paramsMatch = scopeText.match(/\(([^)]*)\)/);
-            const returnMatch = scopeText.match(/\)\s*:\s*([^\{\n]+)/);
-            const params = paramsMatch ? paramsMatch[1] : '';
-            const paramsWithTypes = params ? params
-                  .split(',')
-                  .map(p => p.trim())
-                  .filter(p => p.length > 0)
-                  .map(p => p.replace(/:\s*([^,]+)/, (_s, t) => `: #${normalizeType(t)}`))
-                  .join(', ') : '';
-            
-            const returnType = (returnMatch && returnMatch[1]) ? `: #${normalizeType(returnMatch[1])}` : '';
-            
-            symbol.signature = `(${paramsWithTypes})${returnType}`;
-
-            // Async detection (textual) and throws detection
-            if (/\basync\b/.test(scopeText)) symbol.isAsync = true;
-            const bodyText = getNodeText(scopeNode, sourceFile.sourceCode);
-            if (/\bthrow\b/.test(bodyText)) symbol.throws = true;
-            // static method
-            if (/^\s*static\b/.test(scopeText)) symbol.isStatic = true;
-            // abstract method (no body and abstract keyword)
-            if (/\babstract\b/.test(scopeText)) symbol.isAbstract = true;
-        }
-
-        symbols.push(symbol);
-    } else if (cat === 'rel') {
-        const rel: Relationship = {
-            // special case for dynamic import from TS query
-            kind: captureName.startsWith('rel.dynamic_import') 
-                ? 'dynamic_import' 
-                : kind as RelationshipKind,
-            targetName: getNodeText(node, sourceFile.sourceCode).replace(/['"`]/g, ''),
-            range: getNodeRange(node),
-        };
-        relationships.push(rel);
-    } else if (cat === 'mod') {
-        const parentSymbol = findParentSymbol(getNodeRange(node), symbols);
-        if (parentSymbol) {
-            if (kind === 'export') parentSymbol.isExported = true;
-            if (kind === 'static') parentSymbol.isStatic = true;
-            if (kind === 'abstract') parentSymbol.isAbstract = true;
-            if (kind === 'readonly') parentSymbol.isReadonly = true;
-            if (kind === 'async') parentSymbol.isAsync = true;
-            if (kind === 'accessibility') {
-                const text = getNodeText(node, sourceFile.sourceCode);
-                if (/\bpublic\b/.test(text)) parentSymbol.accessibility = 'public';
-                else if (/\bprivate\b/.test(text)) parentSymbol.accessibility = 'private';
-                else if (/\bprotected\b/.test(text)) parentSymbol.accessibility = 'protected';
-                // Public or protected members are considered exported in SCN visibility semantics
-                if (parentSymbol.accessibility === 'public') parentSymbol.isExported = true;
-                if (parentSymbol.accessibility === 'protected') parentSymbol.isExported = false;
-                if (parentSymbol.accessibility === 'private') parentSymbol.isExported = false;
-            }
-        }
-    }
-};
-
-export const analyze = (sourceFile: SourceFile): SourceFile => {
-    const { ast, language, sourceCode } = sourceFile;
-    if (!ast || !language.parser || !language.loadedLanguage) return sourceFile;
-
-    const directives = sourceCode.match(/^\s*['"](use (?:server|client))['"];?\s*$/gm);
-    if(directives) {
-        sourceFile.languageDirectives = directives.map(d => {
-            const cleaned = d.replace(/['";]/g, '').trim();
-            // Normalize directives: 'use server' -> 'server', 'use client' -> 'client'
-            return cleaned.replace(/^use /, '');
-        });
-    }
-    if (sourceCode.includes('AUTO-GENERATED') || sourceCode.includes('eslint-disable')) {
-        sourceFile.isGenerated = true;
-    }
-
-    const mainQuery = language.queries?.main ?? '';
-    if (!mainQuery) return sourceFile;
-
-    const query = new Query(language.loadedLanguage, mainQuery);
-    const captures = query.captures(ast.rootNode);
-
-    const symbols: CodeSymbol[] = [];
-    const relationships: Relationship[] = [];
-
-    // Phase 1: create symbols
-    for (const capture of captures) {
-        const [cat, , role] = capture.name.split('.');
-        if (cat === 'symbol' && role === 'def') {
-            processCapture(capture, sourceFile, symbols, relationships);
-        }
-    }
-
-    // Phase 2: apply modifiers
-    for (const capture of captures) {
-        const [cat] = capture.name.split('.');
-        if (cat === 'mod') {
-            processCapture(capture, sourceFile, symbols, relationships);
-        }
-    }
-
-    // Phase 3: collect all relationships
-    const allRelationships: Relationship[] = [];
-    for (const capture of captures) {
-        const { node, name: captureName } = capture;
-        const [cat, kind] = captureName.split('.');
-
-        if (cat === 'rel') {
-            const rel: Relationship = {
-                kind: captureName.startsWith('rel.dynamic_import')
-                    ? 'dynamic_import'
-                    : kind as RelationshipKind,
-                targetName: getNodeText(node, sourceCode).replace(/['"`]/g, ''),
-                range: getNodeRange(node),
-            };
-            allRelationships.push(rel);
-        }
-    }
-
-    // Phase 4: associate relationships with symbols or file
-    const fileLevelRelationships: Relationship[] = [];
-    for (const rel of allRelationships) {
-        const parentSymbol = findParentSymbol(rel.range, symbols);
-        if (parentSymbol) {
-            parentSymbol.dependencies.push(rel);
-        } else {
-            fileLevelRelationships.push(rel);
-        }
-    }
-    
-    if (fileLevelRelationships.length > 0) {
-        sourceFile.fileRelationships = fileLevelRelationships;
-    }
-    
-    const addFunc = symbols.find(s => s.name === 'add');
-    if (addFunc?.dependencies.length === 0) addFunc.isPure = true;
-    const getUserIdFunc = symbols.find(s => s.name === 'getUserId');
-    if (getUserIdFunc) getUserIdFunc.isPure = true;
-
-    // Remove duplicate constructor-as-method captures
-    const cleaned = symbols.filter(s => !(s.kind === 'method' && s.name === 'constructor'));
-
-    // Order symbols by source position
-    const ordered = cleaned
-        .slice()
-        .sort((a, b) => a.range.start.line - b.range.start.line || a.range.start.column - b.range.start.column);
-
-    // Default visibility for class members: public unless marked otherwise
-    for (const sym of ordered) {
-        const parent = findParentSymbol(sym.range, ordered);
-        if (sym.kind === 'method' || sym.kind === 'constructor' || sym.kind === 'property') {
-            if (parent && parent.kind === 'interface') {
-                sym.isExported = parent.isExported;
-            } else if (parent && parent.kind === 'class') {
-                 if (sym.accessibility === 'private' || sym.accessibility === 'protected') {
-                    sym.isExported = false;
-                } else { // public or undefined accessibility
-                    sym.isExported = parent.isExported;
-                }
-            } else if (sym.accessibility === 'public' || sym.accessibility === undefined) {
-                // For properties/methods not inside a class/interface (e.g. object literals)
-                // we assume they are not exported unless part of an exported variable.
-                // The base `isExported` check on variable declaration should handle this.
-            }
-        }
-        
-        // Special handling for abstract classes and methods
-        if (sym.kind === 'class' && sym.isAbstract) {
-            sym.labels = [...(sym.labels || []), SCN_SYMBOLS.TAG_ABSTRACT.slice(1, -1)];
-        }
-        
-        if (sym.kind === 'method' && sym.isAbstract) {
-            sym.labels = [...(sym.labels || []), SCN_SYMBOLS.TAG_ABSTRACT.slice(1, -1)];
-            sym.isExported = false; // Abstract methods are not exported
-        }
-    }
-
-    // Heuristics for JS special constructs in fixtures
-    // Symbol(...) assignment: mark variable with [symbol]
-    for (const sym of ordered) {
-        if (sym.kind === 'variable') {
-            const text = getNodeText(ast.rootNode, sourceCode);
-            const namePattern = new RegExp(`\\b${sym.name}\\s*=\\s*Symbol\\s*\\(`);
-            if (namePattern.test(text)) {
-                sym.labels = [...(sym.labels || []), SCN_SYMBOLS.TAG_SYMBOL.slice(1, -1)];
-            }
-            
-            // Proxy detection: mark variable with [proxy]
-            const proxyPattern = new RegExp(`\\b${sym.name}\\s*=\\s*new\\s+Proxy\\s*\\(`);
-            if (proxyPattern.test(text)) {
-                sym.labels = [...(sym.labels || []), SCN_SYMBOLS.TAG_PROXY.slice(1, -1)];
-            }
-        }
-    }
-
-    sourceFile.symbols = ordered;
-    return sourceFile;
-};
-
-const isRangeWithin = (inner: Range, outer: Range): boolean => {
-    return (
-        (inner.start.line > outer.start.line || (inner.start.line === outer.start.line && inner.start.column >= outer.start.column)) &&
-        (inner.end.line < outer.end.line || (inner.end.line === outer.end.line && inner.end.column <= outer.end.column))
-    );
-};
-
-const findParentSymbol = (range: Range, symbols: CodeSymbol[]): CodeSymbol | null => {
-    // Case 1: The range is inside a symbol's scope (e.g., a relationship inside a function body)
-    let candidates = symbols.filter(s => isRangeWithin(range, s.scopeRange));
-
-    // Case 2: The range contains a symbol's scope (e.g., an export statement wrapping a function)
-    if (candidates.length === 0) {
-        candidates = symbols.filter(s => isRangeWithin(s.scopeRange, range));
-    }
-    
-    if (candidates.length === 0) {
-        return null;
-    }
-
-    // Sort by scope size (smallest first) to get the most specific parent/child.
-    return candidates
-        .sort((a, b) => (a.scopeRange.end.line - a.scopeRange.start.line) - (b.scopeRange.end.line - b.scopeRange.start.line))
-        [0] || null;
-};
-```
-
-## File: src/queries/typescript.ts
-```typescript
-export const typescriptQueries = `
-; Interface definitions
-(interface_declaration
-  name: (type_identifier) @symbol.interface.def) @scope.interface.def
-
-; Type alias definitions  
-(type_alias_declaration
-  name: (type_identifier) @symbol.type_alias.def) @scope.type_alias.def
-
-; Class definitions
-(class_declaration
-  name: (type_identifier) @symbol.class.def) @scope.class.def
-
-; Abstract class definitions
-(abstract_class_declaration
-  name: (type_identifier) @symbol.class.def) @scope.class.def
-
-; Function definitions
-(function_declaration
-  name: (identifier) @symbol.function.def) @scope.function.def
-
-; Method definitions (capture name and formal parameters as scope)
-(method_definition name: (property_identifier) @symbol.method.def) @scope.method.def
-
-; Method signatures (interfaces, abstract class methods)
-(method_signature
-  name: (property_identifier) @symbol.method.def) @scope.method.def
-
-; Constructor definitions
-(method_definition name: (property_identifier) @symbol.constructor.def
-  (#eq? @symbol.constructor.def "constructor")) @scope.constructor.def
-
-; Property signatures in interfaces (should be public by default)
-(property_signature
-  (property_identifier) @symbol.property.def)
-
-; Class field definitions (TypeScript grammar uses public_field_definition)
-(public_field_definition
-  name: (property_identifier) @symbol.property.def)
-
-; Variable declarations
-(variable_declarator
-  name: (identifier) @symbol.variable.def)
-
-; Common patterns to support JS features in fixtures
-; IIFE: (function(){ ... })()
-(call_expression
-  function: (parenthesized_expression
-    (function_expression) @symbol.function.def
-  )
-) @scope.function.def
-
-; IIFE with assignment: const result = (function(){ ... })()
-(expression_statement
-  (assignment_expression
-    left: (identifier) @symbol.variable.def
-    right: (call_expression
-      function: (parenthesized_expression
-        (function_expression) @symbol.function.def
-      )
-    )
-  )
-)
-
-; Window assignments: window.Widget = Widget
-(expression_statement
-  (assignment_expression
-    left: (member_expression
-      object: (identifier) @__obj
-      property: (property_identifier) @symbol.variable.def
-    )
-    right: _ @symbol.variable.ref
-  )
-  (#eq? @__obj "window")
-)
-
-; Tagged template usage -> capture identifier before template as call
-(call_expression
-  function: (identifier) @rel.call)
-
-; Template literal variable references
-(template_substitution
-  (identifier) @rel.references)
-
-; Styled components (styled.div, styled.h1, etc.)
-(variable_declarator
-  name: (identifier) @symbol.styled_component.def
-  value: (call_expression
-    function: (member_expression
-      object: (identifier) @_styled
-      property: (property_identifier) @_tag)
-    arguments: (template_string))
-  (#eq? @_styled "styled")) @scope.styled_component.def
-
-; (Removed overly broad CommonJS/object key captures that polluted TS fixtures)
-
-; Import statements
-(import_statement
-  source: (string) @rel.import)
-
-; Named imports - these create references to the imported symbols
-(import_specifier
-  name: (identifier) @rel.references)
-
-; Type references in type annotations, extends clauses, etc.
-(type_identifier) @rel.references
-
-; satisfies expressions
-(satisfies_expression
-  (type_identifier) @rel.references)
-
-; Identifiers used in expressions
-(binary_expression
-  left: (identifier) @rel.references
-  right: (identifier) @rel.references
-)
-
-; template literal types
-(template_type
-  (type_identifier) @rel.references)
-
-
-; Call expressions
-(call_expression
-  function: (identifier) @rel.call)
-
-; Method calls
-; Only capture the object being called, not the property
-(call_expression
-  function: (member_expression
-    object: (_) @rel.call
-  )
-)
-
-; Constructor calls (new expressions)
-(new_expression
-  constructor: (identifier) @rel.call)
-
-; Property access
-(member_expression
-  property: (property_identifier) @rel.references)
-
-; CommonJS require as import at file-level: require("./path")
-((call_expression
-   function: (identifier) @__fn
-   arguments: (arguments (string) @rel.import))
-  (#eq? @__fn "require"))
-
-; CommonJS module.exports assignment
-(expression_statement
-  (assignment_expression
-    left: (member_expression
-      object: (identifier) @__obj
-      property: (property_identifier) @symbol.variable.def
-    )
-    right: _
-  )
-  (#eq? @__obj "module")
-)
-
-; CommonJS exports.property assignment
-(expression_statement
-  (assignment_expression
-    left: (member_expression
-      object: (member_expression
-        object: (identifier) @__obj
-        property: (property_identifier) @__prop
-      )
-      property: (property_identifier) @symbol.variable.def
-    )
-    right: _
-  )
-  (#eq? @__obj "module")
-  (#eq? @__prop "exports")
-)
-
-; Export modifiers
-(export_statement) @mod.export
-
-; Accessibility modifiers
-(accessibility_modifier) @mod.accessibility
-
-; Async functions/methods (text match)
-((function_declaration) @mod.async (#match? @mod.async "^async "))
-((method_definition) @mod.async (#match? @mod.async "^async "))
-`;
-
-export const typescriptReactQueries = typescriptQueries + `
-
-; JSX component definitions (uppercase)
-(jsx_opening_element
-  name: (identifier) @symbol.react_component.def
-  (#match? @symbol.react_component.def "^[A-Z]")) @scope.react_component.def
-
-(jsx_self_closing_element
-  name: (identifier) @symbol.react_component.def
-  (#match? @symbol.react_component.def "^[A-Z]")) @scope.react_component.def
-
-; JSX element definitions (lowercase tags)
-(jsx_opening_element
-  name: (identifier) @symbol.jsx_element.def
-  (#match? @symbol.jsx_element.def "^[a-z]")) @scope.jsx_element.def
-
-(jsx_self_closing_element
-  name: (identifier) @symbol.jsx_element.def
-  (#match? @symbol.jsx_element.def "^[a-z]")) @scope.jsx_element.def
-
-; Arrow functions in JSX expressions (render props)
-(jsx_expression
-  (arrow_function) @symbol.function.def) @scope.function.def
-
-; React fragments (empty JSX elements)
-(jsx_element
-  (jsx_opening_element) @symbol.jsx_element.def
-  (#not-has-child? @symbol.jsx_element.def identifier)) @scope.jsx_element.def
-
-; JSX component references (uppercase)
-(jsx_opening_element
-  name: (identifier) @rel.references
-  (#match? @rel.references "^[A-Z]"))
-
-(jsx_self_closing_element
-  name: (identifier) @rel.references
-  (#match? @rel.references "^[A-Z]"))
-`;
-```
-
 ## File: src/types.ts
 ```typescript
 import type { Parser, Tree, Language } from 'web-tree-sitter';
@@ -3790,6 +1679,16 @@ export interface FormattingOptions {
     displayFilters?: Partial<Record<SymbolKind, boolean>>;
     showFilePrefix?: boolean; // § prefix, defaults to true
     showFileIds?: boolean;    // (1) file identifiers in headers and references, defaults to true
+}
+
+/**
+ * Represents the token cost of toggling each formatting option.
+ * The value is the delta when an option is toggled from its state in the `baseOptions`.
+ * e.g. `new_token_count - base_token_count`.
+ */
+export interface FormattingOptionsTokenImpact {
+    options: Partial<{ [K in keyof Omit<FormattingOptions, 'displayFilters'>]: number }>;
+    displayFilters: Partial<Record<string, number>>;
 }
 
 /**

@@ -31,6 +31,7 @@ function App() {
     progress,
     logs,
     analysisTime,
+    tokenImpact,
     handleAnalyze: performAnalysis,
     handleStop,
     onLogPartial,
@@ -73,8 +74,8 @@ function App() {
   }, [performCopy, scnOutput]);
 
   const handleAnalyze = useCallback(async () => {
-    performAnalysis(filesInput);
-  }, [performAnalysis, filesInput]);
+    performAnalysis(filesInput, formattingOptions);
+  }, [performAnalysis, filesInput, formattingOptions]);
 
   const handleExpandOptions = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -171,7 +172,7 @@ function App() {
                 </div>
               </AccordionHeader>
               <AccordionContent className="px-4">
-                <OutputOptions ref={outputOptionsRef} options={formattingOptions} setOptions={setFormattingOptions} />
+                <OutputOptions ref={outputOptionsRef} options={formattingOptions} setOptions={setFormattingOptions} tokenImpact={tokenImpact} />
               </AccordionContent>
             </AccordionItem>
 

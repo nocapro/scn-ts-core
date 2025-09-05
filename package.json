@@ -7,7 +7,8 @@
     "js-tiktoken": "^1.0.21"
   },
   "scripts": {
-    "check": "tsc --build"
+    "check": "tsc --build",
+    "test": "bun test"
   },
   "devDependencies": {
     "@types/bun": "latest",

@@ -26,7 +26,8 @@ export default defineConfig({
     // discovers its deep CJS dependencies (like graphology) and converts
     // them to ESM for the dev server. We specifically `exclude` 'web-tree-sitter'
     // above to prevent Vite from interfering with its unique WASM loading mechanism.
-    include: ['scn-ts-core'],
+    // `js-tiktoken` is another CJS-like dependency that needs to be pre-bundled.
+    include: ['scn-ts-core', 'js-tiktoken'],
   },
   server: {
     headers: {

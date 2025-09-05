@@ -1,0 +1,87 @@
+uuid: a63b8417-268e-4a4f-8089-a5c61986cd05
+projectId: scn-ts-core
+createdAt: '2025-09-05T14:48:57.717Z'
+linesAdded: 2
+linesRemoved: 1
+gitCommitMsg: 'fix(web-demo): force pre-bundle js-tiktoken for worker'
+promptSummary: >-
+  The user reported that the web demo worker is not initializing after adding
+  the tokenImpact feature, which introduced the `js-tiktoken` dependency. The
+  analyze button is disabled.
+reasoning:
+  - >-
+    yo, what's up. anton here. sounds like you've got a classic dev server
+    dependency headache. the web worker is probably choking on that new
+    `js-tiktoken` dep you added. when a worker script fails to import something,
+    it often just dies silently, and any `postMessage` or comlink calls to it
+    will just hang forever. that's why your `isInitialized` state never gets
+    flipped.
+  - >-
+    the `tokenImpact` feature is cool, but `js-tiktoken` is probably a CJS-heavy
+    package and vite's dependency scanner can sometimes miss these things,
+    especially with linked monorepo packages.
+  - >-
+    the fix is usually to give vite a hint. we'll just force it to pre-bundle
+    `js-tiktoken` by adding it to `optimizeDeps.include` in your
+    `vite.config.ts`. that should smooth things over for the worker.
+  - here's the patch.
+  - slap that in and your worker should be back in business. lmk how it goes.
+  - '---'
+operations:
+  - type: write
+    path: packages/scn-ts-web-demo/vite.config.ts
+    content: |-
+      <<<<<<< SEARCH
+          // above to prevent Vite from interfering with its unique WASM loading mechanism.
+          include: ['scn-ts-core'],
+        },
+      =======
+          // above to prevent Vite from interfering with its unique WASM loading mechanism.
+          // `js-tiktoken` is another CJS-like dependency that needs to be pre-bundled.
+          include: ['scn-ts-core', 'js-tiktoken'],
+        },
+      >>>>>>> REPLACE
+    patchStrategy: multi-search-replace
+snapshot:
+  packages/scn-ts-web-demo/vite.config.ts: |
+    import { defineConfig } from 'vite'
+    import react from '@vitejs/plugin-react'
+    import path from 'path'
+    import wasm from 'vite-plugin-wasm'
+    import topLevelAwait from 'vite-plugin-top-level-await'
+
+    // https://vitejs.dev/config/
+    export default defineConfig({
+      plugins: [
+        wasm(),
+        topLevelAwait(),
+        react()
+      ],
+      resolve: {
+        alias: {
+          "@": path.resolve(__dirname, "src"),
+          "scn-ts-core": path.resolve(__dirname, "../../src/index.ts"),
+        },
+      },
+      optimizeDeps: {
+        // Exclude packages that have special loading mechanisms (like wasm)
+        // to prevent Vite from pre-bundling them and causing issues.
+        exclude: ['web-tree-sitter'],
+        // Force pre-bundling of our monorepo packages. As linked dependencies,
+        // Vite doesn't optimize it by default. We need to include it so Vite
+        // discovers its deep CJS dependencies (like graphology) and converts
+        // them to ESM for the dev server. We specifically `exclude` 'web-tree-sitter'
+        // above to prevent Vite from interfering with its unique WASM loading mechanism.
+        include: ['scn-ts-core'],
+      },
+      server: {
+        headers: {
+          // These headers are required for SharedArrayBuffer, which is used by
+          // web-tree-sitter and is good practice for applications using wasm
+          // with threading or advanced memory features.
+          'Cross-Origin-Embedder-Policy': 'require-corp',
+          'Cross-Origin-Opener-Policy': 'same-origin',
+        },
+      },
+    })
+approved: true

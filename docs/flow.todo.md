@@ -1,3 +1,13 @@
+===
+
+show legend in formatting options
+
+===
+
+sidebar;
+1. resizeable sidebar.
+2. sticky on scroll accordion header
+
 === DONE
 
 update prepare-wasm.cjs

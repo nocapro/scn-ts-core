@@ -308,7 +308,7 @@ const LogViewer: React.FC<{ logs: readonly LogEntry[] }> = ({ logs }) => {
   const filteredLogs = logs.filter(log => visibleLevels.has(log.level));
 
   return (
-    <div className="h-full flex flex-col">
+    <div className="flex flex-col">
       <div className="flex items-center space-x-2 pb-2 border-b mb-2 flex-shrink-0">
         <span className="text-xs font-medium text-muted-foreground">Show levels:</span>
         {LOG_LEVELS.map(level => (
@@ -327,11 +327,8 @@ const LogViewer: React.FC<{ logs: readonly LogEntry[] }> = ({ logs }) => {
           </Button>
         ))}
       </div>
-      <div className="relative flex-grow">
-        <div
-          ref={scrollContainerRef}
-          className="absolute inset-0 overflow-auto font-mono text-xs pr-10"
-        >
+      <div className="relative">
+        <div ref={scrollContainerRef} className="font-mono text-xs pr-10">
           {filteredLogs.length === 0 && (
             <p className="text-muted-foreground">
               {logs.length === 0 ? 'No logs yet. Click "Analyze" to start.' : 'No logs match the current filter.'}
@@ -886,9 +883,7 @@ function App() {
             <AccordionItem value="logs" className="border-b-0">
               <AccordionTrigger className="px-4 text-sm font-semibold hover:no-underline">Logs</AccordionTrigger>
               <AccordionContent className="px-4">
-                <div className="h-96">
-                  <LogViewer logs={logs} />
-                </div>
+                <LogViewer logs={logs} />
               </AccordionContent>
             </AccordionItem>
           </Accordion>
@@ -2177,6 +2172,77 @@ export const rustQueries = `
 `;
 ```
 
+## File: src/parser.ts
+```typescript
+import type { ParserInitOptions, LanguageConfig } from './types';
+import { Parser, Language, type Tree } from 'web-tree-sitter';
+import path from './utils/path';
+import { languages } from './languages';
+import { logger } from './logger';
+
+let initializePromise: Promise<void> | null = null;
+let isInitialized = false;
+
+const doInitialize = async (options: ParserInitOptions): Promise<void> => {
+    await Parser.init({
+        locateFile: (scriptName: string, _scriptDirectory: string) => {
+            return path.join(options.wasmBaseUrl, scriptName);
+        }
+    });
+
+    const languageLoaders = languages
+        .filter(lang => lang.wasmPath)
+        .map(async (lang: LanguageConfig) => {
+            const wasmPath = path.join(options.wasmBaseUrl, lang.wasmPath);
+            try {
+                const loadedLang = await Language.load(wasmPath);
+                const parser = new Parser();
+                parser.setLanguage(loadedLang);
+                lang.parser = parser;
+                lang.loadedLanguage = loadedLang;
+            } catch (error) {
+                logger.error(`Failed to load parser for ${lang.name} from ${wasmPath}`, error);
+                throw error;
+            }
+        });
+    
+    await Promise.all(languageLoaders);
+    isInitialized = true;
+};
+
+export const initializeParser = (options: ParserInitOptions): Promise<void> => {
+    if (initializePromise) {
+        return initializePromise;
+    }
+    initializePromise = doInitialize(options);
+    return initializePromise;
+};
+
+export const parse = (sourceCode: string, lang: LanguageConfig): Tree | null => {
+    if (!isInitialized || !lang.parser) {
+        return null;
+    }
+    return lang.parser.parse(sourceCode);
+};
+```
+
+## File: package.json
+```json
+{
+  "name": "scn-ts-core",
+  "module": "src/main.ts",
+  "type": "module",
+  "private": true,
+  "devDependencies": {
+    "@types/bun": "latest",
+    "web-tree-sitter": "0.25.6"
+  },
+  "peerDependencies": {
+    "typescript": "^5"
+  }
+}
+```
+
 ## File: scripts/ast.ts
 ```typescript
 import { initializeParser, parse } from '../src/parser';
@@ -2286,7 +2352,7 @@ const userProxy = new Proxy(user, {
     console.log('ANALYSIS:');
     const { analyzeProject, generateScn } = await import('../src/main');
     try {
-      const analyzedFiles = await analyzeProject({
+      const { sourceFiles: analyzedFiles } = await analyzeProject({
         files: [{
           path: sample.file,
           content: sample.code
@@ -2327,77 +2393,6 @@ function printAST(node: any, depth = 0) {
 }
 
 main().catch(e => { console.error(e); process.exit(1); });
-```
-
-## File: src/parser.ts
-```typescript
-import type { ParserInitOptions, LanguageConfig } from './types';
-import { Parser, Language, type Tree } from 'web-tree-sitter';
-import path from './utils/path';
-import { languages } from './languages';
-import { logger } from './logger';
-
-let initializePromise: Promise<void> | null = null;
-let isInitialized = false;
-
-const doInitialize = async (options: ParserInitOptions): Promise<void> => {
-    await Parser.init({
-        locateFile: (scriptName: string, _scriptDirectory: string) => {
-            return path.join(options.wasmBaseUrl, scriptName);
-        }
-    });
-
-    const languageLoaders = languages
-        .filter(lang => lang.wasmPath)
-        .map(async (lang: LanguageConfig) => {
-            const wasmPath = path.join(options.wasmBaseUrl, lang.wasmPath);
-            try {
-                const loadedLang = await Language.load(wasmPath);
-                const parser = new Parser();
-                parser.setLanguage(loadedLang);
-                lang.parser = parser;
-                lang.loadedLanguage = loadedLang;
-            } catch (error) {
-                logger.error(`Failed to load parser for ${lang.name} from ${wasmPath}`, error);
-                throw error;
-            }
-        });
-    
-    await Promise.all(languageLoaders);
-    isInitialized = true;
-};
-
-export const initializeParser = (options: ParserInitOptions): Promise<void> => {
-    if (initializePromise) {
-        return initializePromise;
-    }
-    initializePromise = doInitialize(options);
-    return initializePromise;
-};
-
-export const parse = (sourceCode: string, lang: LanguageConfig): Tree | null => {
-    if (!isInitialized || !lang.parser) {
-        return null;
-    }
-    return lang.parser.parse(sourceCode);
-};
-```
-
-## File: package.json
-```json
-{
-  "name": "scn-ts-core",
-  "module": "src/main.ts",
-  "type": "module",
-  "private": true,
-  "devDependencies": {
-    "@types/bun": "latest",
-    "web-tree-sitter": "0.25.6"
-  },
-  "peerDependencies": {
-    "typescript": "^5"
-  }
-}
 ```
 
 ## File: src/queries/css.ts

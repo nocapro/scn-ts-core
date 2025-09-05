@@ -263,10 +263,16 @@ import type { LogEntry } from '../types';
 import { levelColorMap } from '../constants';
 import { Button } from './ui/button';
 import { Copy, Check } from 'lucide-react';
+import type { LogLevel } from 'scn-ts-core';
+
+const LOG_LEVELS: Exclude<LogLevel, 'silent'>[] = ['error', 'warn', 'info', 'debug'];
 
 const LogViewer: React.FC<{ logs: readonly LogEntry[] }> = ({ logs }) => {
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const [isCopied, setIsCopied] = useState(false);
+  const [visibleLevels, setVisibleLevels] = useState<Set<Exclude<LogLevel, 'silent'>>>(
+    new Set(LOG_LEVELS),
+  );
 
   useEffect(() => {
     if (scrollContainerRef.current) {
@@ -275,8 +281,9 @@ const LogViewer: React.FC<{ logs: readonly LogEntry[] }> = ({ logs }) => {
   }, [logs]);
 
   const handleCopy = useCallback(() => {
-    if (logs.length > 0) {
-      const logText = logs
+    const logsToCopy = logs.filter(log => visibleLevels.has(log.level));
+    if (logsToCopy.length > 0) {
+      const logText = logsToCopy
         .map(
           log =>
             `${new Date(log.timestamp).toLocaleTimeString()} [${log.level.toUpperCase()}] ${log.message}`,
@@ -287,42 +294,70 @@ const LogViewer: React.FC<{ logs: readonly LogEntry[] }> = ({ logs }) => {
         setTimeout(() => setIsCopied(false), 2000);
       });
     }
-  }, [logs]);
+  }, [logs, visibleLevels]);
+
+  const toggleLevel = (level: Exclude<LogLevel, 'silent'>) => {
+    setVisibleLevels(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(level)) {
+        newSet.delete(level);
+      } else {
+        newSet.add(level);
+      }
+      return newSet;
+    });
+  };
+
+  const filteredLogs = logs.filter(log => visibleLevels.has(log.level));
 
   return (
-    <div className="relative h-full">
-      <div
-        ref={scrollContainerRef}
-        className="h-full overflow-auto font-mono text-xs pr-10"
-      >
-        {logs.length === 0 && <p className="text-muted-foreground">No logs yet. Click "Analyze" to start.</p>}
-        {logs.map((log, index) => (
-          <div key={index} className="flex items-start">
-            <span className="text-muted-foreground/80 mr-4 flex-shrink-0">
-              {new Date(log.timestamp).toLocaleTimeString()}
-            </span>
-            <span className={cn("font-bold w-14 flex-shrink-0", levelColorMap[log.level])}>
-              [{log.level.toUpperCase()}]
-            </span>
-            <span className="whitespace-pre-wrap break-all text-foreground">{log.message}</span>
-          </div>
+    <div className="h-full flex flex-col">
+      <div className="flex items-center space-x-2 pb-2 border-b mb-2 flex-shrink-0">
+        <span className="text-xs font-medium text-muted-foreground">Show levels:</span>
+        {LOG_LEVELS.map(level => (
+          <Button
+            key={level}
+            variant={visibleLevels.has(level) ? 'secondary' : 'ghost'}
+            size="sm"
+            className={cn(
+              'h-6 px-2 text-xs capitalize',
+              !visibleLevels.has(level) && 'opacity-50',
+              levelColorMap[level],
+            )}
+            onClick={() => toggleLevel(level)}
+          >
+            {level}
+          </Button>
         ))}
       </div>
-      {logs.length > 0 && (
-        <Button
-          variant="ghost"
-          size="icon"
-          className="absolute top-0 right-0 h-8 w-8"
-          onClick={handleCopy}
-          title="Copy logs to clipboard"
+      <div className="relative flex-grow">
+        <div
+          ref={scrollContainerRef}
+          className="absolute inset-0 overflow-auto font-mono text-xs pr-10"
         >
-          {isCopied ? (
-            <Check className="h-4 w-4 text-green-500" />
-          ) : (
-            <Copy className="h-4 w-4" />
+          {filteredLogs.length === 0 && (
+            <p className="text-muted-foreground">
+              {logs.length === 0 ? 'No logs yet. Click "Analyze" to start.' : 'No logs match the current filter.'}
+            </p>
           )}
-        </Button>
-      )}
+          {filteredLogs.map((log, index) => (
+            <div key={index} className="flex items-start">
+              <span className="text-muted-foreground/80 mr-4 flex-shrink-0">
+                {new Date(log.timestamp).toLocaleTimeString()}
+              </span>
+              <span className={cn('font-bold w-14 flex-shrink-0', levelColorMap[log.level])}>
+                [{log.level.toUpperCase()}]
+              </span>
+              <span className="whitespace-pre-wrap break-all text-foreground">{log.message}</span>
+            </div>
+          ))}
+        </div>
+        {logs.length > 0 && (
+          <Button variant="ghost" size="icon" className="absolute top-0 right-0 h-8 w-8" onClick={handleCopy} title="Copy logs to clipboard">
+            {isCopied ? <Check className="h-4 w-4 text-green-500" /> : <Copy className="h-4 w-4" />}
+          </Button>
+        )}
+      </div>
     </div>
   );
 };
@@ -606,7 +641,7 @@ export function cn(...inputs: ClassValue[]) {
 
 ## File: packages/scn-ts-web-demo/src/App.tsx
 ```typescript
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { get_encoding, type Tiktoken } from 'tiktoken';
 import {
   initializeParser,
@@ -649,8 +684,14 @@ function App() {
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [encoder, setEncoder] = useState<Tiktoken | null>(null);
   const [tokenCounts, setTokenCounts] = useState({ input: 0, output: 0 });
+  const initCalled = useRef(false);
 
   useEffect(() => {
+    if (initCalled.current) {
+      return;
+    }
+    initCalled.current = true;
+
     const init = async () => {
       try {
         await initializeParser({ wasmBaseUrl: '/wasm/' });
@@ -2048,126 +2089,6 @@ export const parse = (sourceCode: string, lang: LanguageConfig): Tree | null => 
 };
 ```
 
-## File: src/main.ts
-```typescript
-import { getLanguageForFile } from './languages';
-import { initializeParser as init, parse } from './parser';
-import type { ParserInitOptions, SourceFile, InputFile, ScnTsConfig, AnalyzeProjectOptions, FormattingOptions } from './types';
-import { analyze } from './analyzer';
-import { formatScn } from './formatter';
-import path from './utils/path';
-import { getPathResolver } from './utils/tsconfig';
-import { resolveGraph } from './graph-resolver';
-import { logger } from './logger';
-
-/**
- * Public API to initialize the parser. Must be called before any other APIs.
- */
-export const initializeParser = (options: ParserInitOptions): Promise<void> => init(options);
-
-// Types for web demo
-export type { ParserInitOptions, SourceFile, LogLevel, InputFile, TsConfig, ScnTsConfig, AnalyzeProjectOptions, LogHandler, FormattingOptions } from './types';
-export type FileContent = InputFile;
-
-// Exports for web demo
-export { logger };
-
-/**
- * Generate SCN from analyzed source files
- */
-export const generateScn = (analyzedFiles: SourceFile[], options?: FormattingOptions): string => {
-    return formatScn(analyzedFiles, options);
-};
-
-/**
- * Legacy API: Generate SCN from config (for backward compatibility)
- */
-export const generateScnFromConfig = async (config: ScnTsConfig): Promise<string> => {
-    const analyzedFiles = await analyzeProject({
-        files: config.files,
-        tsconfig: config.tsconfig,
-        root: config.root,
-    });
-    return formatScn(analyzedFiles, config.formattingOptions);
-};
-
-/**
- * Parses and analyzes a project's files to build a dependency graph.
- */
-export const analyzeProject = async ({
-    files,
-    tsconfig,
-    root = '/',
-    onProgress,
-    logLevel
-}: AnalyzeProjectOptions): Promise<SourceFile[]> => {
-    if (logLevel) {
-        logger.setLevel(logLevel);
-    }
-    const pathResolver = getPathResolver(tsconfig);
-
-    let fileIdCounter = 1;
-
-    onProgress?.({ percentage: 0, message: 'Creating source files...' });
-
-    // Step 1: Create SourceFile objects for all files
-    const sourceFiles = files.map((file) => {
-        const lang = getLanguageForFile(file.path);
-        const absolutePath = path.join(root, file.path);
-        const sourceFile: SourceFile = {
-            id: fileIdCounter++,
-            relativePath: file.path,
-            absolutePath,
-            sourceCode: file.content,
-            language: lang!,
-            symbols: [],
-            parseError: false,
-        };
-        return sourceFile;
-    });
-
-    onProgress?.({ percentage: 10, message: `Parsing ${sourceFiles.length} files...` });
-
-    // Step 2: Parse all files
-    const parsedFiles = sourceFiles.map((file, i) => {
-        if (!file.language || !file.language.wasmPath || file.sourceCode.trim() === '') {
-            return file;
-        }
-        const tree = parse(file.sourceCode, file.language);
-        if (!tree) {
-            file.parseError = true;
-            logger.warn(`Failed to parse ${file.relativePath}`);
-        } else {
-            file.ast = tree;
-        }
-        const percentage = 10 + (40 * (i + 1) / sourceFiles.length);
-        onProgress?.({ percentage, message: `Parsing ${file.relativePath}` });
-        return file;
-    });
-
-    onProgress?.({ percentage: 50, message: 'Analyzing files...' });
-
-    // Step 3: Analyze all parsed files
-    const analyzedFiles = parsedFiles.map((file, i) => {
-        if (file.ast) {
-            const analyzed = analyze(file);
-            const percentage = 50 + (40 * (i + 1) / sourceFiles.length);
-            onProgress?.({ percentage, message: `Analyzing ${file.relativePath}` });
-            return analyzed;
-        }
-        return file;
-    });
-    
-    onProgress?.({ percentage: 90, message: 'Resolving dependency graph...' });
-
-    // Step 4: Resolve the dependency graph across all files
-    const resolvedGraph = resolveGraph(analyzedFiles, pathResolver, root);
-    
-    onProgress?.({ percentage: 100, message: 'Analysis complete.' });
-    return resolvedGraph;
-};
-```
-
 ## File: package.json
 ```json
 {
@@ -2288,6 +2209,126 @@ export const resolveGraph = (sourceFiles: SourceFile[], pathResolver: PathResolv
         }
     }
     return sourceFiles;
+};
+```
+
+## File: src/main.ts
+```typescript
+import { getLanguageForFile } from './languages';
+import { initializeParser as init, parse } from './parser';
+import type { ParserInitOptions, SourceFile, InputFile, ScnTsConfig, AnalyzeProjectOptions, FormattingOptions } from './types';
+import { analyze } from './analyzer';
+import { formatScn } from './formatter';
+import path from './utils/path';
+import { getPathResolver } from './utils/tsconfig';
+import { resolveGraph } from './graph-resolver';
+import { logger } from './logger';
+
+/**
+ * Public API to initialize the parser. Must be called before any other APIs.
+ */
+export const initializeParser = (options: ParserInitOptions): Promise<void> => init(options);
+
+// Types for web demo
+export type { ParserInitOptions, SourceFile, LogLevel, InputFile, TsConfig, ScnTsConfig, AnalyzeProjectOptions, LogHandler, FormattingOptions } from './types';
+export type FileContent = InputFile;
+
+// Exports for web demo
+export { logger };
+
+/**
+ * Generate SCN from analyzed source files
+ */
+export const generateScn = (analyzedFiles: SourceFile[], options?: FormattingOptions): string => {
+    return formatScn(analyzedFiles, options);
+};
+
+/**
+ * Legacy API: Generate SCN from config (for backward compatibility)
+ */
+export const generateScnFromConfig = async (config: ScnTsConfig): Promise<string> => {
+    const analyzedFiles = await analyzeProject({
+        files: config.files,
+        tsconfig: config.tsconfig,
+        root: config.root,
+    });
+    return formatScn(analyzedFiles, config.formattingOptions);
+};
+
+/**
+ * Parses and analyzes a project's files to build a dependency graph.
+ */
+export const analyzeProject = async ({
+    files,
+    tsconfig,
+    root = '/',
+    onProgress,
+    logLevel
+}: AnalyzeProjectOptions): Promise<SourceFile[]> => {
+    if (logLevel) {
+        logger.setLevel(logLevel);
+    }
+    const pathResolver = getPathResolver(tsconfig);
+
+    let fileIdCounter = 1;
+
+    onProgress?.({ percentage: 0, message: 'Creating source files...' });
+
+    // Step 1: Create SourceFile objects for all files
+    const sourceFiles = files.map((file) => {
+        const lang = getLanguageForFile(file.path);
+        const absolutePath = path.join(root, file.path);
+        const sourceFile: SourceFile = {
+            id: fileIdCounter++,
+            relativePath: file.path,
+            absolutePath,
+            sourceCode: file.content,
+            language: lang!,
+            symbols: [],
+            parseError: false,
+        };
+        return sourceFile;
+    });
+
+    onProgress?.({ percentage: 10, message: `Parsing ${sourceFiles.length} files...` });
+
+    // Step 2: Parse all files
+    const parsedFiles = sourceFiles.map((file, i) => {
+        if (!file.language || !file.language.wasmPath || file.sourceCode.trim() === '') {
+            return file;
+        }
+        const tree = parse(file.sourceCode, file.language);
+        if (!tree) {
+            file.parseError = true;
+            logger.warn(`Failed to parse ${file.relativePath}`);
+        } else {
+            file.ast = tree;
+        }
+        const percentage = 10 + (40 * (i + 1) / sourceFiles.length);
+        onProgress?.({ percentage, message: `Parsing ${file.relativePath}` });
+        return file;
+    });
+
+    onProgress?.({ percentage: 50, message: 'Analyzing files...' });
+
+    // Step 3: Analyze all parsed files
+    const analyzedFiles = parsedFiles.map((file, i) => {
+        if (file.ast) {
+            const analyzed = analyze(file);
+            const percentage = 50 + (40 * (i + 1) / sourceFiles.length);
+            onProgress?.({ percentage, message: `Analyzing ${file.relativePath}` });
+            return analyzed;
+        }
+        return file;
+    });
+    
+    onProgress?.({ percentage: 90, message: 'Resolving dependency graph...' });
+
+    // Step 4: Resolve the dependency graph across all files
+    const resolvedGraph = resolveGraph(analyzedFiles, pathResolver, root);
+    
+    onProgress?.({ percentage: 100, message: 'Analysis complete.' });
+    return resolvedGraph;
 };
 ```
 

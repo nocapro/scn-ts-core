@@ -1,5 +1,13 @@
 === DONE
 
+disable scrollable to log
+
+=== DONE
+
+after clicking analyze, the button should change to loading state UI with progress percentage also have stop button to stop processing
+
+=== DONE
+
 web log; add multi toggle to show log levels
 
 === DONE

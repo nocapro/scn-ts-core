@@ -1,0 +1,123 @@
+uuid: d19656cd-2856-43b3-82c5-ef9a8a72b05b
+projectId: scn-ts-core
+createdAt: '2025-09-05T03:10:56.827Z'
+linesAdded: 9
+linesRemoved: 2
+gitCommitMsg: 'feat: add root type-checking script for all packages'
+promptSummary: Add a root script to type-check all packages.
+reasoning:
+  - >-
+    Alright, mate. Setting up a root type-checking script for your packages is a
+    solid move for keeping a monorepo tidy. Using `tsc --build` with project
+    references is the way to go.
+  - 'Here''s the plan:'
+  - >-
+    1.  I'll pop a `check` script into your root `package.json`. This will run
+    `tsc --build`, which is smart enough to figure out the build order from your
+    `tsconfig.json` files. I'll also add `typescript` to your root
+    `devDependencies` so the command is always there.
+  - >-
+    2.  I'll update your root `tsconfig.json` to make it the orchestrator for
+    the build. By adding a `references` section pointing to your web demo
+    package, `tsc --build` will know to check both the core project and the web
+    demo when you run it from the root.
+  - Here are the changes.
+  - >-
+    First, let's update the root `package.json` to add the script and dev
+    dependency.
+  - Next, I'll tell the root `tsconfig.json` about the web demo package.
+  - >-
+    And that's it. Now you can run `bun run check` (or npm/yarn equivalent) from
+    the root, and it'll type-check everything in the right order. Cheers!
+operations:
+  - type: write
+    path: package.json
+    content: |-
+      --- package.json
+      +++ package.json
+      @@ -2,10 +2,15 @@
+         "name": "scn-ts-core",
+         "module": "src/index.ts",
+         "type": "module",
+         "private": true,
+      +  "scripts": {
+      +    "check": "tsc --build"
+      +  },
+         "devDependencies": {
+           "@types/bun": "latest",
+      -    "web-tree-sitter": "0.25.6"
+      +    "web-tree-sitter": "0.25.6",
+      +    "typescript": "^5.4.5"
+         },
+         "peerDependencies": {
+           "typescript": "^5"
+         }
+    patchStrategy: new-unified
+  - type: write
+    path: tsconfig.json
+    content: |-
+      --- tsconfig.json
+      +++ tsconfig.json
+      @@ -23,5 +23,8 @@
+           "noUnusedLocals": true,
+           "noUnusedParameters": true,
+           "noPropertyAccessFromIndexSignature": false
+      -  },
+      -  "include": ["src"]
+      +  },
+      +  "include": ["src"],
+      +  "references": [
+      +    { "path": "packages/scn-ts-web-demo" }
+      +  ]
+       }
+    patchStrategy: new-unified
+snapshot:
+  package.json: |
+    {
+      "name": "scn-ts-core",
+      "module": "src/index.ts",
+      "type": "module",
+      "private": true,
+      "devDependencies": {
+        "@types/bun": "latest",
+        "web-tree-sitter": "0.25.6"
+      },
+      "peerDependencies": {
+        "typescript": "^5"
+      }
+    }
+  tsconfig.json: |
+    {
+      "compilerOptions": {
+        "composite": true,
+        // Environment setup & latest features
+        "lib": ["ESNext", "DOM"],
+        "target": "ESNext",
+        "module": "Preserve",
+        "moduleDetection": "force",
+        "jsx": "react-jsx",
+        "allowJs": true,
+
+        // Bundler mode
+        "moduleResolution": "bundler",
+        "allowImportingTsExtensions": true,
+        "verbatimModuleSyntax": true,
+        "declaration": true,
+        "emitDeclarationOnly": true,
+        "outDir": "dist",
+
+        // Best practices
+        "strict": true,
+        "skipLibCheck": true,
+        "noFallthroughCasesInSwitch": true,
+        "noUncheckedIndexedAccess": true,
+        "noImplicitOverride": true,
+
+        // Some stricter flags (disabled by default)
+        "noUnusedLocals": true,
+        "noUnusedParameters": true,
+        "noPropertyAccessFromIndexSignature": false
+      },
+      "include": ["src"]
+    }
+approved: true

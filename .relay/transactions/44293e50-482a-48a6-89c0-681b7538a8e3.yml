@@ -1,0 +1,73 @@
+uuid: 44293e50-482a-48a6-89c0-681b7538a8e3
+projectId: scn-ts-core
+createdAt: '2025-09-05T03:09:12.720Z'
+linesAdded: 3
+linesRemoved: 1
+gitCommitMsg: 'fix(tsconfig): enable declaration emit for project references'
+promptSummary: 'Fix TypeScript error: Referenced project may not disable emit.'
+reasoning:
+  - >-
+    Ahoy there, looks like a classic TypeScript project references snag. The web
+    demo's tsconfig is referencing the core project, but the core project's
+    tsconfig has `noEmit: true`. That's a no-go for `tsc` when using project
+    references because it needs to see the declaration files (`.d.ts`) from the
+    referenced project to do its type-checking magic across boundaries.
+  - >-
+    The fix is pretty straightforward: we need to tell the core `scn-ts-core`
+    project to emit declaration files. I'll tweak the root `tsconfig.json` to do
+    just that. I'll remove `noEmit`, and add `declaration: true`,
+    `emitDeclarationOnly: true` (since we're likely bundling from source and
+    don't need the compiled JS), and an `outDir` for the generated types. That
+    should get `tsc` to play nice.
+operations:
+  - type: write
+    path: tsconfig.json
+    content: |-
+      --- tsconfig.json
+      +++ tsconfig.json
+      @@ -9,7 +9,9 @@
+           "moduleResolution": "bundler",
+           "allowImportingTsExtensions": true,
+           "verbatimModuleSyntax": true,
+      -    "noEmit": true,
+      +    "declaration": true,
+      +    "emitDeclarationOnly": true,
+      +    "outDir": "dist",
+       
+           // Best practices
+           "strict": true,
+    patchStrategy: new-unified
+snapshot:
+  tsconfig.json: |
+    {
+      "compilerOptions": {
+        "composite": true,
+        // Environment setup & latest features
+        "lib": ["ESNext", "DOM"],
+        "target": "ESNext",
+        "module": "Preserve",
+        "moduleDetection": "force",
+        "jsx": "react-jsx",
+        "allowJs": true,
+
+        // Bundler mode
+        "moduleResolution": "bundler",
+        "allowImportingTsExtensions": true,
+        "verbatimModuleSyntax": true,
+        "noEmit": true,
+
+        // Best practices
+        "strict": true,
+        "skipLibCheck": true,
+        "noFallthroughCasesInSwitch": true,
+        "noUncheckedIndexedAccess": true,
+        "noImplicitOverride": true,
+
+        // Some stricter flags (disabled by default)
+        "noUnusedLocals": true,
+        "noUnusedParameters": true,
+        "noPropertyAccessFromIndexSignature": false
+      },
+      "include": ["src"]
+    }
+approved: true

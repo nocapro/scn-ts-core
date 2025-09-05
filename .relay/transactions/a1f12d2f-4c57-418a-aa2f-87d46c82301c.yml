@@ -1,0 +1,82 @@
+uuid: a1f12d2f-4c57-418a-aa2f-87d46c82301c
+projectId: scn-ts-core
+createdAt: '2025-09-05T03:18:09.272Z'
+linesAdded: 1
+linesRemoved: 4
+gitCommitMsg: 'fix(tsconfig): remove circular project reference to web-demo'
+promptSummary: Fix TypeScript project reference circular dependency.
+reasoning:
+  - >-
+    howdy folks. anton here. looks like you've got a classic circular dependency
+    in your TypeScript project references. your web demo depends on the core
+    lib, and your core lib depends on the web demo. tsc isn't a fan of these
+    ouroboros situations.
+  - >-
+    the fix is straightforward: a project shouldn't depend on its own
+    demo/consumer app. the core library (`scn-ts-core` at the root) should be
+    blissfully unaware of `scn-ts-web-demo`. the dependency should only go one
+    way.
+  - >-
+    i'll just snip out the reference from your root `tsconfig.json` to break the
+    cycle. that should get `tsc --build` running clean.
+  - >-
+    this patch removes the `references` array from your root `tsconfig.json`,
+    which was pointing to the web demo and creating the circular dependency.
+    now, your core project stands alone, as it should, and the web demo can
+    depend on it without issue. cheers.
+operations:
+  - type: write
+    path: tsconfig.json
+    content: |-
+      --- tsconfig.json
+      +++ tsconfig.json
+      @@ -32,8 +32,5 @@
+           "noUnusedParameters": true,
+           "noPropertyAccessFromIndexSignature": false
+         },
+      -  "include": ["src"],
+      -  "references": [
+      -    { "path": "packages/scn-ts-web-demo" }
+      -  ]
+      +  "include": ["src"]
+       }
+    patchStrategy: new-unified
+snapshot:
+  tsconfig.json: |
+    {
+      "compilerOptions": {
+        "composite": true,
+        // Environment setup & latest features
+        "lib": ["ESNext", "DOM"],
+        "target": "ESNext",
+        "module": "Preserve",
+        "moduleDetection": "force",
+        "jsx": "react-jsx",
+        "allowJs": true,
+
+        // Bundler mode
+        "moduleResolution": "bundler",
+        "allowImportingTsExtensions": true,
+        "verbatimModuleSyntax": true,
+        "declaration": true,
+        "emitDeclarationOnly": true,
+        "outDir": "dist",
+
+        // Best practices
+        "strict": true,
+        "skipLibCheck": true,
+        "noFallthroughCasesInSwitch": true,
+        "noUncheckedIndexedAccess": true,
+        "noImplicitOverride": true,
+
+        // Some stricter flags (disabled by default)
+        "noUnusedLocals": true,
+        "noUnusedParameters": true,
+        "noPropertyAccessFromIndexSignature": false
+      },
+      "include": ["src"],
+      "references": [
+        { "path": "packages/scn-ts-web-demo" }
+      ]
+    }
+approved: true

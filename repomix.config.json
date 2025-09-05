@@ -26,7 +26,7 @@
     "package.json",
     "tsconfig.json",
     "scripts",
-    "src",
+    // "src",
 
 
     "packages/scn-ts-web-demo/index.html",
@@ -37,7 +37,7 @@
     "packages/scn-ts-web-demo/tsconfig.node.json",
     "packages/scn-ts-web-demo/vite.config.ts",
     // "packages/scn-ts-web-demo/scripts/prepare-wasm.cjs",
-    "packages/scn-ts-web-demo/src"
+    // "packages/scn-ts-web-demo/src"
 
   ],
   "ignore": {

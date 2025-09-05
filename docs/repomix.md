@@ -487,7 +487,7 @@ const optionTree: OptionItem[] = [
   symbolVisibilityTree,
 ];
 
-const optionLabels: Record<keyof FormattingOptions, string> = {
+const optionLabels: Record<RegularOptionKey, string> & Record<string, string> = {
   ...symbolKindLabels,
   showIcons: 'Icons',
   showExportedIndicator: 'Exported (+)',
@@ -572,7 +572,7 @@ const OutputOptions: React.FC<OutputOptionsProps> = ({ options, setOptions }) =>
         <div key={key} style={{ paddingLeft: `${level * 1.5}rem` }}>
           <OptionCheckbox
             id={key}
-            label={optionLabels[labelKey as keyof typeof optionLabels]}
+            label={optionLabels[labelKey as keyof typeof optionLabels] ?? labelKey}
             checked={
               isFilter ? options.displayFilters?.[filterKind!] ?? true : options[key as RegularOptionKey] ?? true
             }
@@ -644,6 +644,8 @@ export function cn(...inputs: ClassValue[]) {
 ```typescript
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { get_encoding, type Tiktoken } from 'tiktoken';
+import * as Comlink from 'comlink';
+import type { Remote } from 'comlink';
 import { generateScn } from '../../../index';
 import type { SourceFile } from '../../../index';
 import { defaultFilesJSON } from './default-files';
@@ -653,7 +655,7 @@ import LogViewer from './components/LogViewer';
 import OutputOptions from './components/OutputOptions';
 import { Play, Loader, Copy, Check, StopCircle } from 'lucide-react';
 import type { LogEntry, ProgressData, FormattingOptions } from './types';
-import type { WorkerRequest, WorkerResponse } from './worker';
+import type { WorkerApi } from './worker';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from './components/ui/accordion';
 
 function App() {
@@ -682,9 +684,7 @@ function App() {
   const [encoder, setEncoder] = useState<Tiktoken | null>(null);
   const [tokenCounts, setTokenCounts] = useState({ input: 0, output: 0 });
   
-  const workerRef = useRef<Worker | null>(null);
-  const [workerKey, setWorkerKey] = useState(0);
-  const logQueue = useRef<LogEntry[]>([]);
+  const workerRef = useRef<Remote<WorkerApi> | null>(null);
 
   useEffect(() => {
     // Initialize Tokenizer on main thread
@@ -696,54 +696,29 @@ function App() {
       setLogs(prev => [...prev, { level: 'error', message: 'Failed to initialize tokenizer.', timestamp: Date.now() }]);
     }
 
-    // Initialize Web Worker
-    workerRef.current = new Worker(new URL('./worker.ts', import.meta.url), { type: 'module' });
+    // Comlink setup
+    const worker = new Worker(new URL('./worker.ts', import.meta.url), { type: 'module' });
+    const wrappedWorker = Comlink.wrap<WorkerApi>(worker);
+    workerRef.current = wrappedWorker;
 
-    const flushLogQueue = () => {
-      if (logQueue.current.length > 0) {
-        setLogs(prev => [...prev, ...logQueue.current]);
-        logQueue.current = [];
+    const initializeWorker = async () => {
+      try {
+        await wrappedWorker.init();
+        setIsInitialized(true);
+        setLogs(prev => [...prev, { level: 'info', message: 'Analysis worker ready.', timestamp: Date.now() }]);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        setLogs(prev => [...prev, { level: 'error', message: `Worker failed to initialize: ${message}`, timestamp: Date.now() }]);
       }
     };
 
-    const handleWorkerMessage = (event: MessageEvent<WorkerResponse>) => {
-      const { type, payload } = event.data;
-      switch(type) {
-        case 'init_success':
-          setIsInitialized(true);
-          // Don't use log queue here, as it might not be flushed if no other logs arrive.
-          setLogs(prev => [...prev, { level: 'info', message: 'Analysis worker ready.', timestamp: Date.now() }]);
-          break;
-        case 'init_error':
-          setLogs(prev => [...prev, { level: 'error', message: `Worker failed to initialize: ${payload.message}`, timestamp: Date.now() }]);
-          break;
-        case 'log':
-          logQueue.current.push(payload);
-          // Batch log updates to avoid excessive re-renders
-          setTimeout(flushLogQueue, 50);
-          break;
-        case 'progress':
-          setProgress(payload);
-          break;
-        case 'result':
-          setAnalysisResult(payload.analysisResult);
-          setIsLoading(false);
-          flushLogQueue(); // Flush any remaining logs
-          break;
-        case 'error':
-          setLogs(prev => [...prev, { level: 'error', message: `Analysis error: ${payload.message}`, timestamp: Date.now() }]);
-          setIsLoading(false);
-          flushLogQueue(); // Flush any remaining logs
-          break;
-      }
-    };
-
-    workerRef.current.onmessage = handleWorkerMessage;
+    initializeWorker();
 
     return () => {
-      workerRef.current?.terminate();
+      wrappedWorker[Comlink.releaseProxy]();
+      worker.terminate();
     };
-  }, [workerKey]);
+  }, []);
 
   useEffect(() => {
     if (!encoder) return;
@@ -775,41 +750,51 @@ function App() {
   }, [scnOutput]);
 
   const handleStop = useCallback(() => {
-    if (!isLoading) return;
-    // This triggers the useEffect cleanup to terminate the old worker
-    // and create a new one, ensuring a clean state.
-    setWorkerKey(k => k + 1);
-    setIsLoading(false);
-    setProgress(null);
-    setAnalysisResult(null);
-    setScnOutput('');
-    setLogs(prev => [...prev, { level: 'warn', message: 'Analysis canceled by user.', timestamp: Date.now() }]);
-    logQueue.current = [];
+    if (isLoading && workerRef.current) {
+      workerRef.current.cancel();
+      // The error propagation and finally block in handleAnalyze will handle state updates.
+    }
   }, [isLoading]);
 
-  const handleAnalyze = useCallback(() => {
-    if (!isInitialized) {
+  const handleAnalyze = useCallback(async () => {
+    if (!isInitialized || !workerRef.current) {
       setLogs(prev => [...prev, { level: 'warn', message: 'Analysis worker not ready.', timestamp: Date.now() }]);
       return;
     }
-
+    
     if (isLoading) {
-      // Effectively a "cancel and restart" if clicked while running
-      handleStop();
+      return; // Prevent multiple concurrent analyses
     }
-
+    
     setIsLoading(true);
     setScnOutput('');
     setAnalysisResult(null);
     setProgress(null);
     setLogs([]);
-    logQueue.current = [];
 
-    workerRef.current?.postMessage({
-      type: 'analyze',
-      payload: { filesInput, logLevel: 'debug' },
-    } as WorkerRequest);
-  }, [filesInput, isInitialized, isLoading, handleStop]);
+    const onLog = (log: LogEntry) => {
+      setLogs(prev => [...prev, log]);
+    };
+
+    try {
+      const result = await workerRef.current.analyze(
+        { filesInput, logLevel: 'debug' },
+        Comlink.proxy(setProgress),
+        Comlink.proxy(onLog)
+      );
+      setAnalysisResult(result);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      if ((error as Error).name === 'AbortError') {
+        setLogs(prev => [...prev, { level: 'warn', message: 'Analysis canceled by user.', timestamp: Date.now() }]);
+      } else {
+        setLogs(prev => [...prev, { level: 'error', message: `Analysis error: ${message}`, timestamp: Date.now() }]);
+      }
+    } finally {
+      setIsLoading(false);
+      setProgress(null);
+    }
+  }, [filesInput, isInitialized, isLoading]);
 
   return (
     <div className="h-screen w-screen flex bg-background text-foreground">
@@ -1339,109 +1324,84 @@ export interface FormattingOptions {
 
 ## File: packages/scn-ts-web-demo/src/worker.ts
 ```typescript
-import {
-  initializeParser,
-  analyzeProject,
-  logger,
-} from '../../../index';
-import type {
-  FileContent,
-  LogHandler,
-  LogLevel,
-  SourceFile,
-} from '../../../index';
-import type { ProgressData } from './types';
+import * as Comlink from 'comlink';
+import { initializeParser, analyzeProject, logger } from '../../../index';
+import type { FileContent, LogLevel, SourceFile } from '../../../index';
+import type { LogEntry, ProgressData } from './types';
 
-// Define message types for communication
-export type WorkerRequest = {
-  type: 'analyze';
-  payload: {
-    filesInput: string;
-    logLevel: LogLevel;
-  };
-};
+// Define the API the worker will expose
+const workerApi = {
+  isInitialized: false,
+  abortController: null as AbortController | null,
 
-export type WorkerResponse =
-  | { type: 'log'; payload: { level: Exclude<LogLevel, 'silent'>; message: string; timestamp: number } }
-  | { type: 'progress'; payload: ProgressData }
-  | { type: 'result'; payload: { analysisResult: SourceFile[] } }
-  | { type: 'error'; payload: { message: string } }
-  | { type: 'init_success' }
-  | { type: 'init_error'; payload: { message: string } };
-
-let isInitialized = false;
-
-// Initialize parser once when the worker starts
-async function initialize() {
-  try {
-    // The path is relative to the worker script's location
+  async init() {
+    if (this.isInitialized) return;
     await initializeParser({ wasmBaseUrl: '/wasm/' });
-    isInitialized = true;
-    self.postMessage({ type: 'init_success' } as WorkerResponse);
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    self.postMessage({ type: 'init_error', payload: { message } } as WorkerResponse);
-  }
-}
+    this.isInitialized = true;
+  },
 
-initialize();
-
-self.onmessage = async (event: MessageEvent<WorkerRequest>) => {
-  if (event.data.type !== 'analyze') return;
-  if (!isInitialized) {
-    self.postMessage({
-      type: 'error',
-      payload: { message: 'Worker not initialized yet.' },
-    } as WorkerResponse);
-    return;
-  }
-
-  const { filesInput, logLevel } = event.data.payload;
-
-  const logHandler: LogHandler = (level, ...args) => {
-    const message = args.map(arg => typeof arg === 'object' ? JSON.stringify(arg, null, 2) : String(arg)).join(' ');
-    self.postMessage({ type: 'log', payload: { level, message, timestamp: Date.now() } } as WorkerResponse);
-  };
-  logger.setLogHandler(logHandler);
-  logger.setLevel(logLevel);
-
-  const onProgress = (progressData: ProgressData) => {
-    self.postMessage({ type: 'progress', payload: progressData } as WorkerResponse);
-  };
-
-  try {
-    let files: FileContent[] = [];
-    try {
-      files = JSON.parse(filesInput);
-      if (!Array.isArray(files)) throw new Error("Input is not an array.");
-    } catch (error) {
-      throw new Error(`Invalid JSON input: ${error instanceof Error ? error.message : String(error)}`);
+  async analyze(
+    { filesInput, logLevel }: { filesInput: string; logLevel: LogLevel },
+    onProgress: (progress: ProgressData) => void,
+    onLog: (log: LogEntry) => void
+  ): Promise<SourceFile[]> {
+    if (!this.isInitialized) {
+      throw new Error('Worker not initialized.');
     }
 
-    const analysisResult = await analyzeProject({
-      files,
-      onProgress,
-      logLevel,
-    });
+    this.abortController = new AbortController();
 
-    // Sanitize the result to make it structured-clonable for postMessage.
-    // The `ast` and tree-sitter language/parser instances are not clonable.
-    analysisResult.forEach(file => {
-      delete file.ast;
-      if (file.language) {
-        delete file.language.parser;
-        delete file.language.loadedLanguage;
+    logger.setLogHandler((level, ...args) => {
+      const message = args.map(arg => typeof arg === 'object' ? JSON.stringify(arg, null, 2) : String(arg)).join(' ');
+      onLog({ level, message, timestamp: Date.now() });
+    });
+    logger.setLevel(logLevel);
+
+    try {
+      let files: FileContent[] = [];
+      try {
+        files = JSON.parse(filesInput);
+        if (!Array.isArray(files)) throw new Error("Input is not an array.");
+      } catch (error) {
+        throw new Error(`Invalid JSON input: ${error instanceof Error ? error.message : String(error)}`);
       }
-    });
 
-    self.postMessage({ type: 'result', payload: { analysisResult } } as WorkerResponse);
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    self.postMessage({ type: 'error', payload: { message } } as WorkerResponse);
-  } finally {
-    logger.setLogHandler(null);
-  }
+      const analysisResult = await analyzeProject({
+        files,
+        onProgress,
+        logLevel,
+        signal: this.abortController.signal,
+      });
+
+      // Sanitize the result to make it structured-clonable.
+      analysisResult.forEach(file => {
+        delete file.ast;
+        if (file.language) {
+          // The language object on the source file is a reference to a global
+          // singleton. We must clone it before deleting non-serializable properties,
+          // otherwise the parser state is destroyed for subsequent analysis runs.
+          const sanitizedLanguage = { ...file.language };
+          delete sanitizedLanguage.parser;
+          delete sanitizedLanguage.loadedLanguage;
+          file.language = sanitizedLanguage;
+        }
+      });
+      
+      return analysisResult;
+    } finally {
+      logger.setLogHandler(null);
+      this.abortController = null;
+    }
+  },
+
+  cancel() {
+    this.abortController?.abort();
+  },
 };
+
+Comlink.expose(workerApi);
+
+export type WorkerApi = typeof workerApi;
 ```
 
 ## File: packages/scn-ts-web-demo/index.html
@@ -1479,6 +1439,7 @@ self.onmessage = async (event: MessageEvent<WorkerRequest>) => {
     "@radix-ui/react-accordion": "^1.1.2",
     "@radix-ui/react-slot": "^1.0.2",
     "class-variance-authority": "^0.7.0",
+    "comlink": "^4.4.1",
     "clsx": "^2.1.1",
     "lucide-react": "^0.379.0",
     "react": "^18.3.1",
@@ -2409,18 +2370,22 @@ export const analyzeProject = async ({
     root = '/',
     onProgress,
     logLevel,
+    signal,
 }: AnalyzeProjectOptions): Promise<SourceFile[]> => {
     if (logLevel) {
         logger.setLevel(logLevel);
     }
+    logger.info(`Starting analysis of ${files.length} files...`);
     const pathResolver = getPathResolver(tsconfig);
 
+    const checkAborted = () => { if (signal?.aborted) throw new DOMException('Aborted', 'AbortError'); };
     let fileIdCounter = 1;
 
     onProgress?.({ percentage: 0, message: 'Creating source files...' });
 
     // Step 1: Create SourceFile objects for all files
     const sourceFiles = files.map((file) => {
+        checkAborted();
         const absolutePath = path.join(root, file.path);
         const sourceFile: SourceFile = {
             id: fileIdCounter++,
@@ -2434,13 +2399,16 @@ export const analyzeProject = async ({
         return sourceFile;
     });
 
+    logger.debug(`Created ${sourceFiles.length} SourceFile objects.`);
     onProgress?.({ percentage: 10, message: `Parsing ${sourceFiles.length} files...` });
 
     // Step 2: Parse all files
     const parsedFiles = sourceFiles.map((file, i) => {
+        checkAborted();
         if (!file.language || !file.language.wasmPath || file.sourceCode.trim() === '') {
             return file;
         }
+        logger.debug(`Parsing ${file.relativePath}`);
         const tree = parse(file.sourceCode, file.language);
         if (!tree) {
             file.parseError = true;
@@ -2454,10 +2422,13 @@ export const analyzeProject = async ({
     });
 
     onProgress?.({ percentage: 50, message: 'Analyzing files...' });
+    logger.info(`Parsing complete. Analyzing symbols and relationships...`);
 
     // Step 3: Analyze all parsed files
     const analyzedFiles = parsedFiles.map((file, i) => {
+        checkAborted();
         if (file.ast) {
+            logger.debug(`Analyzing ${file.relativePath}`);
             const analyzed = analyze(file);
             const percentage = 50 + (40 * (i + 1) / sourceFiles.length);
             onProgress?.({ percentage, message: `Analyzing ${file.relativePath}` });
@@ -2467,11 +2438,14 @@ export const analyzeProject = async ({
     });
     
     onProgress?.({ percentage: 90, message: 'Resolving dependency graph...' });
+    logger.info('Analysis complete. Resolving dependency graph...');
 
     // Step 4: Resolve the dependency graph across all files
+    checkAborted();
     const resolvedGraph = resolveGraph(analyzedFiles, pathResolver, root);
     
     onProgress?.({ percentage: 100, message: 'Analysis complete.' });
+    logger.info('Graph resolution complete. Project analysis finished.');
     return resolvedGraph;
 };
 ```
@@ -3232,6 +3206,7 @@ export interface AnalyzeProjectOptions {
     root?: string;
     onProgress?: (progress: { percentage: number; message: string }) => void;
     logLevel?: LogLevel;
+    signal?: AbortSignal;
 }
 
 /**

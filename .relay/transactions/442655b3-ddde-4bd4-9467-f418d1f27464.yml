@@ -1,0 +1,330 @@
+uuid: 442655b3-ddde-4bd4-9467-f418d1f27464
+projectId: scn-ts-core
+createdAt: '2025-09-05T02:22:31.718Z'
+linesAdded: 1
+linesRemoved: 1
+gitCommitMsg: 'fix(web-demo): resolve typescript error in OutputOptions'
+promptSummary: Fix TypeScript error in OutputOptions.tsx related to noUncheckedIndexedAccess
+reasoning:
+  - >-
+    howdy folks. anton here. got a little typescript complaint from the
+    compiler. looks like `noUncheckedIndexedAccess` is doing its job and
+    reminding us that not all keys exist in an object. classic.
+  - 'here''s the breakdown of what i''m doing:'
+  - >-
+    1.  **Identify the culprit**: The error `Type 'string | undefined' is not
+    assignable to type 'string'` in `OutputOptions.tsx` is a dead giveaway. The
+    root `tsconfig.json` has `noUncheckedIndexedAccess` enabled. This means
+    accessing a property via an index signature (like on our `optionLabels`
+    object) might return `undefined`.
+  - >-
+    2.  **Locate the error**: The line `label={optionLabels[labelKey as keyof
+    typeof optionLabels]}` is where the compiler is flagging the issue. The
+    `OptionCheckbox` component strictly expects a `string` for its `label` prop.
+  - >-
+    3.  **The fix**: I'll provide a fallback. If `optionLabels[labelKey]` is
+    `undefined`, we'll just use `labelKey` itself as the label. It's a sensible
+    default and makes the UI more robust if we ever add an option without a
+    corresponding label. I'm using the nullish coalescing operator (`??`) for
+    this.
+  - here's the patch.
+  - should be all good now. let me know if anything else pops up.
+operations:
+  - type: write
+    path: packages/scn-ts-web-demo/src/components/OutputOptions.tsx
+    content: >-
+      --- packages/scn-ts-web-demo/src/components/OutputOptions.tsx
+
+      +++ packages/scn-ts-web-demo/src/components/OutputOptions.tsx
+
+      @@ -202,7 +202,7 @@
+               <div key={key} style={{ paddingLeft: `${level * 1.5}rem` }}>
+                 <OptionCheckbox
+                   id={key}
+      -            label={optionLabels[labelKey as keyof typeof optionLabels]}
+
+      +            label={optionLabels[labelKey as keyof typeof optionLabels] ??
+      labelKey}
+                   checked={
+                     isFilter ? options.displayFilters?.[filterKind!] ?? true : options[key as RegularOptionKey] ?? true
+                   }
+    patchStrategy: new-unified
+snapshot:
+  packages/scn-ts-web-demo/src/components/OutputOptions.tsx: >-
+    import * as React from 'react';
+
+    import type { FormattingOptions } from '../types';
+
+    import { ChevronDown, ChevronRight } from 'lucide-react';
+
+
+    interface OutputOptionsProps {
+      options: FormattingOptions;
+      setOptions: React.Dispatch<React.SetStateAction<FormattingOptions>>;
+    }
+
+
+    const OptionCheckbox: React.FC<{
+      id: string;
+      label: string;
+      checked: boolean;
+      onChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
+    }> = ({ id, label, checked, onChange }) => (
+      <div className="flex items-center space-x-1.5">
+        <input
+          type="checkbox"
+          id={id}
+          checked={checked}
+          onChange={onChange}
+          className="h-4 w-4 rounded border-muted-foreground/50 bg-transparent text-primary focus:ring-primary"
+        />
+        <label htmlFor={id} className="cursor-pointer select-none text-sm text-muted-foreground">
+          {label}
+        </label>
+      </div>
+    );
+
+
+    type RegularOptionKey = keyof Omit<FormattingOptions, 'displayFilters'>;
+
+    type OptionItem = RegularOptionKey | string | { name: string; children:
+    OptionItem[] };
+
+
+    const symbolKindLabels: Record<string, string> = {
+      // TS/JS
+      class: 'Classes',
+      interface: 'Interfaces',
+      function: 'Functions',
+      method: 'Methods',
+      constructor: 'Constructors',
+      variable: 'Variables',
+      property: 'Properties',
+      enum: 'Enums',
+      enum_member: 'Enum Members',
+      type_alias: 'Type Aliases',
+      module: 'Modules',
+      // React
+      react_component: 'React Components',
+      styled_component: 'Styled Components',
+      jsx_element: 'JSX Elements',
+      // CSS
+      css_class: 'CSS Classes',
+      css_id: 'CSS IDs',
+      css_tag: 'CSS Tags',
+      css_at_rule: 'CSS At-Rules',
+      css_variable: 'CSS Variables',
+      // Go
+      go_package: 'Go Packages',
+      // Rust
+      rust_struct: 'Rust Structs',
+      rust_trait: 'Rust Traits',
+      rust_impl: 'Rust Impls',
+    };
+
+
+    const symbolVisibilityTree: OptionItem = {
+      name: 'Symbol Visibility',
+      children: [
+        {
+          name: 'TypeScript/JavaScript',
+          children: [
+            {
+              name: 'Declarations',
+              children: [
+                'filter:class', 'filter:interface', 'filter:function', 'filter:variable',
+                'filter:enum', 'filter:type_alias', 'filter:module',
+              ],
+            },
+            { name: 'Members', children: ['filter:method', 'filter:constructor', 'filter:property', 'filter:enum_member'] },
+          ],
+        },
+        { name: 'React', children: ['filter:react_component', 'filter:styled_component', 'filter:jsx_element'] },
+        { name: 'CSS', children: ['filter:css_class', 'filter:css_id', 'filter:css_tag', 'filter:css_at_rule', 'filter:css_variable'] },
+        {
+          name: 'Other Languages',
+          children: [
+            { name: 'Go', children: ['filter:go_package'] },
+            { name: 'Rust', children: ['filter:rust_struct', 'filter:rust_trait', 'filter:rust_impl'] },
+          ],
+        },
+      ],
+    };
+
+
+    const optionTree: OptionItem[] = [
+      {
+        name: 'Display Elements',
+        children: [
+          'showIcons',
+          {
+            name: 'Indicators',
+            children: ['showExportedIndicator', 'showPrivateIndicator'],
+          },
+          'showModifiers',
+          'showTags',
+          {
+            name: 'Identifiers',
+            children: ['showFilePrefix', 'showFileIds', 'showSymbolIds'],
+          },
+        ],
+      },
+      {
+        name: 'Relationships',
+        children: ['showOutgoing', 'showIncoming'],
+      },
+      {
+        name: 'Structure',
+        children: ['groupMembers'],
+      },
+      symbolVisibilityTree,
+    ];
+
+
+    const optionLabels: Record<RegularOptionKey, string> & Record<string,
+    string> = {
+      ...symbolKindLabels,
+      showIcons: 'Icons',
+      showExportedIndicator: 'Exported (+)',
+      showPrivateIndicator: 'Private (-)',
+      showModifiers: 'Modifiers',
+      showTags: 'Tags',
+      showSymbolIds: 'Symbol IDs',
+      showFilePrefix: 'File Prefix (§)',
+      showFileIds: 'File IDs',
+      showOutgoing: 'Outgoing',
+      showIncoming: 'Incoming',
+      groupMembers: 'Group Members',
+    };
+
+
+    function getAllKeys(item: OptionItem): string[] {
+      if (typeof item === 'string') {
+        return [item];
+      }
+      return item.children.flatMap(getAllKeys);
+    }
+
+
+    const OutputOptions: React.FC<OutputOptionsProps> = ({ options, setOptions
+    }) => {
+      const [expandedGroups, setExpandedGroups] = React.useState<Set<string>>(
+        () =>
+          new Set([
+            'Display Elements', 'Indicators', 'Relationships', 'Structure',
+            'TypeScript/JavaScript',
+            'React', 'Identifiers',
+          ])
+      );
+
+      const toggleGroup = (groupName: string) => {
+        setExpandedGroups(prev => {
+          const newSet = new Set(prev);
+          if (newSet.has(groupName)) {
+            newSet.delete(groupName);
+          } else {
+            newSet.add(groupName);
+          }
+          return newSet;
+        });
+      };
+
+      const handleChange = (optionKey: string) => (e: React.ChangeEvent<HTMLInputElement>) => {
+        if (optionKey.startsWith('filter:')) {
+          const kind = optionKey.substring('filter:'.length);
+          setOptions(prev => ({
+            ...prev,
+            displayFilters: { ...(prev.displayFilters ?? {}), [kind]: e.target.checked },
+          }));
+        } else {
+          setOptions(prev => ({ ...prev, [optionKey]: e.target.checked }));
+        }
+      };
+
+      const handleGroupChange = (keys: ReadonlyArray<string>) => (e: React.ChangeEvent<HTMLInputElement>) => {
+        const isChecked = e.target.checked;
+        setOptions(prev => {
+          const newOptions: FormattingOptions = { ...prev };
+          const newDisplayFilters = { ...(prev.displayFilters ?? {}) };
+
+          for (const key of keys) {
+            if (key.startsWith('filter:')) {
+              newDisplayFilters[key.substring('filter:'.length)] = isChecked;
+            } else {
+              newOptions[key as RegularOptionKey] = isChecked;
+            }
+          }
+          newOptions.displayFilters = newDisplayFilters;
+          return newOptions;
+        });
+      };
+
+      const renderItem = (item: OptionItem, level: number): React.ReactNode => {
+        if (typeof item === 'string') {
+          const key = item as string;
+          const isFilter = key.startsWith('filter:');
+          const filterKind = isFilter ? key.substring('filter:'.length) : null;
+          const labelKey = filterKind ?? key;
+
+          return (
+            <div key={key} style={{ paddingLeft: `${level * 1.5}rem` }}>
+              <OptionCheckbox
+                id={key}
+                label={optionLabels[labelKey as keyof typeof optionLabels]}
+                checked={
+                  isFilter ? options.displayFilters?.[filterKind!] ?? true : options[key as RegularOptionKey] ?? true
+                }
+                onChange={handleChange(key)}
+              />
+            </div>
+          );
+        }
+
+        const { name, children } = item;
+        const isExpanded = expandedGroups.has(name);
+        const allKeys = getAllKeys(item);
+        const allChecked = allKeys.every(key => {
+          if (key.startsWith('filter:')) {
+            return options.displayFilters?.[key.substring('filter:'.length)] ?? true;
+          }
+          return options[key as RegularOptionKey] ?? true;
+        });
+
+        return (
+          <div key={name}>
+            <div
+              className="flex items-center space-x-1.5 py-1 rounded-md hover:bg-accent/50 cursor-pointer select-none -mx-2 px-2"
+              style={{ paddingLeft: `calc(${level * 1.5}rem + 0.5rem)` }}
+              onClick={() => toggleGroup(name)}
+            >
+              {isExpanded ? <ChevronDown className="h-4 w-4 flex-shrink-0" /> : <ChevronRight className="h-4 w-4 flex-shrink-0" />}
+              <input
+                type="checkbox"
+                id={`group-${name.replace(/\s+/g, '-')}`}
+                title={`Toggle all in ${name}`}
+                checked={allChecked}
+                onChange={handleGroupChange(allKeys)}
+                onClick={(e) => e.stopPropagation()} // Prevent row click from firing
+                className="h-4 w-4 rounded border-muted-foreground/50 bg-transparent text-primary focus:ring-primary cursor-pointer"
+              />
+              <span className="font-semibold text-sm">{name}</span>
+            </div>
+            {isExpanded && (
+              <div className="pt-1.5 space-y-1.5">
+                {children.map(child => renderItem(child, level + 1))}
+              </div>
+            )}
+          </div>
+        );
+      };
+
+      return (
+        <div className="space-y-1">
+          {optionTree.map(item => renderItem(item, 0))}
+        </div>
+      );
+    };
+
+
+    export default OutputOptions;
+approved: true

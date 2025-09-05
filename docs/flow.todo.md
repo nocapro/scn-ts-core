@@ -1,6 +1,8 @@
 === DONE
 
-add timetook stat
+1. add timetook stat. from core api level to ui
+2. disable scrollable to log
+3. add de/expand iconbutton formatting options to de/collapse all tree
 
 === DONE
 

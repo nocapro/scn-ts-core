@@ -53,6 +53,7 @@ export const analyzeProject = async ({
     if (logLevel) {
         logger.setLevel(logLevel);
     }
+    logger.info(`Starting analysis of ${files.length} files...`);
     const pathResolver = getPathResolver(tsconfig);
 
     const checkAborted = () => { if (signal?.aborted) throw new DOMException('Aborted', 'AbortError'); };
@@ -76,6 +77,7 @@ export const analyzeProject = async ({
         return sourceFile;
     });
 
+    logger.debug(`Created ${sourceFiles.length} SourceFile objects.`);
     onProgress?.({ percentage: 10, message: `Parsing ${sourceFiles.length} files...` });
 
     // Step 2: Parse all files
@@ -84,6 +86,7 @@ export const analyzeProject = async ({
         if (!file.language || !file.language.wasmPath || file.sourceCode.trim() === '') {
             return file;
         }
+        logger.debug(`Parsing ${file.relativePath}`);
         const tree = parse(file.sourceCode, file.language);
         if (!tree) {
             file.parseError = true;
@@ -97,11 +100,13 @@ export const analyzeProject = async ({
     });
 
     onProgress?.({ percentage: 50, message: 'Analyzing files...' });
+    logger.info(`Parsing complete. Analyzing symbols and relationships...`);
 
     // Step 3: Analyze all parsed files
     const analyzedFiles = parsedFiles.map((file, i) => {
         checkAborted();
         if (file.ast) {
+            logger.debug(`Analyzing ${file.relativePath}`);
             const analyzed = analyze(file);
             const percentage = 50 + (40 * (i + 1) / sourceFiles.length);
             onProgress?.({ percentage, message: `Analyzing ${file.relativePath}` });
@@ -111,11 +116,13 @@ export const analyzeProject = async ({
     });
     
     onProgress?.({ percentage: 90, message: 'Resolving dependency graph...' });
+    logger.info('Analysis complete. Resolving dependency graph...');
 
     // Step 4: Resolve the dependency graph across all files
     checkAborted();
     const resolvedGraph = resolveGraph(analyzedFiles, pathResolver, root);
     
     onProgress?.({ percentage: 100, message: 'Analysis complete.' });
+    logger.info('Graph resolution complete. Project analysis finished.');
     return resolvedGraph;
 };

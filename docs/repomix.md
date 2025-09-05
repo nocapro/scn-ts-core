@@ -14,6 +14,11 @@ packages/
         Legend.tsx
         LogViewer.tsx
         OutputOptions.tsx
+      hooks/
+        useAnalysis.hook.ts
+        useClipboard.hook.ts
+        useResizableSidebar.hook.ts
+        useTokenCounter.hook.ts
       lib/
         utils.ts
       App.tsx
@@ -30,8 +35,6 @@ packages/
     tsconfig.json
     tsconfig.node.json
     vite.config.ts
-scripts/
-  ast.ts
 package.json
 tsconfig.json
 ```
@@ -315,21 +318,20 @@ import {
   AccordionTrigger,
 } from "./ui/accordion"
 
-const symbolIcons = [
-  { symbol: ICONS.class, description: 'Class or Component' },
-  { symbol: ICONS.react_component, description: 'Class or Component' },
-  { symbol: ICONS.interface, description: 'Interface or Trait' },
-  { symbol: ICONS.rust_trait, description: 'Interface or Trait' },
-  { symbol: ICONS.function, description: 'Function or Method' },
-  { symbol: ICONS.method, description: 'Function or Method' },
-  { symbol: ICONS.styled_component, description: 'Function or Method' },
-  { symbol: ICONS.variable, description: 'Variable or Property' },
-  { symbol: ICONS.property, description: 'Variable or Property' },
-  { symbol: ICONS.enum, description: 'Enum' },
-  { symbol: ICONS.type_alias, description: 'Type Alias' },
-  { symbol: ICONS.jsx_element, description: 'JSX Element' },
-  { symbol: ICONS.css_class, description: 'CSS Selector' },
-];
+const symbolIconGroups: Record<string, (keyof typeof ICONS)[]> = {
+  'Class or Component': ['class', 'react_component'],
+  'Interface or Trait': ['interface', 'rust_trait'],
+  'Function or Method': ['function', 'method', 'styled_component'],
+  'Variable or Property': ['variable', 'property'],
+  Enum: ['enum'],
+  'Type Alias': ['type_alias'],
+  'JSX Element': ['jsx_element'],
+  'CSS Selector': ['css_class'],
+};
+
+const symbolIcons = Object.entries(symbolIconGroups).flatMap(([description, iconKeys]) =>
+  iconKeys.map(key => ({ symbol: ICONS[key], description }))
+);
 
 const legendSections = [
   {
@@ -376,7 +378,7 @@ export const Legend: React.FC = () => {
 
   if (!isOpen) {
     return (
-      <div className="absolute top-4 right-4 z-30">
+      <div className="sticky top-4 right-4 z-30 float-right">
         <Button
           variant="secondary"
           size="icon"
@@ -391,7 +393,7 @@ export const Legend: React.FC = () => {
   }
 
   return (
-    <div className="absolute top-4 right-4 z-30">
+    <div className="sticky top-4 right-4 z-30 float-right">
       <Card className="w-80 max-h-[80vh] flex flex-col shadow-2xl bg-background/90 backdrop-blur-sm">
         <CardHeader className="flex flex-row items-center justify-between py-3 px-4 border-b">
           <CardTitle className="text-base">Legend</CardTitle>
@@ -571,29 +573,32 @@ const symbolKindLabels: Record<string, string> = {
   rust_impl: 'Rust Impls',
 };
 
+const tsDeclarationKinds = ['class', 'interface', 'function', 'variable', 'enum', 'type_alias', 'module'];
+const tsMemberKinds = ['method', 'constructor', 'property', 'enum_member'];
+const reactKinds = ['react_component', 'styled_component', 'jsx_element'];
+const cssKinds = ['css_class', 'css_id', 'css_tag', 'css_at_rule', 'css_variable'];
+const goKinds = ['go_package'];
+const rustKinds = ['rust_struct', 'rust_trait', 'rust_impl'];
+
+const toFilter = (kind: string): string => `filter:${kind}`;
+
 const symbolVisibilityTree: OptionItem = {
   name: 'Symbol Visibility',
   children: [
     {
       name: 'TypeScript/JavaScript',
       children: [
-        {
-          name: 'Declarations',
-          children: [
-            'filter:class', 'filter:interface', 'filter:function', 'filter:variable',
-            'filter:enum', 'filter:type_alias', 'filter:module',
-          ],
-        },
-        { name: 'Members', children: ['filter:method', 'filter:constructor', 'filter:property', 'filter:enum_member'] },
+        { name: 'Declarations', children: tsDeclarationKinds.map(toFilter) },
+        { name: 'Members', children: tsMemberKinds.map(toFilter) },
       ],
     },
-    { name: 'React', children: ['filter:react_component', 'filter:styled_component', 'filter:jsx_element'] },
-    { name: 'CSS', children: ['filter:css_class', 'filter:css_id', 'filter:css_tag', 'filter:css_at_rule', 'filter:css_variable'] },
+    { name: 'React', children: reactKinds.map(toFilter) },
+    { name: 'CSS', children: cssKinds.map(toFilter) },
     {
       name: 'Other Languages',
       children: [
-        { name: 'Go', children: ['filter:go_package'] },
-        { name: 'Rust', children: ['filter:rust_struct', 'filter:rust_trait', 'filter:rust_impl'] },
+        { name: 'Go', children: goKinds.map(toFilter) },
+        { name: 'Rust', children: rustKinds.map(toFilter) },
       ],
     },
   ],
@@ -807,78 +812,34 @@ const OutputOptions: React.FC<OutputOptionsProps> = ({ options, setOptions }) =>
 export default OutputOptions;
 ```
 
-## File: packages/scn-ts-web-demo/src/lib/utils.ts
-```typescript
-import { type ClassValue, clsx } from "clsx"
-import { twMerge } from "tailwind-merge"
-
-export function cn(...inputs: ClassValue[]) {
-  return twMerge(clsx(inputs))
-}
-```
-
-## File: packages/scn-ts-web-demo/src/App.tsx
+## File: packages/scn-ts-web-demo/src/hooks/useAnalysis.hook.ts
 ```typescript
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { get_encoding, type Tiktoken } from 'tiktoken';
 import * as Comlink from 'comlink';
 import type { Remote } from 'comlink';
-import { generateScn } from 'scn-ts-core';
 import type { SourceFile } from 'scn-ts-core';
-import { defaultFilesJSON } from './default-files';
-import { Button } from './components/ui/button';
-import { Textarea } from './components/ui/textarea';
-import LogViewer from './components/LogViewer';
-import OutputOptions from './components/OutputOptions';
-import { Legend } from './components/Legend';
-import { Play, Loader, Copy, Check, StopCircle } from 'lucide-react';
-import type { LogEntry, ProgressData, FormattingOptions } from './types';
-import type { WorkerApi } from './worker';
-import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from './components/ui/accordion';
+import type { LogEntry, ProgressData } from '../types';
+import type { WorkerApi } from '../worker';
 
-function App() {
+export function useAnalysis() {
   const [isInitialized, setIsInitialized] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
-  const [sidebarWidth, setSidebarWidth] = useState(480);
-  const [filesInput, setFilesInput] = useState(defaultFilesJSON);
-  const [scnOutput, setScnOutput] = useState('');
   const [analysisResult, setAnalysisResult] = useState<SourceFile[] | null>(null);
-  const [isCopied, setIsCopied] = useState(false);
-  const [formattingOptions, setFormattingOptions] = useState<FormattingOptions>({
-    showOutgoing: true,
-    showIncoming: true,
-    showIcons: true,
-    showExportedIndicator: true,
-    showPrivateIndicator: true,
-    showModifiers: true,
-    showTags: true,
-    showSymbolIds: true,
-    groupMembers: true,
-    displayFilters: {},
-    showFilePrefix: true,
-    showFileIds: true,
-  });
   const [progress, setProgress] = useState<ProgressData | null>(null);
   const [logs, setLogs] = useState<LogEntry[]>([]);
-  const [encoder, setEncoder] = useState<Tiktoken | null>(null);
   const [analysisTime, setAnalysisTime] = useState<number | null>(null);
-  const [tokenCounts, setTokenCounts] = useState({ input: 0, output: 0 });
-  
-  const isResizing = useRef(false);
   const workerRef = useRef<Remote<WorkerApi> | null>(null);
 
-  useEffect(() => {
-    // Initialize Tokenizer on main thread
-    try {
-      const enc = get_encoding("cl100k_base");
-      setEncoder(enc);
-    } catch (e) {
-      console.error("Failed to initialize tokenizer:", e);
-      setLogs(prev => [...prev, { level: 'error', message: 'Failed to initialize tokenizer.', timestamp: Date.now() }]);
-    }
+  const onLog = useCallback((log: LogEntry) => {
+    setLogs(prev => [...prev, log]);
+  }, []);
 
-    // Comlink setup
-    const worker = new Worker(new URL('./worker.ts', import.meta.url), { type: 'module' });
+  const onLogPartial = useCallback((log: Pick<LogEntry, 'level' | 'message'>) => {
+    onLog({ ...log, timestamp: Date.now() });
+  }, [onLog]);
+
+  useEffect(() => {
+    const worker = new Worker(new URL('../worker.ts', import.meta.url), { type: 'module' });
     const wrappedWorker = Comlink.wrap<WorkerApi>(worker);
     workerRef.current = wrappedWorker;
 
@@ -886,10 +847,10 @@ function App() {
       try {
         await wrappedWorker.init();
         setIsInitialized(true);
-        setLogs(prev => [...prev, { level: 'info', message: 'Analysis worker ready.', timestamp: Date.now() }]);
+        onLogPartial({ level: 'info', message: 'Analysis worker ready.' });
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
-        setLogs(prev => [...prev, { level: 'error', message: `Worker failed to initialize: ${message}`, timestamp: Date.now() }]);
+        onLogPartial({ level: 'error', message: `Worker failed to initialize: ${message}` });
       }
     };
 
@@ -899,43 +860,96 @@ function App() {
       wrappedWorker[Comlink.releaseProxy]();
       worker.terminate();
     };
+  }, [onLogPartial]);
+
+  const resetAnalysisState = useCallback(() => {
+    setAnalysisResult(null);
+    setAnalysisTime(null);
+    setProgress(null);
+    setLogs([]);
   }, []);
 
-  useEffect(() => {
-    if (!encoder) return;
+  const handleAnalyze = useCallback(async (filesInput: string) => {
+    if (!isInitialized || !workerRef.current) {
+      onLogPartial({ level: 'warn', message: 'Analysis worker not ready.' });
+      return;
+    }
+    
+    if (isLoading) {
+      return; // Prevent multiple concurrent analyses
+    }
+    
+    setIsLoading(true);
+    resetAnalysisState();
+    
     try {
-      const inputTokens = encoder.encode(filesInput).length;
-      const outputTokens = encoder.encode(scnOutput).length;
-      setTokenCounts({ input: inputTokens, output: outputTokens });
-    } catch (e) {
-      console.error("Tokenization error:", e);
-      setTokenCounts({ input: 0, output: 0 });
-    }
-  }, [filesInput, scnOutput, encoder]);
-
-  useEffect(() => {
-    if (analysisResult) {
-      setScnOutput(generateScn(analysisResult, formattingOptions));
-    }
-  }, [analysisResult, formattingOptions]);
-
-  const handleCopy = useCallback(() => {
-    if (scnOutput) {
-      navigator.clipboard.writeText(scnOutput).then(
-        () => {
-          setIsCopied(true);
-          setTimeout(() => setIsCopied(false), 2000);
-        }
+      const { result, analysisTime } = await workerRef.current.analyze(
+        { filesInput, logLevel: 'debug' },
+        Comlink.proxy(setProgress),
+        Comlink.proxy(onLog)
       );
+      setAnalysisResult(result);
+      setAnalysisTime(analysisTime);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      if ((error as Error).name === 'AbortError') {
+        onLogPartial({ level: 'warn', message: 'Analysis canceled by user.' });
+      } else {
+        onLogPartial({ level: 'error', message: `Analysis error: ${message}` });
+      }
+    } finally {
+      setIsLoading(false);
+      setProgress(null);
     }
-  }, [scnOutput]);
+  }, [isInitialized, isLoading, resetAnalysisState, onLog, onLogPartial]);
 
   const handleStop = useCallback(() => {
     if (isLoading && workerRef.current) {
       workerRef.current.cancel();
-      // The error propagation and finally block in handleAnalyze will handle state updates.
     }
   }, [isLoading]);
+
+  return {
+    isInitialized,
+    isLoading,
+    analysisResult,
+    progress,
+    logs,
+    analysisTime,
+    handleAnalyze,
+    handleStop,
+    onLogPartial,
+  };
+}
+```
+
+## File: packages/scn-ts-web-demo/src/hooks/useClipboard.hook.ts
+```typescript
+import { useState, useCallback } from 'react';
+
+export function useClipboard(timeout = 2000) {
+  const [isCopied, setIsCopied] = useState(false);
+
+  const handleCopy = useCallback((text: string) => {
+    if (text) {
+      navigator.clipboard.writeText(text).then(() => {
+        setIsCopied(true);
+        setTimeout(() => setIsCopied(false), timeout);
+      });
+    }
+  }, [timeout]);
+
+  return { isCopied, handleCopy };
+}
+```
+
+## File: packages/scn-ts-web-demo/src/hooks/useResizableSidebar.hook.ts
+```typescript
+import { useState, useCallback, useRef } from 'react';
+
+export function useResizableSidebar(initialWidth: number, minWidth = 320, maxWidthPercent = 0.8) {
+  const [sidebarWidth, setSidebarWidth] = useState(initialWidth);
+  const isResizing = useRef(false);
 
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
@@ -946,8 +960,7 @@ function App() {
     const handleMouseMove = (event: MouseEvent) => {
       if (isResizing.current) {
         const newWidth = event.clientX;
-        const minWidth = 320; // 20rem
-        const maxWidth = window.innerWidth * 0.8;
+        const maxWidth = window.innerWidth * maxWidthPercent;
         setSidebarWidth(Math.min(maxWidth, Math.max(minWidth, newWidth)));
       }
     };
@@ -962,49 +975,129 @@ function App() {
 
     window.addEventListener('mousemove', handleMouseMove);
     window.addEventListener('mouseup', handleMouseUp);
-  }, []);
+  }, [minWidth, maxWidthPercent]);
+
+  return { sidebarWidth, handleMouseDown };
+}
+```
+
+## File: packages/scn-ts-web-demo/src/hooks/useTokenCounter.hook.ts
+```typescript
+import { useState, useEffect } from 'react';
+import { get_encoding, type Tiktoken } from 'tiktoken';
+import type { LogEntry } from '../types';
+
+export function useTokenCounter(
+  filesInput: string,
+  scnOutput: string,
+  onLog: (log: Pick<LogEntry, 'level' | 'message'>) => void
+) {
+  const [encoder, setEncoder] = useState<Tiktoken | null>(null);
+  const [tokenCounts, setTokenCounts] = useState({ input: 0, output: 0 });
+
+  useEffect(() => {
+    try {
+      const enc = get_encoding("cl100k_base");
+      setEncoder(enc);
+    } catch (e) {
+      console.error("Failed to initialize tokenizer:", e);
+      onLog({ level: 'error', message: 'Failed to initialize tokenizer.' });
+    }
+  }, [onLog]);
+
+  useEffect(() => {
+    if (!encoder) return;
+    try {
+      const inputTokens = encoder.encode(filesInput).length;
+      const outputTokens = encoder.encode(scnOutput).length;
+      setTokenCounts({ input: inputTokens, output: outputTokens });
+    } catch (e) {
+      console.error("Tokenization error:", e);
+      setTokenCounts({ input: 0, output: 0 });
+    }
+  }, [filesInput, scnOutput, encoder]);
+
+  return tokenCounts;
+}
+```
+
+## File: packages/scn-ts-web-demo/src/lib/utils.ts
+```typescript
+import { type ClassValue, clsx } from "clsx"
+import { twMerge } from "tailwind-merge"
+
+export function cn(...inputs: ClassValue[]) {
+  return twMerge(clsx(inputs))
+}
+```
+
+## File: packages/scn-ts-web-demo/src/App.tsx
+```typescript
+import { useState, useEffect, useCallback } from 'react';
+import { generateScn } from 'scn-ts-core';
+import { defaultFilesJSON } from './default-files';
+import { Button } from './components/ui/button';
+import { Textarea } from './components/ui/textarea';
+import LogViewer from './components/LogViewer';
+import OutputOptions from './components/OutputOptions';
+import { Legend } from './components/Legend';
+import { Play, Loader, Copy, Check, StopCircle } from 'lucide-react';
+import type { FormattingOptions } from './types';
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from './components/ui/accordion';
+import { useAnalysis } from './hooks/useAnalysis.hook';
+import { useClipboard } from './hooks/useClipboard.hook';
+import { useResizableSidebar } from './hooks/useResizableSidebar.hook';
+import { useTokenCounter } from './hooks/useTokenCounter.hook';
+
+function App() {
+  const [filesInput, setFilesInput] = useState(defaultFilesJSON);
+  const [scnOutput, setScnOutput] = useState('');
+  const [formattingOptions, setFormattingOptions] = useState<FormattingOptions>({
+    showOutgoing: true,
+    showIncoming: true,
+    showIcons: true,
+    showExportedIndicator: true,
+    showPrivateIndicator: true,
+    showModifiers: true,
+    showTags: true,
+    showSymbolIds: true,
+    groupMembers: true,
+    displayFilters: {},
+    showFilePrefix: true,
+    showFileIds: true,
+  });
+
+  const {
+    isInitialized,
+    isLoading,
+    analysisResult,
+    progress,
+    logs,
+    analysisTime,
+    handleAnalyze: performAnalysis,
+    handleStop,
+    onLogPartial,
+  } = useAnalysis();
+
+  const { sidebarWidth, handleMouseDown } = useResizableSidebar(480);
+  const { isCopied, handleCopy: performCopy } = useClipboard();
+  const tokenCounts = useTokenCounter(filesInput, scnOutput, onLogPartial);
+
+  useEffect(() => {
+    if (analysisResult) {
+      setScnOutput(generateScn(analysisResult, formattingOptions));
+    } else {
+      setScnOutput('');
+    }
+  }, [analysisResult, formattingOptions]);
+
+  const handleCopy = useCallback(() => {
+    performCopy(scnOutput);
+  }, [performCopy, scnOutput]);
 
   const handleAnalyze = useCallback(async () => {
-    if (!isInitialized || !workerRef.current) {
-      setLogs(prev => [...prev, { level: 'warn', message: 'Analysis worker not ready.', timestamp: Date.now() }]);
-      return;
-    }
-    
-    if (isLoading) {
-      return; // Prevent multiple concurrent analyses
-    }
-    
-    setIsLoading(true);
-    setScnOutput('');
-    setAnalysisResult(null);
-    setAnalysisTime(null);
-    setProgress(null);
-    setLogs([]);
-
-    const onLog = (log: LogEntry) => {
-      setLogs(prev => [...prev, log]);
-    };
-
-    try {
-      const { result, analysisTime } = await workerRef.current.analyze(
-        { filesInput, logLevel: 'debug' },
-        Comlink.proxy(setProgress),
-        Comlink.proxy(onLog)
-      );
-      setAnalysisResult(result);
-      setAnalysisTime(analysisTime);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      if ((error as Error).name === 'AbortError') {
-        setLogs(prev => [...prev, { level: 'warn', message: 'Analysis canceled by user.', timestamp: Date.now() }]);
-      } else {
-        setLogs(prev => [...prev, { level: 'error', message: `Analysis error: ${message}`, timestamp: Date.now() }]);
-      }
-    } finally {
-      setIsLoading(false);
-      setProgress(null);
-    }
-  }, [filesInput, isInitialized, isLoading]);
+    performAnalysis(filesInput);
+  }, [performAnalysis, filesInput]);
 
   return (
     <div className="h-screen w-screen flex bg-background text-foreground overflow-hidden">
@@ -1081,7 +1174,6 @@ function App() {
 
       {/* Main Content Area */}
       <main className="flex-grow flex flex-col overflow-hidden relative">
-        <Legend />
         <div className="flex justify-between items-center p-4 border-b flex-shrink-0">
           <h2 className="text-lg font-semibold leading-none tracking-tight">Output (SCN)</h2>
           <div className="flex items-center gap-4">
@@ -1096,7 +1188,8 @@ function App() {
             </Button>
           </div>
         </div>
-        <div className="p-4 flex-grow overflow-auto font-mono text-xs">
+        <div className="p-4 flex-grow overflow-auto font-mono text-xs relative">
+          <Legend />
           <pre className="whitespace-pre-wrap">
             {scnOutput || (isLoading ? "Generating..." : "Output will appear here.")}
           </pre>
@@ -1550,6 +1643,23 @@ import { initializeParser, analyzeProject, logger } from 'scn-ts-core';
 import type { FileContent, LogLevel, SourceFile } from 'scn-ts-core';
 import type { LogEntry, ProgressData } from './types';
 
+function sanitizeAnalysisResult(result: SourceFile[]): SourceFile[] {
+  // Sanitize the result to make it structured-clonable for Comlink.
+  result.forEach(file => {
+    delete file.ast;
+    if (file.language) {
+      // The language object on the source file is a reference to a global
+      // singleton. We must clone it before deleting non-serializable properties,
+      // otherwise the parser state is destroyed for subsequent analysis runs.
+      const sanitizedLanguage = { ...file.language };
+      delete sanitizedLanguage.parser;
+      delete sanitizedLanguage.loadedLanguage;
+      file.language = sanitizedLanguage;
+    }
+  });
+  return result;
+}
+
 // Define the API the worker will expose
 const workerApi = {
   isInitialized: false,
@@ -1594,21 +1704,7 @@ const workerApi = {
         signal: this.abortController.signal,
       });
 
-      // Sanitize the result to make it structured-clonable.
-      analysisResult.forEach(file => {
-        delete file.ast;
-        if (file.language) {
-          // The language object on the source file is a reference to a global
-          // singleton. We must clone it before deleting non-serializable properties,
-          // otherwise the parser state is destroyed for subsequent analysis runs.
-          const sanitizedLanguage = { ...file.language };
-          delete sanitizedLanguage.parser;
-          delete sanitizedLanguage.loadedLanguage;
-          file.language = sanitizedLanguage;
-        }
-      });
-      
-      return { result: analysisResult, analysisTime };
+      return { result: sanitizeAnalysisResult(analysisResult), analysisTime };
     } finally {
       logger.setLogHandler(null);
       this.abortController = null;
@@ -1890,158 +1986,6 @@ export default defineConfig({
   },
   "include": ["src"]
 }
-```
-
-## File: scripts/ast.ts
-```typescript
-import { initializeParser, parse } from '../src/parser';
-import { getLanguageForFile } from '../src/languages';
-import path from 'node:path';
-
-async function main() {
-  const wasmDir = path.join(process.cwd(), 'test', 'wasm');
-  await initializeParser({ wasmBaseUrl: wasmDir });
-
-  const samples: Array<{file: string, code: string, title: string}> = [
-    {
-      file: 'sample.ts',
-      title: 'TS class/interface snippet',
-      code: `
-export interface User { id: number; name: string; }
-export type UserId = number | string;
-export class ApiClient { private apiKey: string; constructor(key: string) { this.apiKey = key; } async fetchUser(id: UserId): Promise<User> { return { id: 1, name: 'x' }; } }
-      `.trim()
-    },
-    {
-      file: 'iife.js',
-      title: 'IIFE and prototype',
-      code: `
-(function(){
-  function Widget(name){ this.name = name }
-  Widget.prototype.render = function(){ return 'x' }
-  function * idGenerator(){ let i=0; while(true) yield i++; }
-  window.Widget = Widget; window.idGenerator = idGenerator;
-})();
-      `.trim()
-    },
-    {
-      file: 'cjs.js',
-      title: 'CJS require',
-      code: `
-const cjs = require('./cjs_module');
-      `.trim()
-    },
-    {
-      file: 'cjs_exports.js',
-      title: 'CJS module.exports',
-      code: `
-function cjsFunc() { console.log('cjs'); }
-module.exports = {
-  value: 42,
-  run: () => cjsFunc()
-};
-      `.trim()
-    },
-    {
-      file: 'tagged.js',
-      title: 'Tagged template',
-      code: `
-function styler(strings, ...values) { return '' }
-const name = 'a';
-document.body.innerHTML = styler\`Hello, \${name}!\`;
-      `.trim()
-    },
-    {
-      file: 'abstract_class.ts',
-      title: 'Abstract Class',
-      code: `
-abstract class BaseEntity {
-  readonly id: string;
-  static species: string;
-  protected constructor(id: string) { this.id = id; }
-  abstract getDescription(): string;
-  static getSpeciesName(): string { return this.species; }
-}
-      `.trim()
-    },
-    {
-      file: 'advanced_types.ts',
-      title: 'Advanced Types',
-      code: `
-type EventName = 'click' | 'scroll' | 'mousemove';
-type Style = 'bold' | 'italic';
-type CssClass = \`text-\${Style}\`;
-type HandlerMap = { [K in EventName]: (event: K) => void };
-type UnpackPromise<T> = T extends Promise<infer U> ? U : T;
-interface User { id: number; name: string; }
-const config = { user: { id: 1, name: 'a' } satisfies User };
-      `.trim()
-    },
-    {
-        file: 'proxy.js',
-        title: 'JS Proxy',
-        code: `
-const hiddenProp = Symbol('hidden');
-const user = { name: 'John', [hiddenProp]: 'secret' };
-const userProxy = new Proxy(user, {
-  get(target, prop) {
-    return prop in target ? target[prop] : 'N/A';
-  }
-});
-        `.trim()
-    }
-  ];
-
-  for (const sample of samples) {
-    const lang = getLanguageForFile(sample.file)!;
-    const tree = parse(sample.code, lang)!;
-    console.log(`\n===== ${sample.title} (${sample.file}) =====`);
-    
-    // Run analysis
-    console.log('ANALYSIS:');
-    const { analyzeProject, generateScn } = await import('../src/main');
-    try {
-      const { sourceFiles: analyzedFiles } = await analyzeProject({
-        files: [{
-          path: sample.file,
-          content: sample.code
-        }]
-      });
-      const scnOutput = generateScn(analyzedFiles);
-      console.log('SCN Output:');
-      console.log(scnOutput);
-    } catch (error) {
-      console.log('Analysis error:', error);
-    }
-    
-    console.log('\nAST:');
-    printAST(tree.rootNode);
-  }
-}
-
-function printAST(node: any, depth = 0) {
-  const indent = '  '.repeat(depth);
-  const isNamed = typeof node.isNamed === 'function' ? node.isNamed() : true;
-  console.log(`${indent}${node.type}${isNamed ? '' : ' [anon]'} [${node.startPosition.row}:${node.startPosition.column}-${node.endPosition.row}:${node.endPosition.column}]`);
-
-  const fieldNames: string[] = node.fieldNames || [];
-  for (const fieldName of fieldNames) {
-    const child = node.childForFieldName(fieldName);
-    if (child) {
-      console.log(`${indent}  ${fieldName}:`);
-      printAST(child, depth + 2);
-    }
-  }
-
-  for (let i = 0; i < node.childCount; i++) {
-    const child = node.child(i);
-    if (!fieldNames.some(fn => node.childForFieldName(fn) === child)) {
-      printAST(child, depth + 1);
-    }
-  }
-}
-
-main().catch(e => { console.error(e); process.exit(1); });
 ```
 
 ## File: package.json

@@ -1,3 +1,21 @@
+===
+
+formatting options
+
+show token cost for each item
+
+===
+
+extract out all hooks to *.hook.ts files and all store to *.store.ts files and all services to *.service.ts files
+
+tsx should only for render components
+
+===
+
+1. format options; change de/expand iconbutton text to iconbutton only... also change the icon to up down arrow and down up arror... put it in right side.
+
+2. formating options accordion header: show useful stats
+
 === DONE
 
 scn-ts-core should has index.ts

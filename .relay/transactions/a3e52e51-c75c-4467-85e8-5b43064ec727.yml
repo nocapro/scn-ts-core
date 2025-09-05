@@ -1,0 +1,749 @@
+uuid: a3e52e51-c75c-4467-85e8-5b43064ec727
+projectId: scn-ts-core
+createdAt: '2025-09-05T04:27:57.433Z'
+linesAdded: 26
+linesRemoved: 150
+gitCommitMsg: 'refactor(web-demo): simplify App.tsx by using custom hooks'
+promptSummary: >-
+  Refactor App.tsx to use existing hooks for state management and side effects,
+  separating concerns and simplifying the main component.
+reasoning:
+  - >-
+    Ah, a classic case of a god component. `App.tsx` is doing way too much. The
+    hooks are already there, just sittin' pretty, waiting to be used. Let's
+    clean this up and make `App.tsx` the lean, mean, orchestrating machine it
+    was meant to be.
+  - >-
+    I'll refactor `App.tsx` to use the existing hooks (`useAnalysis`,
+    `useResizableSidebar`, `useClipboard`, `useTokenCounter`). This will
+    massively simplify the component, delegating all the gnarly business logic
+    to the hooks where it belongs. `App.tsx` will be left with managing a few
+    pieces of local state and rendering the UI. Much cleaner.
+  - 'Here''s the plan:'
+  - >-
+    1.  Gut `App.tsx` of all the state management logic for analysis, sidebar
+    resizing, clipboard, and token counting.
+  - >-
+    2.  Remove all the manual worker management and side effects that are
+    already handled by the hooks.
+  - 3.  Import and call the hooks to get the state and handlers.
+  - 4.  Wire up the props from the hooks to the components in the JSX.
+  - >-
+    This will make the code more readable, maintainable, and aligned with React
+    best practices. Let's do it.
+operations:
+  - type: write
+    path: packages/scn-ts-web-demo/src/App.tsx
+    content: >-
+      --- packages/scn-ts-web-demo/src/App.tsx
+
+      +++ packages/scn-ts-web-demo/src/App.tsx
+
+      @@ -1,22 +1,21 @@
+
+      -import { useState, useEffect, useCallback, useRef } from 'react';
+
+      -import { get_encoding, type Tiktoken } from 'tiktoken';
+
+      -import * as Comlink from 'comlink';
+
+      -import type { Remote } from 'comlink';
+
+      +import { useState, useEffect, useCallback } from 'react';
+       import { generateScn } from 'scn-ts-core';
+      -import type { SourceFile } from 'scn-ts-core';
+       import { defaultFilesJSON } from './default-files';
+       import { Button } from './components/ui/button';
+       import { Textarea } from './components/ui/textarea';
+       import LogViewer from './components/LogViewer';
+       import OutputOptions from './components/OutputOptions';
+       import { Legend } from './components/Legend';
+       import { Play, Loader, Copy, Check, StopCircle } from 'lucide-react';
+      -import type { LogEntry, ProgressData, FormattingOptions } from './types';
+
+      -import type { WorkerApi } from './worker';
+
+      +import type { FormattingOptions } from './types';
+       import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from './components/ui/accordion';
+      +import { useAnalysis } from './hooks/useAnalysis.hook';
+
+      +import { useClipboard } from './hooks/useClipboard.hook';
+
+      +import { useResizableSidebar } from './hooks/useResizableSidebar.hook';
+
+      +import { useTokenCounter } from './hooks/useTokenCounter.hook';
+       
+       function App() {
+      -  const [isInitialized, setIsInitialized] = useState(false);
+
+      -  const [isLoading, setIsLoading] = useState(false);
+
+      -  const [sidebarWidth, setSidebarWidth] = useState(480);
+         const [filesInput, setFilesInput] = useState(defaultFilesJSON);
+         const [scnOutput, setScnOutput] = useState('');
+      -  const [analysisResult, setAnalysisResult] = useState<SourceFile[] |
+      null>(null);
+
+      -  const [isCopied, setIsCopied] = useState(false);
+         const [formattingOptions, setFormattingOptions] = useState<FormattingOptions>({
+           showOutgoing: true,
+           showIncoming: true,
+      @@ -31,114 +30,39 @@
+           showFilePrefix: true,
+           showFileIds: true,
+         });
+      -  const [progress, setProgress] = useState<ProgressData | null>(null);
+
+      -  const [logs, setLogs] = useState<LogEntry[]>([]);
+
+      -  const [encoder, setEncoder] = useState<Tiktoken | null>(null);
+
+      -  const [analysisTime, setAnalysisTime] = useState<number | null>(null);
+
+      -  const [tokenCounts, setTokenCounts] = useState({ input: 0, output: 0
+      });
+
+      -  
+
+      -  const isResizing = useRef(false);
+
+      -  const workerRef = useRef<Remote<WorkerApi> | null>(null);
+       
+      -  useEffect(() => {
+
+      -    // Initialize Tokenizer on main thread
+
+      -    try {
+
+      -      const enc = get_encoding("cl100k_base");
+
+      -      setEncoder(enc);
+
+      -    } catch (e) {
+
+      -      console.error("Failed to initialize tokenizer:", e);
+
+      -      setLogs(prev => [...prev, { level: 'error', message: 'Failed to
+      initialize tokenizer.', timestamp: Date.now() }]);
+
+      -    }
+
+      -
+
+      -    // Comlink setup
+
+      -    const worker = new Worker(new URL('./worker.ts', import.meta.url), {
+      type: 'module' });
+
+      -    const wrappedWorker = Comlink.wrap<WorkerApi>(worker);
+
+      -    workerRef.current = wrappedWorker;
+
+      -
+
+      -    const initializeWorker = async () => {
+
+      -      try {
+
+      -        await wrappedWorker.init();
+
+      -        setIsInitialized(true);
+
+      -        setLogs(prev => [...prev, { level: 'info', message: 'Analysis
+      worker ready.', timestamp: Date.now() }]);
+
+      -      } catch (error) {
+
+      -        const message = error instanceof Error ? error.message :
+      String(error);
+
+      -        setLogs(prev => [...prev, { level: 'error', message: `Worker
+      failed to initialize: ${message}`, timestamp: Date.now() }]);
+
+      -      }
+
+      -    };
+
+      -
+
+      -    initializeWorker();
+
+      -
+
+      -    return () => {
+
+      -      wrappedWorker[Comlink.releaseProxy]();
+
+      -      worker.terminate();
+
+      -    };
+
+      -  }, []);
+
+      -
+
+      -  useEffect(() => {
+
+      -    if (!encoder) return;
+
+      -    try {
+
+      -      const inputTokens = encoder.encode(filesInput).length;
+
+      -      const outputTokens = encoder.encode(scnOutput).length;
+
+      -      setTokenCounts({ input: inputTokens, output: outputTokens });
+
+      -    } catch (e) {
+
+      -      console.error("Tokenization error:", e);
+
+      -      setTokenCounts({ input: 0, output: 0 });
+
+      -    }
+
+      -  }, [filesInput, scnOutput, encoder]);
+
+      +  const {
+
+      +    isInitialized,
+
+      +    isLoading,
+
+      +    analysisResult,
+
+      +    progress,
+
+      +    logs,
+
+      +    analysisTime,
+
+      +    handleAnalyze: performAnalysis,
+
+      +    handleStop,
+
+      +    onLogPartial,
+
+      +  } = useAnalysis();
+
+      +
+
+      +  const { sidebarWidth, handleMouseDown } = useResizableSidebar(480);
+
+      +  const { isCopied, handleCopy: performCopy } = useClipboard();
+
+      +  const tokenCounts = useTokenCounter(filesInput, scnOutput,
+      onLogPartial);
+       
+         useEffect(() => {
+           if (analysisResult) {
+             setScnOutput(generateScn(analysisResult, formattingOptions));
+      +    } else {
+
+      +      setScnOutput('');
+           }
+         }, [analysisResult, formattingOptions]);
+       
+         const handleCopy = useCallback(() => {
+      -    if (scnOutput) {
+
+      -      navigator.clipboard.writeText(scnOutput).then(
+
+      -        () => {
+
+      -          setIsCopied(true);
+
+      -          setTimeout(() => setIsCopied(false), 2000);
+
+      -        }
+
+      -      );
+
+      -    }
+
+      -  }, [scnOutput]);
+
+      -
+
+      -  const handleStop = useCallback(() => {
+
+      -    if (isLoading && workerRef.current) {
+
+      -      workerRef.current.cancel();
+
+      -      // The error propagation and finally block in handleAnalyze will
+      handle state updates.
+
+      -    }
+
+      -  }, [isLoading]);
+
+      -
+
+      -  const handleMouseDown = useCallback((e: React.MouseEvent) => {
+
+      -    e.preventDefault();
+
+      -    isResizing.current = true;
+
+      -    document.body.style.cursor = 'col-resize';
+
+      -    document.body.style.userSelect = 'none';
+
+      -
+
+      -    const handleMouseMove = (event: MouseEvent) => {
+
+      -      if (isResizing.current) {
+
+      -        const newWidth = event.clientX;
+
+      -        const minWidth = 320; // 20rem
+
+      -        const maxWidth = window.innerWidth * 0.8;
+
+      -        setSidebarWidth(Math.min(maxWidth, Math.max(minWidth,
+      newWidth)));
+
+      -      }
+
+      -    };
+
+      -
+
+      -    const handleMouseUp = () => {
+
+      -      isResizing.current = false;
+
+      -      document.body.style.cursor = '';
+
+      -      document.body.style.userSelect = '';
+
+      -      window.removeEventListener('mousemove', handleMouseMove);
+
+      -      window.removeEventListener('mouseup', handleMouseUp);
+
+      -    };
+
+      -
+
+      -    window.addEventListener('mousemove', handleMouseMove);
+
+      -    window.addEventListener('mouseup', handleMouseUp);
+
+      -  }, []);
+
+      -
+
+      -  const resetAnalysisState = useCallback(() => {
+
+      -    setScnOutput('');
+
+      -    setAnalysisResult(null);
+
+      -    setAnalysisTime(null);
+
+      -    setProgress(null);
+
+      -    setLogs([]);
+
+      -  }, []);
+
+      +    performCopy(scnOutput);
+
+      +  }, [performCopy, scnOutput]);
+       
+         const handleAnalyze = useCallback(async () => {
+      -    if (!isInitialized || !workerRef.current) {
+
+      -      setLogs(prev => [...prev, { level: 'warn', message: 'Analysis
+      worker not ready.', timestamp: Date.now() }]);
+
+      -      return;
+
+      -    }
+
+      -    
+
+      -    if (isLoading) {
+
+      -      return; // Prevent multiple concurrent analyses
+
+      -    }
+
+      -    
+
+      -    setIsLoading(true);
+
+      -    resetAnalysisState();
+
+      -    const onLog = (log: LogEntry) => {
+
+      -      setLogs(prev => [...prev, log]);
+
+      -    };
+
+      -
+
+      -    try {
+
+      -      const { result, analysisTime } = await workerRef.current.analyze(
+
+      -        { filesInput, logLevel: 'debug' },
+
+      -        Comlink.proxy(setProgress),
+
+      -        Comlink.proxy(onLog)
+
+      -      );
+
+      -      setAnalysisResult(result);
+
+      -      setAnalysisTime(analysisTime);
+
+      -    } catch (error) {
+
+      -      const message = error instanceof Error ? error.message :
+      String(error);
+
+      -      if ((error as Error).name === 'AbortError') {
+
+      -        setLogs(prev => [...prev, { level: 'warn', message: 'Analysis
+      canceled by user.', timestamp: Date.now() }]);
+
+      -      } else {
+
+      -        setLogs(prev => [...prev, { level: 'error', message: `Analysis
+      error: ${message}`, timestamp: Date.now() }]);
+
+      -      }
+
+      -    } finally {
+
+      -      setIsLoading(false);
+
+      -      setProgress(null);
+
+      -    }
+
+      -  }, [filesInput, isInitialized, isLoading, resetAnalysisState]);
+
+      +    performAnalysis(filesInput);
+
+      +  }, [performAnalysis, filesInput]);
+       
+         return (
+           <div className="h-screen w-screen flex bg-background text-foreground overflow-hidden">
+    patchStrategy: new-unified
+snapshot:
+  packages/scn-ts-web-demo/src/App.tsx: >
+    import { useState, useEffect, useCallback, useRef } from 'react';
+
+    import { get_encoding, type Tiktoken } from 'tiktoken';
+
+    import * as Comlink from 'comlink';
+
+    import type { Remote } from 'comlink';
+
+    import { generateScn } from 'scn-ts-core';
+
+    import type { SourceFile } from 'scn-ts-core';
+
+    import { defaultFilesJSON } from './default-files';
+
+    import { Button } from './components/ui/button';
+
+    import { Textarea } from './components/ui/textarea';
+
+    import LogViewer from './components/LogViewer';
+
+    import OutputOptions from './components/OutputOptions';
+
+    import { Legend } from './components/Legend';
+
+    import { Play, Loader, Copy, Check, StopCircle } from 'lucide-react';
+
+    import type { LogEntry, ProgressData, FormattingOptions } from './types';
+
+    import type { WorkerApi } from './worker';
+
+    import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from
+    './components/ui/accordion';
+
+
+    function App() {
+      const [isInitialized, setIsInitialized] = useState(false);
+      const [isLoading, setIsLoading] = useState(false);
+      const [sidebarWidth, setSidebarWidth] = useState(480);
+      const [filesInput, setFilesInput] = useState(defaultFilesJSON);
+      const [scnOutput, setScnOutput] = useState('');
+      const [analysisResult, setAnalysisResult] = useState<SourceFile[] | null>(null);
+      const [isCopied, setIsCopied] = useState(false);
+      const [formattingOptions, setFormattingOptions] = useState<FormattingOptions>({
+        showOutgoing: true,
+        showIncoming: true,
+        showIcons: true,
+        showExportedIndicator: true,
+        showPrivateIndicator: true,
+        showModifiers: true,
+        showTags: true,
+        showSymbolIds: true,
+        groupMembers: true,
+        displayFilters: {},
+        showFilePrefix: true,
+        showFileIds: true,
+      });
+      const [progress, setProgress] = useState<ProgressData | null>(null);
+      const [logs, setLogs] = useState<LogEntry[]>([]);
+      const [encoder, setEncoder] = useState<Tiktoken | null>(null);
+      const [analysisTime, setAnalysisTime] = useState<number | null>(null);
+      const [tokenCounts, setTokenCounts] = useState({ input: 0, output: 0 });
+      
+      const isResizing = useRef(false);
+      const workerRef = useRef<Remote<WorkerApi> | null>(null);
+
+      useEffect(() => {
+        // Initialize Tokenizer on main thread
+        try {
+          const enc = get_encoding("cl100k_base");
+          setEncoder(enc);
+        } catch (e) {
+          console.error("Failed to initialize tokenizer:", e);
+          setLogs(prev => [...prev, { level: 'error', message: 'Failed to initialize tokenizer.', timestamp: Date.now() }]);
+        }
+
+        // Comlink setup
+        const worker = new Worker(new URL('./worker.ts', import.meta.url), { type: 'module' });
+        const wrappedWorker = Comlink.wrap<WorkerApi>(worker);
+        workerRef.current = wrappedWorker;
+
+        const initializeWorker = async () => {
+          try {
+            await wrappedWorker.init();
+            setIsInitialized(true);
+            setLogs(prev => [...prev, { level: 'info', message: 'Analysis worker ready.', timestamp: Date.now() }]);
+          } catch (error) {
+            const message = error instanceof Error ? error.message : String(error);
+            setLogs(prev => [...prev, { level: 'error', message: `Worker failed to initialize: ${message}`, timestamp: Date.now() }]);
+          }
+        };
+
+        initializeWorker();
+
+        return () => {
+          wrappedWorker[Comlink.releaseProxy]();
+          worker.terminate();
+        };
+      }, []);
+
+      useEffect(() => {
+        if (!encoder) return;
+        try {
+          const inputTokens = encoder.encode(filesInput).length;
+          const outputTokens = encoder.encode(scnOutput).length;
+          setTokenCounts({ input: inputTokens, output: outputTokens });
+        } catch (e) {
+          console.error("Tokenization error:", e);
+          setTokenCounts({ input: 0, output: 0 });
+        }
+      }, [filesInput, scnOutput, encoder]);
+
+      useEffect(() => {
+        if (analysisResult) {
+          setScnOutput(generateScn(analysisResult, formattingOptions));
+        }
+      }, [analysisResult, formattingOptions]);
+
+      const handleCopy = useCallback(() => {
+        if (scnOutput) {
+          navigator.clipboard.writeText(scnOutput).then(
+            () => {
+              setIsCopied(true);
+              setTimeout(() => setIsCopied(false), 2000);
+            }
+          );
+        }
+      }, [scnOutput]);
+
+      const handleStop = useCallback(() => {
+        if (isLoading && workerRef.current) {
+          workerRef.current.cancel();
+          // The error propagation and finally block in handleAnalyze will handle state updates.
+        }
+      }, [isLoading]);
+
+      const handleMouseDown = useCallback((e: React.MouseEvent) => {
+        e.preventDefault();
+        isResizing.current = true;
+        document.body.style.cursor = 'col-resize';
+        document.body.style.userSelect = 'none';
+
+        const handleMouseMove = (event: MouseEvent) => {
+          if (isResizing.current) {
+            const newWidth = event.clientX;
+            const minWidth = 320; // 20rem
+            const maxWidth = window.innerWidth * 0.8;
+            setSidebarWidth(Math.min(maxWidth, Math.max(minWidth, newWidth)));
+          }
+        };
+
+        const handleMouseUp = () => {
+          isResizing.current = false;
+          document.body.style.cursor = '';
+          document.body.style.userSelect = '';
+          window.removeEventListener('mousemove', handleMouseMove);
+          window.removeEventListener('mouseup', handleMouseUp);
+        };
+
+        window.addEventListener('mousemove', handleMouseMove);
+        window.addEventListener('mouseup', handleMouseUp);
+      }, []);
+
+      const resetAnalysisState = useCallback(() => {
+        setScnOutput('');
+        setAnalysisResult(null);
+        setAnalysisTime(null);
+        setProgress(null);
+        setLogs([]);
+      }, []);
+
+      const handleAnalyze = useCallback(async () => {
+        if (!isInitialized || !workerRef.current) {
+          setLogs(prev => [...prev, { level: 'warn', message: 'Analysis worker not ready.', timestamp: Date.now() }]);
+          return;
+        }
+        
+        if (isLoading) {
+          return; // Prevent multiple concurrent analyses
+        }
+        
+        setIsLoading(true);
+        resetAnalysisState();
+        const onLog = (log: LogEntry) => {
+          setLogs(prev => [...prev, log]);
+        };
+
+        try {
+          const { result, analysisTime } = await workerRef.current.analyze(
+            { filesInput, logLevel: 'debug' },
+            Comlink.proxy(setProgress),
+            Comlink.proxy(onLog)
+          );
+          setAnalysisResult(result);
+          setAnalysisTime(analysisTime);
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          if ((error as Error).name === 'AbortError') {
+            setLogs(prev => [...prev, { level: 'warn', message: 'Analysis canceled by user.', timestamp: Date.now() }]);
+          } else {
+            setLogs(prev => [...prev, { level: 'error', message: `Analysis error: ${message}`, timestamp: Date.now() }]);
+          }
+        } finally {
+          setIsLoading(false);
+          setProgress(null);
+        }
+      }, [filesInput, isInitialized, isLoading, resetAnalysisState]);
+
+      return (
+        <div className="h-screen w-screen flex bg-background text-foreground overflow-hidden">
+          {/* Sidebar */}
+          <aside style={{ width: `${sidebarWidth}px` }} className="max-w-[80%] min-w-[320px] flex-shrink-0 flex flex-col border-r">
+            <div className="flex-shrink-0 flex items-center justify-between p-4 border-b bg-background relative z-20">
+              <h1 className="text-xl font-bold tracking-tight">SCN-TS Web Demo</h1>
+              <div className="flex items-center space-x-2">
+                {isLoading ? (
+                  <>
+                    <Button disabled className="w-32 justify-center">
+                      <Loader className="mr-2 h-4 w-4 animate-spin" />
+                      <span>{progress ? `${Math.round(progress.percentage)}%` : 'Analyzing...'}</span>
+                    </Button>
+                    <Button onClick={handleStop} variant="outline" size="icon" title="Stop analysis">
+                      <StopCircle className="h-4 w-4" />
+                    </Button>
+                  </>
+                ) : (
+                  <Button onClick={handleAnalyze} disabled={!isInitialized} className="w-32 justify-center">
+                    <Play className="mr-2 h-4 w-4" />
+                    <span>Analyze</span>
+                  </Button>
+                )}
+              </div>
+            </div>
+
+            <div className="flex-grow overflow-y-auto">
+              <Accordion type="multiple" defaultValue={['input', 'options', 'logs']} className="w-full">
+                <AccordionItem value="input">
+                  <AccordionTrigger className="px-4 text-sm font-semibold hover:no-underline">
+                    <div className="flex w-full justify-between items-center">
+                      <span>Input Files (JSON)</span>
+                      <span className="text-xs font-normal text-muted-foreground tabular-nums">
+                        {tokenCounts.input.toLocaleString()} tokens
+                      </span>
+                    </div>
+                  </AccordionTrigger>
+                  <AccordionContent>
+                    <div className="px-4 pb-4 h-96">
+                      <Textarea
+                        value={filesInput}
+                        onChange={(e) => setFilesInput(e.currentTarget.value)}
+                        className="h-full w-full font-mono text-xs resize-none"
+                        placeholder="Paste an array of FileContent objects here..."
+                      />
+                    </div>
+                  </AccordionContent>
+                </AccordionItem>
+
+                <AccordionItem value="options">
+                  <AccordionTrigger className="px-4 text-sm font-semibold hover:no-underline">Formatting Options</AccordionTrigger>
+                  <AccordionContent className="px-4">
+                    <OutputOptions options={formattingOptions} setOptions={setFormattingOptions} />
+                  </AccordionContent>
+                </AccordionItem>
+
+                <AccordionItem value="logs">
+                  <AccordionTrigger className="px-4 text-sm font-semibold hover:no-underline">Logs</AccordionTrigger>
+                  <AccordionContent className="px-4">
+                    <LogViewer logs={logs} />
+                  </AccordionContent>
+                </AccordionItem>
+              </Accordion>
+            </div>
+          </aside>
+
+          {/* Resizer */}
+          <div
+            role="separator"
+            onMouseDown={handleMouseDown}
+            className="w-1.5 flex-shrink-0 cursor-col-resize hover:bg-primary/20 transition-colors duration-200"
+          />
+
+          {/* Main Content Area */}
+          <main className="flex-grow flex flex-col overflow-hidden relative">
+            <div className="flex justify-between items-center p-4 border-b flex-shrink-0">
+              <h2 className="text-lg font-semibold leading-none tracking-tight">Output (SCN)</h2>
+              <div className="flex items-center gap-4">
+                {analysisTime !== null && (
+                  <span className="text-sm text-muted-foreground">
+                    Analyzed in {(analysisTime / 1000).toFixed(2)}s
+                  </span>
+                )}
+                <span className="text-sm font-normal text-muted-foreground tabular-nums">{tokenCounts.output.toLocaleString()} tokens</span>
+                <Button variant="ghost" size="icon" onClick={handleCopy} disabled={!scnOutput} title="Copy to clipboard">
+                  {isCopied ? <Check className="h-4 w-4 text-green-500" /> : <Copy className="h-4 w-4" />}
+                </Button>
+              </div>
+            </div>
+            <div className="p-4 flex-grow overflow-auto font-mono text-xs relative">
+              <Legend />
+              <pre className="whitespace-pre-wrap">
+                {scnOutput || (isLoading ? "Generating..." : "Output will appear here.")}
+              </pre>
+            </div>
+          </main>
+        </div>
+      );
+    }
+
+
+    export default App;
+approved: true

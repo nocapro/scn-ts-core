@@ -21,26 +21,26 @@ function sanitizeAnalysisResult(result: SourceFile[]): SourceFile[] {
 }
 
 // Define the API the worker will expose
-const workerApi = {
-  isInitialized: false,
-  abortController: null as AbortController | null,
+function createWorkerApi() {
+  let isInitialized = false;
+  let abortController: AbortController | null = null;
 
-  async init() {
-    if (this.isInitialized) return;
+  async function init() {
+    if (isInitialized) return;
     await initializeParser({ wasmBaseUrl: '/wasm/' });
-    this.isInitialized = true;
-  },
+    isInitialized = true;
+  }
 
-  async analyze(
+  async function analyze(
     { filesInput, logLevel }: { filesInput: string; logLevel: LogLevel },
     onProgress: (progress: ProgressData) => void,
     onLog: (log: LogEntry) => void
   ): Promise<{ result: SourceFile[], analysisTime: number }> {
-    if (!this.isInitialized) {
+    if (!isInitialized) {
       throw new Error('Worker not initialized.');
     }
 
-    this.abortController = new AbortController();
+    abortController = new AbortController();
 
     logger.setLogHandler((level, ...args) => {
       const message = args.map(arg => typeof arg === 'object' ? JSON.stringify(arg, null, 2) : String(arg)).join(' ');
@@ -61,20 +61,24 @@ const workerApi = {
         files,
         onProgress,
         logLevel,
-        signal: this.abortController.signal,
+        signal: abortController.signal,
       });
 
       return { result: sanitizeAnalysisResult(analysisResult), analysisTime };
     } finally {
       logger.setLogHandler(null);
-      this.abortController = null;
+      abortController = null;
     }
-  },
+  }
 
-  cancel() {
-    this.abortController?.abort();
-  },
-};
+  function cancel() {
+    abortController?.abort();
+  }
+  
+  return { init, analyze, cancel };
+}
+
+const workerApi = createWorkerApi();
 
 Comlink.expose(workerApi);
 

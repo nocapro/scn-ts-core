@@ -6,6 +6,10 @@ show token cost for each item
 
 ===
 
+all shoud HOF, no classes no OOP
+
+=== DONE
+
 extract out all hooks to *.hook.ts files and all store to *.store.ts files and all services to *.service.ts files
 
 tsx should only for render components

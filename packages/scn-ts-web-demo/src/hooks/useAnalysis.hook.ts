@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import type { SourceFile } from 'scn-ts-core';
 import type { LogEntry, ProgressData } from '../types';
-import { AnalysisService } from '../services/analysis.service';
+import { createAnalysisService, type AnalysisServiceAPI } from '../services/analysis.service';
 
 export function useAnalysis() {
   const [isInitialized, setIsInitialized] = useState(false);
@@ -10,7 +10,7 @@ export function useAnalysis() {
   const [progress, setProgress] = useState<ProgressData | null>(null);
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [analysisTime, setAnalysisTime] = useState<number | null>(null);
-  const serviceRef = useRef<AnalysisService | null>(null);
+  const serviceRef = useRef<AnalysisServiceAPI | null>(null);
 
   const onLog = useCallback((log: LogEntry) => {
     setLogs(prev => [...prev, log]);
@@ -21,7 +21,7 @@ export function useAnalysis() {
   }, [onLog]);
 
   useEffect(() => {
-    const service = new AnalysisService();
+    const service = createAnalysisService();
     serviceRef.current = service;
 
     const initializeWorker = async () => {

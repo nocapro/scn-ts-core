@@ -1,0 +1,500 @@
+uuid: a8f8b8a5-d5c4-4b53-b92c-5645e5fd85a3
+projectId: scn-ts-core
+createdAt: '2025-09-05T04:47:08.649Z'
+linesAdded: 69
+linesRemoved: 57
+gitCommitMsg: 'refactor: replace classes with functional patterns and HOFs'
+promptSummary: >-
+  Refactor codebase to remove all classes and OOP patterns, replacing them with
+  Higher-Order Functions (HOFs) and functional programming principles.
+reasoning:
+  - >-
+    heckin' the codebase. saw some classes creepin' in. not on my watch. we're
+    going full functional, HOFs all the way down. it's just cleaner, you know?
+    less `this` madness.
+  - >-
+    first, i'm ditching that `AnalysisService` class. wrapping it in a factory
+    function `createAnalysisService` that spits out an object with the same API.
+    closure power will keep the worker instance cozy.
+  - >-
+    next, the `useAnalysis` hook needs to know about this change. swapping out
+    `new AnalysisService()` for our new `createAnalysisService()` factory. easy
+    peasy.
+  - >-
+    that `workerApi` object in `worker.ts` was basically a singleton class in
+    disguise. refactoring that into a factory function too, using closures to
+    manage state like a civilized programmer. no more `this`.
+  - >-
+    finally, the sample code in `default-files.ts` had a `TokenProvider` class.
+    gotta practice what we preach, so that's becoming a factory function as
+    well. updated the sample `main.tsx` to call it correctly.
+  - classes purged. much better.
+operations:
+  - type: write
+    path: packages/scn-ts-web-demo/src/services/analysis.service.ts
+    content: |-
+      import * as Comlink from 'comlink';
+      import type { Remote } from 'comlink';
+      import type { WorkerApi } from '../worker';
+      import type { LogEntry, ProgressData } from '../types';
+      import type { LogLevel, SourceFile } from 'scn-ts-core';
+
+      export type AnalysisServiceAPI = {
+        init: () => Promise<void>;
+        analyze: (
+          filesInput: string,
+          logLevel: LogLevel,
+          onProgress: (progress: ProgressData) => void,
+          onLog: (log: LogEntry) => void,
+        ) => Promise<{ result: SourceFile[]; analysisTime: number }>;
+        cancel: () => Promise<void>;
+        cleanup: () => void;
+      };
+
+      export function createAnalysisService(): AnalysisServiceAPI {
+        const worker = new Worker(new URL('../worker.ts', import.meta.url), { type: 'module' });
+        const workerApi = Comlink.wrap<WorkerApi>(worker);
+
+        const init = async (): Promise<void> => {
+          return workerApi.init();
+        };
+
+        const analyze = async (
+          filesInput: string,
+          logLevel: LogLevel,
+          onProgress: (progress: ProgressData) => void,
+          onLog: (log: LogEntry) => void,
+        ): Promise<{ result: SourceFile[]; analysisTime: number }> => {
+          return workerApi.analyze({ filesInput, logLevel }, Comlink.proxy(onProgress), Comlink.proxy(onLog));
+        };
+
+        const cancel = async (): Promise<void> => {
+          return workerApi.cancel();
+        };
+
+        const cleanup = (): void => {
+          workerApi[Comlink.releaseProxy]();
+          worker.terminate();
+        };
+
+        return {
+          init,
+          analyze,
+          cancel,
+          cleanup,
+        };
+      }
+    patchStrategy: replace
+  - type: write
+    path: packages/scn-ts-web-demo/src/hooks/useAnalysis.hook.ts
+    content: >-
+      --- packages/scn-ts-web-demo/src/hooks/useAnalysis.hook.ts
+
+      +++ packages/scn-ts-web-demo/src/hooks/useAnalysis.hook.ts
+
+      @@ -1,8 +1,8 @@
+       import { useState, useEffect, useCallback, useRef } from 'react';
+       import type { SourceFile } from 'scn-ts-core';
+       import type { LogEntry, ProgressData } from '../types';
+      -import { AnalysisService } from '../services/analysis.service';
+
+      +import { createAnalysisService, type AnalysisServiceAPI } from
+      '../services/analysis.service';
+       
+       export function useAnalysis() {
+         const [isInitialized, setIsInitialized] = useState(false);
+      @@ -11,7 +11,7 @@
+         const [progress, setProgress] = useState<ProgressData | null>(null);
+         const [logs, setLogs] = useState<LogEntry[]>([]);
+         const [analysisTime, setAnalysisTime] = useState<number | null>(null);
+      -  const serviceRef = useRef<AnalysisService | null>(null);
+
+      +  const serviceRef = useRef<AnalysisServiceAPI | null>(null);
+       
+         const onLog = useCallback((log: LogEntry) => {
+           setLogs(prev => [...prev, log]);
+      @@ -22,7 +22,7 @@
+         }, [onLog]);
+       
+         useEffect(() => {
+      -    const service = new AnalysisService();
+
+      +    const service = createAnalysisService();
+           serviceRef.current = service;
+       
+           const initializeWorker = async () => {
+    patchStrategy: new-unified
+  - type: write
+    path: packages/scn-ts-web-demo/src/worker.ts
+    content: |-
+      import * as Comlink from 'comlink';
+      import { initializeParser, analyzeProject, logger } from 'scn-ts-core';
+      import type { FileContent, LogLevel, SourceFile } from 'scn-ts-core';
+      import type { LogEntry, ProgressData } from './types';
+
+      function sanitizeAnalysisResult(result: SourceFile[]): SourceFile[] {
+        // Sanitize the result to make it structured-clonable for Comlink.
+        result.forEach(file => {
+          delete file.ast;
+          if (file.language) {
+            // The language object on the source file is a reference to a global
+            // singleton. We must clone it before deleting non-serializable properties,
+            // otherwise the parser state is destroyed for subsequent analysis runs.
+            const sanitizedLanguage = { ...file.language };
+            delete sanitizedLanguage.parser;
+            delete sanitizedLanguage.loadedLanguage;
+            file.language = sanitizedLanguage;
+          }
+        });
+        return result;
+      }
+
+      // Define the API the worker will expose
+      function createWorkerApi() {
+        let isInitialized = false;
+        let abortController: AbortController | null = null;
+
+        async function init() {
+          if (isInitialized) return;
+          await initializeParser({ wasmBaseUrl: '/wasm/' });
+          isInitialized = true;
+        }
+
+        async function analyze(
+          { filesInput, logLevel }: { filesInput: string; logLevel: LogLevel },
+          onProgress: (progress: ProgressData) => void,
+          onLog: (log: LogEntry) => void
+        ): Promise<{ result: SourceFile[], analysisTime: number }> {
+          if (!isInitialized) {
+            throw new Error('Worker not initialized.');
+          }
+
+          abortController = new AbortController();
+
+          logger.setLogHandler((level, ...args) => {
+            const message = args.map(arg => typeof arg === 'object' ? JSON.stringify(arg, null, 2) : String(arg)).join(' ');
+            onLog({ level, message, timestamp: Date.now() });
+          });
+          logger.setLevel(logLevel);
+
+          try {
+            let files: FileContent[] = [];
+            try {
+              files = JSON.parse(filesInput);
+              if (!Array.isArray(files)) throw new Error("Input is not an array.");
+            } catch (error) {
+              throw new Error(`Invalid JSON input: ${error instanceof Error ? error.message : String(error)}`);
+            }
+
+            const { sourceFiles: analysisResult, analysisTime } = await analyzeProject({
+              files,
+              onProgress,
+              logLevel,
+              signal: abortController.signal,
+            });
+
+            return { result: sanitizeAnalysisResult(analysisResult), analysisTime };
+          } finally {
+            logger.setLogHandler(null);
+            abortController = null;
+          }
+        }
+
+        function cancel() {
+          abortController?.abort();
+        }
+        
+        return { init, analyze, cancel };
+      }
+
+      const workerApi = createWorkerApi();
+
+      Comlink.expose(workerApi);
+
+      export type WorkerApi = typeof workerApi;
+    patchStrategy: replace
+  - type: write
+    path: packages/scn-ts-web-demo/src/default-files.ts
+    content: |-
+      <<<<<<< SEARCH
+      import { Log } from './services/logger';
+      import { TokenProvider } from './auth/token';
+      import './styles/main.css';
+
+      async function main() {
+          Log('App starting...');
+
+          const tokenProvider = new TokenProvider();
+      =======
+      import { Log } from './services/logger';
+      import { createTokenProvider } from './auth/token';
+      import './styles/main.css';
+
+      async function main() {
+          Log('App starting...');
+
+          const tokenProvider = createTokenProvider();
+      >>>>>>> REPLACE
+      <<<<<<< SEARCH
+          path: "src/auth/token.ts",
+          content: `import { generate_secret } from '../services/auth'; // fake import from .rs
+
+      export class TokenProvider {
+          private secret: string;
+          constructor() {
+              this.secret = generate_secret();
+          }
+
+          getToken(): string {
+              return \`fake-token-with-\${this.secret}\`;
+          }
+      }
+      `
+      =======
+          path: "src/auth/token.ts",
+          content: `import { generate_secret } from '../services/auth'; // fake import from .rs
+
+      export function createTokenProvider() {
+          const secret = generate_secret();
+          return {
+              getToken(): string {
+                  return \`fake-token-with-\${secret}\`;
+              }
+          };
+      }
+      `
+      >>>>>>> REPLACE
+    patchStrategy: multi-search-replace
+snapshot:
+  packages/scn-ts-web-demo/src/hooks/useAnalysis.hook.ts: |-
+    import { useState, useEffect, useCallback, useRef } from 'react';
+    import type { SourceFile } from 'scn-ts-core';
+    import type { LogEntry, ProgressData } from '../types';
+    import { AnalysisService } from '../services/analysis.service';
+
+    export function useAnalysis() {
+      const [isInitialized, setIsInitialized] = useState(false);
+      const [isLoading, setIsLoading] = useState(false);
+      const [analysisResult, setAnalysisResult] = useState<SourceFile[] | null>(null);
+      const [progress, setProgress] = useState<ProgressData | null>(null);
+      const [logs, setLogs] = useState<LogEntry[]>([]);
+      const [analysisTime, setAnalysisTime] = useState<number | null>(null);
+      const serviceRef = useRef<AnalysisService | null>(null);
+
+      const onLog = useCallback((log: LogEntry) => {
+        setLogs(prev => [...prev, log]);
+      }, []);
+
+      const onLogPartial = useCallback((log: Pick<LogEntry, 'level' | 'message'>) => {
+        onLog({ ...log, timestamp: Date.now() });
+      }, [onLog]);
+
+      useEffect(() => {
+        const service = new AnalysisService();
+        serviceRef.current = service;
+
+        const initializeWorker = async () => {
+          try {
+            await service.init();
+            setIsInitialized(true);
+            onLogPartial({ level: 'info', message: 'Analysis worker ready.' });
+          } catch (error) {
+            const message = error instanceof Error ? error.message : String(error);
+            onLogPartial({ level: 'error', message: `Worker failed to initialize: ${message}` });
+          }
+        };
+
+        initializeWorker();
+
+        return () => {
+          service.cleanup();
+          serviceRef.current = null;
+        };
+      }, [onLogPartial]);
+
+      const resetAnalysisState = useCallback(() => {
+        setAnalysisResult(null);
+        setAnalysisTime(null);
+        setProgress(null);
+        setLogs([]);
+      }, []);
+
+      const handleAnalyze = useCallback(async (filesInput: string) => {
+        if (!isInitialized || !serviceRef.current) {
+          onLogPartial({ level: 'warn', message: 'Analysis worker not ready.' });
+          return;
+        }
+        
+        if (isLoading) {
+          return; // Prevent multiple concurrent analyses
+        }
+        
+        setIsLoading(true);
+        resetAnalysisState();
+        
+        try {
+          const { result, analysisTime } = await serviceRef.current.analyze(
+            filesInput,
+            'debug',
+            setProgress,
+            onLog
+          );
+          setAnalysisResult(result);
+          setAnalysisTime(analysisTime);
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          if ((error as Error).name === 'AbortError') {
+            onLogPartial({ level: 'warn', message: 'Analysis canceled by user.' });
+          } else {
+            onLogPartial({ level: 'error', message: `Analysis error: ${message}` });
+          }
+        } finally {
+          setIsLoading(false);
+          setProgress(null);
+        }
+      }, [isInitialized, isLoading, resetAnalysisState, onLog, onLogPartial]);
+
+      const handleStop = useCallback(() => {
+        if (isLoading && serviceRef.current) {
+          serviceRef.current.cancel();
+        }
+      }, [isLoading]);
+
+      return {
+        isInitialized,
+        isLoading,
+        analysisResult,
+        progress,
+        logs,
+        analysisTime,
+        handleAnalyze,
+        handleStop,
+        onLogPartial,
+      };
+    }
+  packages/scn-ts-web-demo/src/worker.ts: |-
+    import * as Comlink from 'comlink';
+    import { initializeParser, analyzeProject, logger } from 'scn-ts-core';
+    import type { FileContent, LogLevel, SourceFile } from 'scn-ts-core';
+    import type { LogEntry, ProgressData } from './types';
+
+    function sanitizeAnalysisResult(result: SourceFile[]): SourceFile[] {
+      // Sanitize the result to make it structured-clonable for Comlink.
+      result.forEach(file => {
+        delete file.ast;
+        if (file.language) {
+          // The language object on the source file is a reference to a global
+          // singleton. We must clone it before deleting non-serializable properties,
+          // otherwise the parser state is destroyed for subsequent analysis runs.
+          const sanitizedLanguage = { ...file.language };
+          delete sanitizedLanguage.parser;
+          delete sanitizedLanguage.loadedLanguage;
+          file.language = sanitizedLanguage;
+        }
+      });
+      return result;
+    }
+
+    // Define the API the worker will expose
+    const workerApi = {
+      isInitialized: false,
+      abortController: null as AbortController | null,
+
+      async init() {
+        if (this.isInitialized) return;
+        await initializeParser({ wasmBaseUrl: '/wasm/' });
+        this.isInitialized = true;
+      },
+
+      async analyze(
+        { filesInput, logLevel }: { filesInput: string; logLevel: LogLevel },
+        onProgress: (progress: ProgressData) => void,
+        onLog: (log: LogEntry) => void
+      ): Promise<{ result: SourceFile[], analysisTime: number }> {
+        if (!this.isInitialized) {
+          throw new Error('Worker not initialized.');
+        }
+
+        this.abortController = new AbortController();
+
+        logger.setLogHandler((level, ...args) => {
+          const message = args.map(arg => typeof arg === 'object' ? JSON.stringify(arg, null, 2) : String(arg)).join(' ');
+          onLog({ level, message, timestamp: Date.now() });
+        });
+        logger.setLevel(logLevel);
+
+        try {
+          let files: FileContent[] = [];
+          try {
+            files = JSON.parse(filesInput);
+            if (!Array.isArray(files)) throw new Error("Input is not an array.");
+          } catch (error) {
+            throw new Error(`Invalid JSON input: ${error instanceof Error ? error.message : String(error)}`);
+          }
+
+          const { sourceFiles: analysisResult, analysisTime } = await analyzeProject({
+            files,
+            onProgress,
+            logLevel,
+            signal: this.abortController.signal,
+          });
+
+          return { result: sanitizeAnalysisResult(analysisResult), analysisTime };
+        } finally {
+          logger.setLogHandler(null);
+          this.abortController = null;
+        }
+      },
+
+      cancel() {
+        this.abortController?.abort();
+      },
+    };
+
+    Comlink.expose(workerApi);
+
+    export type WorkerApi = typeof workerApi;
+  packages/scn-ts-web-demo/src/services/analysis.service.ts: |-
+    import * as Comlink from 'comlink';
+    import type { Remote } from 'comlink';
+    import type { WorkerApi } from '../worker';
+    import type { LogEntry, ProgressData } from '../types';
+    import type { LogLevel, SourceFile } from 'scn-ts-core';
+
+    export class AnalysisService {
+      private worker: Worker;
+      private workerApi: Remote<WorkerApi>;
+
+      constructor() {
+        this.worker = new Worker(new URL('../worker.ts', import.meta.url), { type: 'module' });
+        this.workerApi = Comlink.wrap<WorkerApi>(this.worker);
+      }
+
+      async init(): Promise<void> {
+        return this.workerApi.init();
+      }
+
+      async analyze(
+        filesInput: string,
+        logLevel: LogLevel,
+        onProgress: (progress: ProgressData) => void,
+        onLog: (log: LogEntry) => void
+      ): Promise<{ result: SourceFile[], analysisTime: number }> {
+        return this.workerApi.analyze(
+          { filesInput, logLevel },
+          Comlink.proxy(onProgress),
+          Comlink.proxy(onLog)
+        );
+      }
+
+      cancel(): Promise<void> {
+        return this.workerApi.cancel();
+      }
+
+      cleanup(): void {
+        this.workerApi[Comlink.releaseProxy]();
+        this.worker.terminate();
+      }
+    }
+  packages/scn-ts-web-demo/src/default-files.ts: "import type { FileContent } from \"scn-ts-core\";\n\nconst files: FileContent[] = [\n  {\n    path: \"src/main.tsx\",\n    content: `import React from 'react';\nimport { Page } from './components/layout/Page';\nimport { UserProfile } from './components/UserProfile';\nimport { getUser } from './api/client';\nimport { Log } from './services/logger';\nimport { TokenProvider } from './auth/token';\nimport './styles/main.css';\n\nasync function main() {\n    Log('App starting...');\n\n    const tokenProvider = new TokenProvider();\n    console.log('Auth token:', tokenProvider.getToken());\n\n    const user = await getUser('1');\n    \n    const App = () => (\n        <Page>\n            <UserProfile initialUser={user} />\n        </Page>\n    );\n    \n    console.log('App ready to be rendered.');\n    // The existence of <App /> is enough for analysis.\n    // In a real app: ReactDOM.render(<App />, document.getElementById('root'));\n    Log('App finished setup.');\n}\n\nmain();\n`\n  },\n  {\n    path: \"src/api/client.ts\",\n    content: `import type { User } from '../types';\nimport { capitalize } from '../utils/string';\n\nconst API_BASE = '/api/v1';\n\nexport async function getUser(id: string): Promise<User> {\n    console.log(\\`Fetching user \\${id} from \\${API_BASE}\\`);\n    await new Promise(res => setTimeout(res, 100));\n    return {\n        id,\n        name: capitalize('john doe'),\n        email: 'john.doe@example.com',\n    };\n}\n\nexport const updateUser = async (user: Partial<User> & { id: string }): Promise<User> => {\n    console.log(\\`Updating user \\${user.id}\\`);\n    await new Promise(res => setTimeout(res, 100));\n    const fullUser = await getUser(user.id);\n    return { ...fullUser, ...user };\n};\n`\n  },\n  {\n    path: \"src/components/Button.tsx\",\n    content: `import React from 'react';\nimport './../styles/components/button.css';\n\ntype ButtonVariant = 'primary' | 'secondary';\n\nexport interface ButtonProps {\n    text: string;\n    variant?: ButtonVariant;\n    onClick?: () => void;\n}\n\nexport const Button: React.FC<ButtonProps> = ({ text, variant = 'primary', onClick }) => {\n    return (\n        <button className={\\`btn btn-\\${variant}\\`} onClick={onClick}>\n            {text}\n        </button>\n    );\n};\n`\n  },\n  {\n    path: \"src/components/UserProfile.tsx\",\n    content: `import React from 'react';\nimport type { User } from '../types';\nimport { useUser } from '../hooks/useUser';\n\n// Fake styled-component to test parser. In a real app this would be \\`import styled from 'styled-components';\\`\nconst styled = {\n  div: (template: TemplateStringsArray) => (props: any) => React.createElement('div', props)\n};\n\nconst UserCard = styled.div\\`\n  border: 1px solid #ccc;\n  padding: 1rem;\n  border-radius: 8px;\n\\`;\n\ninterface UserProfileProps {\n    initialUser: User;\n}\n\nexport function UserProfile({ initialUser }: UserProfileProps): React.ReactElement {\n    const { user, updateUser } = useUser(initialUser.id, initialUser);\n\n    if (!user) {\n        return <div>Loading...</div>;\n    }\n\n    return (\n        <UserCard>\n            <h2>{user.name}</h2>\n            <p>{user.email}</p>\n            <button onClick={() => updateUser({ name: 'Jane Doe' })}>\n                Change Name\n            </button>\n        </UserCard>\n    );\n}\n`\n  },\n  {\n    path: \"src/components/layout/Page.tsx\",\n    content: `import React from 'react';\nimport { Button } from '../Button';\nimport type { Theme } from '../../types';\n\ninterface PageProps {\n    children: React.ReactNode;\n}\n\nconst theme: Theme = 'light';\n\nexport const Page = ({ children }: PageProps): React.ReactElement => {\n    return (\n        <div className={\\`page-container theme-\\${theme}\\`}>\n            <header>\n                <h1>My App</h1>\n                <Button text=\"Logout\" />\n            </header>\n            <main>\n                {children}\n            </main>\n        </div>\n    );\n};\n`\n  },\n  {\n    path: \"src/hooks/useUser.ts\",\n    content: `import { getUser, updateUser as apiUpdateUser } from '../api/client';\nimport type { User } from '../types';\n\n// This is a fake hook for dependency analysis purposes.\nexport function useUser(userId: string, initialUser?: User) {\n    let user: User | null = initialUser || null;\n\n    const fetchUser = async () => {\n        user = await getUser(userId);\n    };\n\n    if (!user) {\n        fetchUser();\n    }\n\n    const updateUser = async (data: Partial<User>) => {\n        if (!user) return;\n        const updatedUser = await apiUpdateUser({ ...data, id: userId });\n        user = updatedUser;\n    };\n\n    return { user, updateUser };\n}\n`\n  },\n  {\n    path: \"src/styles/main.css\",\n    content: `@import url('./components/button.css');\n\n:root {\n    --primary-color: #007bff;\n}\n\nbody {\n    font-family: sans-serif;\n    background-color: #f0f0f0;\n}\n\n.page-container {\n    max-width: 960px;\n    margin: 0 auto;\n}\n`\n  },\n  {\n    path: \"src/styles/components/button.css\",\n    content: `.btn {\n    padding: 0.5rem 1rem;\n    border: none;\n    border-radius: 4px;\n    cursor: pointer;\n}\n\n.btn-primary {\n    background-color: var(--primary-color);\n    color: white;\n}\n\n.btn-secondary {\n    background-color: gray;\n    color: white;\n}\n`\n  },\n  {\n    path: \"src/types/index.ts\",\n    content: `export interface User {\n    id: string;\n    name: string;\n    email: string;\n}\n\nexport type Theme = 'light' | 'dark';\n`\n  },\n  {\n    path: \"src/utils/string.ts\",\n    content: `/**\n * Capitalizes the first letter of a string.\n */\nexport function capitalize(str: string): string {\n    if (!str) return '';\n    return str.charAt(0).toUpperCase() + str.slice(1);\n}\n`\n  },\n  {\n    path: \"src/auth/token.ts\",\n    content: `import { generate_secret } from '../services/auth'; // fake import from .rs\n\nexport class TokenProvider {\n    private secret: string;\n    constructor() {\n        this.secret = generate_secret();\n    }\n\n    getToken(): string {\n        return \\`fake-token-with-\\${this.secret}\\`;\n    }\n}\n`\n  },\n  {\n    path: \"src/services/logger.go\",\n    content: `package services\n\nimport \"fmt\"\n\n// Log prints a message to the console.\nfunc Log(message string) {\n\tfmt.Println(\"[Go Logger]\", message)\n}\n`\n  },\n  {\n    path: \"src/services/auth.rs\",\n    content: `// A simple auth service mock\npub struct AuthService {\n    secret_key: String,\n}\n\nimpl AuthService {\n    pub fn new(secret: &str) -> Self {\n        AuthService {\n            secret_key: secret.to_string(),\n        }\n    }\n\n    pub fn verify_token(&self, token: &str) -> bool {\n        // In a real app, you'd have complex logic here.\n        token.len() > 10 && self.secret_key != \"\"\n    }\n}\n\npub fn generate_secret() -> String {\n    \"super_secret_key_from_rust\".to_string()\n}\n`\n  },\n];\n\nexport const defaultFilesJSON = JSON.stringify(files, null, 2);"
+approved: true

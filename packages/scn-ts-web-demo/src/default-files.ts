@@ -8,13 +8,13 @@ import { Page } from './components/layout/Page';
 import { UserProfile } from './components/UserProfile';
 import { getUser } from './api/client';
 import { Log } from './services/logger';
-import { TokenProvider } from './auth/token';
+import { createTokenProvider } from './auth/token';
 import './styles/main.css';
 
 async function main() {
     Log('App starting...');
 
-    const tokenProvider = new TokenProvider();
+    const tokenProvider = createTokenProvider();
     console.log('Auth token:', tokenProvider.getToken());
 
     const user = await getUser('1');
@@ -240,15 +240,13 @@ export function capitalize(str: string): string {
     path: "src/auth/token.ts",
     content: `import { generate_secret } from '../services/auth'; // fake import from .rs
 
-export class TokenProvider {
-    private secret: string;
-    constructor() {
-        this.secret = generate_secret();
-    }
-
-    getToken(): string {
-        return \`fake-token-with-\${this.secret}\`;
-    }
+export function createTokenProvider() {
+    const secret = generate_secret();
+    return {
+        getToken(): string {
+            return \`fake-token-with-\${secret}\`;
+        }
+    };
 }
 `
   },

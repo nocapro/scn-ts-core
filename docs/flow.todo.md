@@ -1,8 +1,8 @@
-===
+=== DONE
 
-give cool stat of how many token difference between input and output. should provided by scn-ts-core level api
+give cool stat of how many token difference between input and output, also should sensitive to formatting options change. should provided by scn-ts-core level api
 
-===
+=== DONE
 
 token counter; js-tiktoken
 

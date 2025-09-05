@@ -18,7 +18,6 @@ packages/
         useAnalysis.hook.ts
         useClipboard.hook.ts
         useResizableSidebar.hook.ts
-        useTokenCounter.hook.ts
       lib/
         utils.ts
       services/
@@ -59,6 +58,7 @@ src/
   logger.ts
   main.ts
   parser.ts
+  tokenizer.ts
   types.ts
 package.json
 tsconfig.json
@@ -1108,44 +1108,58 @@ export const SCN_SYMBOLS = {
 export const RESOLVE_EXTENSIONS = ['.ts', '.tsx', '.js', '.jsx', '.css', '.go', '.rs', '.py', '.java', '.graphql', ''];
 ```
 
-## File: packages/scn-ts-web-demo/src/hooks/useTokenCounter.hook.ts
+## File: src/tokenizer.ts
 ```typescript
-import { useState, useEffect } from 'react';
 import { Tiktoken } from "js-tiktoken/lite";
 import cl100k_base from "js-tiktoken/ranks/cl100k_base";
-import type { LogEntry } from '../types';
+import { logger } from './logger';
 
-export function useTokenCounter(
-  filesInput: string,
-  scnOutput: string,
-  onLog: (log: Pick<LogEntry, 'level' | 'message'>) => void
-) {
-  const [encoder, setEncoder] = useState<Tiktoken | null>(null);
-  const [tokenCounts, setTokenCounts] = useState({ input: 0, output: 0 });
+let encoder: Tiktoken | null = null;
 
-  useEffect(() => {
-    try {
-      const enc = new Tiktoken(cl100k_base);
-      setEncoder(enc);
-    } catch (e) {
-      console.error("Failed to initialize tokenizer:", e);
-      onLog({ level: 'error', message: 'Failed to initialize tokenizer.' });
+/**
+ * Initializes the tokenizer. This is a lightweight, synchronous operation for the pure JS version.
+ * It's safe to call this multiple times.
+ * @returns {boolean} - True if initialization was successful, false otherwise.
+ */
+export function initializeTokenizer(): boolean {
+    if (encoder) {
+        return true;
     }
-  }, [onLog]);
-
-  useEffect(() => {
-    if (!encoder) return;
     try {
-      const inputTokens = encoder.encode(filesInput).length;
-      const outputTokens = encoder.encode(scnOutput).length;
-      setTokenCounts({ input: inputTokens, output: outputTokens });
+        encoder = new Tiktoken(cl100k_base);
+        logger.debug('Tokenizer initialized.');
+        return true;
     } catch (e) {
-      console.error("Tokenization error:", e);
-      setTokenCounts({ input: 0, output: 0 });
+        logger.error("Failed to initialize tokenizer:", e);
+        return false;
     }
-  }, [filesInput, scnOutput, encoder]);
+}
 
-  return tokenCounts;
+/**
+ * Counts the number of tokens in a given text string using the cl100k_base model.
+ * The tokenizer will be initialized on the first call if it hasn't been already.
+ *
+ * @param {string} text - The text to count tokens for.
+ * @returns {number} - The number of tokens, or 0 if tokenization fails.
+ */
+export function countTokens(text: string): number {
+    if (!encoder) {
+        const success = initializeTokenizer();
+        if (!success) {
+            return 0;
+        }
+    }
+
+    if (!text || !encoder) {
+        return 0;
+    }
+
+    try {
+        return encoder.encode(text).length;
+    } catch (e) {
+        logger.error("Tokenization error:", e);
+        return 0;
+    }
 }
 ```
 
@@ -1633,48 +1647,6 @@ export type WorkerApi = typeof workerApi;
 }
 ```
 
-## File: packages/scn-ts-web-demo/vite.config.ts
-```typescript
-import { defineConfig } from 'vite'
-import react from '@vitejs/plugin-react'
-import path from 'path'
-import wasm from 'vite-plugin-wasm'
-
-// https://vitejs.dev/config/
-export default defineConfig({
-  plugins: [
-    wasm(),
-    react()
-  ],
-  resolve: {
-    alias: {
-      "@": path.resolve(__dirname, "src"),
-      "scn-ts-core": path.resolve(__dirname, "../../src/index.ts"),
-    },
-  },
-  optimizeDeps: {
-    // Exclude packages that have special loading mechanisms (like wasm)
-    // to prevent Vite from pre-bundling them and causing issues.
-    exclude: ['web-tree-sitter'],
-    // Force pre-bundling of our monorepo packages. As linked dependencies,
-    // Vite doesn't optimize it by default. We need to include it so Vite
-    // discovers its deep CJS dependencies (like graphology) and converts
-    // them to ESM for the dev server. We specifically `exclude` 'web-tree-sitter'
-    // above to prevent Vite from interfering with its unique WASM loading mechanism.
-    include: ['scn-ts-core'],
-  },
-  server: {
-    headers: {
-      // These headers are required for SharedArrayBuffer, which is used by
-      // web-tree-sitter and is good practice for applications using wasm
-      // with threading or advanced memory features.
-      'Cross-Origin-Embedder-Policy': 'require-corp',
-      'Cross-Origin-Opener-Policy': 'same-origin',
-    },
-  },
-})
-```
-
 ## File: packages/scn-ts-web-demo/src/components/OutputOptions.tsx
 ```typescript
 import * as React from 'react';
@@ -2070,208 +2042,48 @@ export function useAnalysis() {
 }
 ```
 
-## File: packages/scn-ts-web-demo/src/App.tsx
+## File: packages/scn-ts-web-demo/vite.config.ts
 ```typescript
-import { useEffect, useCallback, useMemo, useRef } from 'react';
-import { generateScn } from 'scn-ts-core';
-import { Button } from './components/ui/button';
-import { Textarea } from './components/ui/textarea';
-import LogViewer from './components/LogViewer';
-import OutputOptions, { type OutputOptionsHandle } from './components/OutputOptions';
-import { Legend } from './components/Legend';
-import { Play, Loader, Copy, Check, StopCircle, ChevronsDown, ChevronsUp } from 'lucide-react';
-import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from './components/ui/accordion';
-import { useAnalysis } from './hooks/useAnalysis.hook';
-import { useClipboard } from './hooks/useClipboard.hook';
-import { useResizableSidebar } from './hooks/useResizableSidebar.hook';
-import { useTokenCounter } from './hooks/useTokenCounter.hook';
-import { useAppStore } from './stores/app.store';
-import type { CodeSymbol } from 'scn-ts-core';
+import { defineConfig } from 'vite'
+import react from '@vitejs/plugin-react'
+import path from 'path'
+import wasm from 'vite-plugin-wasm'
+import topLevelAwait from 'vite-plugin-top-level-await'
 
-function App() {
-  const {
-    filesInput,
-    setFilesInput,
-    scnOutput,
-    setScnOutput,
-    formattingOptions,
-    setFormattingOptions,
-  } = useAppStore();
-
-  const {
-    isInitialized,
-    isLoading,
-    analysisResult,
-    progress,
-    logs,
-    analysisTime,
-    handleAnalyze: performAnalysis,
-    handleStop,
-    onLogPartial,
-  } = useAnalysis();
-
-  const outputOptionsRef = useRef<OutputOptionsHandle>(null);
-
-  const { sidebarWidth, handleMouseDown } = useResizableSidebar(480);
-  const { isCopied, handleCopy: performCopy } = useClipboard();
-  const tokenCounts = useTokenCounter(filesInput, scnOutput, onLogPartial);
-
-  useEffect(() => {
-    if (analysisResult) {
-      setScnOutput(generateScn(analysisResult, formattingOptions));
-    } else {
-      setScnOutput('');
-    }
-  }, [analysisResult, formattingOptions]);
-
-  const handleCopy = useCallback(() => {
-    performCopy(scnOutput);
-  }, [performCopy, scnOutput]);
-
-  const handleAnalyze = useCallback(async () => {
-    performAnalysis(filesInput);
-  }, [performAnalysis, filesInput]);
-
-  const handleExpandOptions = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    outputOptionsRef.current?.expandAll();
-  };
-
-  const handleCollapseOptions = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    outputOptionsRef.current?.collapseAll();
-  };
-
-  const { totalSymbols, visibleSymbols } = useMemo(() => {
-    if (!analysisResult) {
-      return { totalSymbols: 0, visibleSymbols: 0 };
-    }
-    const allSymbols: CodeSymbol[] = analysisResult.flatMap(file => file.symbols);
-    const total = allSymbols.length;
-    const visible = allSymbols.filter(symbol => {
-      return formattingOptions.displayFilters?.[symbol.kind] !== false;
-    }).length;
-    return { totalSymbols: total, visibleSymbols: visible };
-  }, [analysisResult, formattingOptions.displayFilters]);
-
-  return (
-    <div className="h-screen w-screen flex bg-background text-foreground overflow-hidden">
-      {/* Sidebar */}
-      <aside style={{ width: `${sidebarWidth}px` }} className="max-w-[80%] min-w-[320px] flex-shrink-0 flex flex-col border-r">
-        <div className="flex-shrink-0 flex items-center justify-between p-4 border-b bg-background relative z-20">
-          <h1 className="text-xl font-bold tracking-tight">SCN-TS Web Demo</h1>
-          <div className="flex items-center space-x-2">
-            {isLoading ? (
-              <>
-                <Button disabled className="w-32 justify-center">
-                  <Loader className="mr-2 h-4 w-4 animate-spin" />
-                  <span>{progress ? `${Math.round(progress.percentage)}%` : 'Analyzing...'}</span>
-                </Button>
-                <Button onClick={handleStop} variant="outline" size="icon" title="Stop analysis">
-                  <StopCircle className="h-4 w-4" />
-                </Button>
-              </>
-            ) : (
-              <Button onClick={handleAnalyze} disabled={!isInitialized} className="w-32 justify-center">
-                <Play className="mr-2 h-4 w-4" />
-                <span>Analyze</span>
-              </Button>
-            )}
-          </div>
-        </div>
-
-        <div className="flex-grow overflow-y-auto">
-          <Accordion type="multiple" defaultValue={['input', 'options', 'logs']} className="w-full">
-            <AccordionItem value="input">
-              <AccordionTrigger className="px-4 text-sm font-semibold hover:no-underline">
-                <div className="flex w-full justify-between items-center">
-                  <span>Input Files (JSON)</span>
-                  <span className="text-xs font-normal text-muted-foreground tabular-nums">
-                    {tokenCounts.input.toLocaleString()} tokens
-                  </span>
-                </div>
-              </AccordionTrigger>
-              <AccordionContent>
-                <div className="px-4 pb-4 h-96">
-                  <Textarea
-                    value={filesInput}
-                    onChange={(e) => setFilesInput(e.currentTarget.value)}
-                    className="h-full w-full font-mono text-xs resize-none"
-                    placeholder="Paste an array of FileContent objects here..."
-                  />
-                </div>
-              </AccordionContent>
-            </AccordionItem>
-
-            <AccordionItem value="options">
-              <AccordionTrigger className="px-4 text-sm font-semibold hover:no-underline">
-                <div className="flex w-full justify-between items-center">
-                  <span>Formatting Options</span>
-                  <div className="flex items-center gap-2">
-                    {analysisResult && (
-                      <span className="text-xs font-normal text-muted-foreground tabular-nums">
-                        {visibleSymbols} / {totalSymbols} symbols
-                      </span>
-                    )}
-                    <Button variant="ghost" size="icon" onClick={handleExpandOptions} title="Expand all" className="h-7 w-7 text-muted-foreground hover:text-foreground">
-                      <ChevronsDown className="h-4 w-4" />
-                    </Button>
-                    <Button variant="ghost" size="icon" onClick={handleCollapseOptions} title="Collapse all" className="h-7 w-7 text-muted-foreground hover:text-foreground">
-                      <ChevronsUp className="h-4 w-4" />
-                    </Button>
-                  </div>
-                </div>
-              </AccordionTrigger>
-              <AccordionContent className="px-4">
-                <OutputOptions ref={outputOptionsRef} options={formattingOptions} setOptions={setFormattingOptions} />
-              </AccordionContent>
-            </AccordionItem>
-
-            <AccordionItem value="logs">
-              <AccordionTrigger className="px-4 text-sm font-semibold hover:no-underline">Logs</AccordionTrigger>
-              <AccordionContent className="px-4">
-                <LogViewer logs={logs} />
-              </AccordionContent>
-            </AccordionItem>
-          </Accordion>
-        </div>
-      </aside>
-
-      {/* Resizer */}
-      <div
-        role="separator"
-        onMouseDown={handleMouseDown}
-        className="w-1.5 flex-shrink-0 cursor-col-resize hover:bg-primary/20 transition-colors duration-200"
-      />
-
-      {/* Main Content Area */}
-      <main className="flex-grow flex flex-col overflow-hidden relative">
-        <div className="flex justify-between items-center p-4 border-b flex-shrink-0">
-          <h2 className="text-lg font-semibold leading-none tracking-tight">Output (SCN)</h2>
-          <div className="flex items-center gap-4">
-            {analysisTime !== null && (
-              <span className="text-sm text-muted-foreground">
-                Analyzed in {(analysisTime / 1000).toFixed(2)}s
-              </span>
-            )}
-            <span className="text-sm font-normal text-muted-foreground tabular-nums">{tokenCounts.output.toLocaleString()} tokens</span>
-            <Button variant="ghost" size="icon" onClick={handleCopy} disabled={!scnOutput} title="Copy to clipboard">
-              {isCopied ? <Check className="h-4 w-4 text-green-500" /> : <Copy className="h-4 w-4" />}
-            </Button>
-          </div>
-        </div>
-        <div className="p-4 flex-grow overflow-auto font-mono text-xs relative">
-          <Legend />
-          <pre className="whitespace-pre-wrap">
-            {scnOutput || (isLoading ? "Generating..." : "Output will appear here.")}
-          </pre>
-        </div>
-      </main>
-    </div>
-  );
-}
-
-export default App;
+// https://vitejs.dev/config/
+export default defineConfig({
+  plugins: [
+    wasm(),
+    topLevelAwait(),
+    react()
+  ],
+  resolve: {
+    alias: {
+      "@": path.resolve(__dirname, "src"),
+      "scn-ts-core": path.resolve(__dirname, "../../src/index.ts"),
+    },
+  },
+  optimizeDeps: {
+    // Exclude packages that have special loading mechanisms (like wasm)
+    // to prevent Vite from pre-bundling them and causing issues.
+    exclude: ['web-tree-sitter'],
+    // Force pre-bundling of our monorepo packages. As linked dependencies,
+    // Vite doesn't optimize it by default. We need to include it so Vite
+    // discovers its deep CJS dependencies (like graphology) and converts
+    // them to ESM for the dev server. We specifically `exclude` 'web-tree-sitter'
+    // above to prevent Vite from interfering with its unique WASM loading mechanism.
+    include: ['scn-ts-core'],
+  },
+  server: {
+    headers: {
+      // These headers are required for SharedArrayBuffer, which is used by
+      // web-tree-sitter and is good practice for applications using wasm
+      // with threading or advanced memory features.
+      'Cross-Origin-Embedder-Policy': 'require-corp',
+      'Cross-Origin-Opener-Policy': 'same-origin',
+    },
+  },
+})
 ```
 
 ## File: src/utils/ast.ts
@@ -2344,34 +2156,6 @@ export const getPathResolver = (tsconfig?: TsConfig | null): PathResolver => {
     // The final paths we create should be relative to the root to match our file list.
     return createPathResolver(baseUrl, paths);
 };
-```
-
-## File: src/index.ts
-```typescript
-export {
-    initializeParser,
-    generateScn,
-    generateScnFromConfig,
-    analyzeProject,
-    logger,
-} from './main';
-
-export { ICONS, SCN_SYMBOLS } from './constants';
-
-export type {
-    ParserInitOptions,
-    SourceFile,
-    LogLevel,
-    InputFile,
-    TsConfig,
-    ScnTsConfig,
-    AnalyzeProjectOptions,
-    LogHandler,
-    FormattingOptions,
-    FileContent,
-    CodeSymbol,
-    SymbolKind
-} from './main';
 ```
 
 ## File: src/languages.ts
@@ -2535,6 +2319,219 @@ class Logger {
 export const logger = new Logger();
 ```
 
+## File: packages/scn-ts-web-demo/src/App.tsx
+```typescript
+import { useEffect, useCallback, useMemo, useRef } from 'react';
+import { generateScn, initializeTokenizer, countTokens } from 'scn-ts-core';
+import { Button } from './components/ui/button';
+import { Textarea } from './components/ui/textarea';
+import LogViewer from './components/LogViewer';
+import OutputOptions, { type OutputOptionsHandle } from './components/OutputOptions';
+import { Legend } from './components/Legend';
+import { Play, Loader, Copy, Check, StopCircle, ChevronsDown, ChevronsUp } from 'lucide-react';
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from './components/ui/accordion';
+import { useAnalysis } from './hooks/useAnalysis.hook';
+import { useClipboard } from './hooks/useClipboard.hook';
+import { useResizableSidebar } from './hooks/useResizableSidebar.hook';
+import { useAppStore } from './stores/app.store';
+import type { CodeSymbol } from 'scn-ts-core';
+
+function App() {
+  const {
+    filesInput,
+    setFilesInput,
+    scnOutput,
+    setScnOutput,
+    formattingOptions,
+    setFormattingOptions,
+  } = useAppStore();
+
+  const {
+    isInitialized,
+    isLoading,
+    analysisResult,
+    progress,
+    logs,
+    analysisTime,
+    handleAnalyze: performAnalysis,
+    handleStop,
+    onLogPartial,
+  } = useAnalysis();
+
+  const outputOptionsRef = useRef<OutputOptionsHandle>(null);
+
+  const { sidebarWidth, handleMouseDown } = useResizableSidebar(480);
+  const { isCopied, handleCopy: performCopy } = useClipboard();
+
+  useEffect(() => {
+    if (!initializeTokenizer()) {
+      onLogPartial({ level: 'error', message: 'Failed to initialize tokenizer.' });
+    }
+  }, [onLogPartial]);
+
+  useEffect(() => {
+    if (analysisResult) {
+      setScnOutput(generateScn(analysisResult, formattingOptions));
+    } else {
+      setScnOutput('');
+    }
+  }, [analysisResult, formattingOptions]);
+
+  const tokenCounts = useMemo(() => ({
+    input: countTokens(filesInput),
+    output: countTokens(scnOutput)
+  }), [filesInput, scnOutput]);
+
+  const handleCopy = useCallback(() => {
+    performCopy(scnOutput);
+  }, [performCopy, scnOutput]);
+
+  const handleAnalyze = useCallback(async () => {
+    performAnalysis(filesInput);
+  }, [performAnalysis, filesInput]);
+
+  const handleExpandOptions = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    outputOptionsRef.current?.expandAll();
+  };
+
+  const handleCollapseOptions = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    outputOptionsRef.current?.collapseAll();
+  };
+
+  const { totalSymbols, visibleSymbols } = useMemo(() => {
+    if (!analysisResult) {
+      return { totalSymbols: 0, visibleSymbols: 0 };
+    }
+    const allSymbols: CodeSymbol[] = analysisResult.flatMap(file => file.symbols);
+    const total = allSymbols.length;
+    const visible = allSymbols.filter(symbol => {
+      return formattingOptions.displayFilters?.[symbol.kind] !== false;
+    }).length;
+    return { totalSymbols: total, visibleSymbols: visible };
+  }, [analysisResult, formattingOptions.displayFilters]);
+
+  return (
+    <div className="h-screen w-screen flex bg-background text-foreground overflow-hidden">
+      {/* Sidebar */}
+      <aside style={{ width: `${sidebarWidth}px` }} className="max-w-[80%] min-w-[320px] flex-shrink-0 flex flex-col border-r">
+        <div className="flex-shrink-0 flex items-center justify-between p-4 border-b bg-background relative z-20">
+          <h1 className="text-xl font-bold tracking-tight">SCN-TS Web Demo</h1>
+          <div className="flex items-center space-x-2">
+            {isLoading ? (
+              <>
+                <Button disabled className="w-32 justify-center">
+                  <Loader className="mr-2 h-4 w-4 animate-spin" />
+                  <span>{progress ? `${Math.round(progress.percentage)}%` : 'Analyzing...'}</span>
+                </Button>
+                <Button onClick={handleStop} variant="outline" size="icon" title="Stop analysis">
+                  <StopCircle className="h-4 w-4" />
+                </Button>
+              </>
+            ) : (
+              <Button onClick={handleAnalyze} disabled={!isInitialized} className="w-32 justify-center">
+                <Play className="mr-2 h-4 w-4" />
+                <span>Analyze</span>
+              </Button>
+            )}
+          </div>
+        </div>
+
+        <div className="flex-grow overflow-y-auto">
+          <Accordion type="multiple" defaultValue={['input', 'options', 'logs']} className="w-full">
+            <AccordionItem value="input">
+              <AccordionTrigger className="px-4 text-sm font-semibold hover:no-underline">
+                <div className="flex w-full justify-between items-center">
+                  <span>Input Files (JSON)</span>
+                  <span className="text-xs font-normal text-muted-foreground tabular-nums">
+                    {tokenCounts.input.toLocaleString()} tokens
+                  </span>
+                </div>
+              </AccordionTrigger>
+              <AccordionContent>
+                <div className="px-4 pb-4 h-96">
+                  <Textarea
+                    value={filesInput}
+                    onChange={(e) => setFilesInput(e.currentTarget.value)}
+                    className="h-full w-full font-mono text-xs resize-none"
+                    placeholder="Paste an array of FileContent objects here..."
+                  />
+                </div>
+              </AccordionContent>
+            </AccordionItem>
+
+            <AccordionItem value="options">
+              <AccordionTrigger className="px-4 text-sm font-semibold hover:no-underline">
+                <div className="flex w-full justify-between items-center">
+                  <span>Formatting Options</span>
+                  <div className="flex items-center gap-2">
+                    {analysisResult && (
+                      <span className="text-xs font-normal text-muted-foreground tabular-nums">
+                        {visibleSymbols} / {totalSymbols} symbols
+                      </span>
+                    )}
+                    <Button variant="ghost" size="icon" onClick={handleExpandOptions} title="Expand all" className="h-7 w-7 text-muted-foreground hover:text-foreground">
+                      <ChevronsDown className="h-4 w-4" />
+                    </Button>
+                    <Button variant="ghost" size="icon" onClick={handleCollapseOptions} title="Collapse all" className="h-7 w-7 text-muted-foreground hover:text-foreground">
+                      <ChevronsUp className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
+              </AccordionTrigger>
+              <AccordionContent className="px-4">
+                <OutputOptions ref={outputOptionsRef} options={formattingOptions} setOptions={setFormattingOptions} />
+              </AccordionContent>
+            </AccordionItem>
+
+            <AccordionItem value="logs">
+              <AccordionTrigger className="px-4 text-sm font-semibold hover:no-underline">Logs</AccordionTrigger>
+              <AccordionContent className="px-4">
+                <LogViewer logs={logs} />
+              </AccordionContent>
+            </AccordionItem>
+          </Accordion>
+        </div>
+      </aside>
+
+      {/* Resizer */}
+      <div
+        role="separator"
+        onMouseDown={handleMouseDown}
+        className="w-1.5 flex-shrink-0 cursor-col-resize hover:bg-primary/20 transition-colors duration-200"
+      />
+
+      {/* Main Content Area */}
+      <main className="flex-grow flex flex-col overflow-hidden relative">
+        <div className="flex justify-between items-center p-4 border-b flex-shrink-0">
+          <h2 className="text-lg font-semibold leading-none tracking-tight">Output (SCN)</h2>
+          <div className="flex items-center gap-4">
+            {analysisTime !== null && (
+              <span className="text-sm text-muted-foreground">
+                Analyzed in {(analysisTime / 1000).toFixed(2)}s
+              </span>
+            )}
+            <span className="text-sm font-normal text-muted-foreground tabular-nums">{tokenCounts.output.toLocaleString()} tokens</span>
+            <Button variant="ghost" size="icon" onClick={handleCopy} disabled={!scnOutput} title="Copy to clipboard">
+              {isCopied ? <Check className="h-4 w-4 text-green-500" /> : <Copy className="h-4 w-4" />}
+            </Button>
+          </div>
+        </div>
+        <div className="p-4 flex-grow overflow-auto font-mono text-xs relative">
+          <Legend />
+          <pre className="whitespace-pre-wrap">
+            {scnOutput || (isLoading ? "Generating..." : "Output will appear here.")}
+          </pre>
+        </div>
+      </main>
+    </div>
+  );
+}
+
+export default App;
+```
+
 ## File: src/queries/go.ts
 ```typescript
 export const goQueries = `
@@ -2596,6 +2593,36 @@ export const rustQueries = `
 ((trait_item (visibility_modifier) @mod.export))
 ((function_item (visibility_modifier) @mod.export))
 `;
+```
+
+## File: src/index.ts
+```typescript
+export {
+    initializeParser,
+    generateScn,
+    generateScnFromConfig,
+    analyzeProject,
+    logger,
+    initializeTokenizer,
+    countTokens,
+} from './main';
+
+export { ICONS, SCN_SYMBOLS } from './constants';
+
+export type {
+    ParserInitOptions,
+    SourceFile,
+    LogLevel,
+    InputFile,
+    TsConfig,
+    ScnTsConfig,
+    AnalyzeProjectOptions,
+    LogHandler,
+    FormattingOptions,
+    FileContent,
+    CodeSymbol,
+    SymbolKind
+} from './main';
 ```
 
 ## File: tsconfig.json
@@ -2802,6 +2829,9 @@ export const resolveGraph = (sourceFiles: SourceFile[], pathResolver: PathResolv
   "module": "src/index.ts",
   "type": "module",
   "private": true,
+  "dependencies": {
+    "js-tiktoken": "^1.0.21"
+  },
   "scripts": {
     "check": "tsc --build"
   },
@@ -2827,11 +2857,18 @@ import path from './utils/path';
 import { getPathResolver } from './utils/tsconfig';
 import { resolveGraph } from './graph-resolver';
 import { logger } from './logger';
+import { initializeTokenizer as initTokenizer, countTokens as countTokensInternal } from './tokenizer';
 
 /**
  * Public API to initialize the parser. Must be called before any other APIs.
  */
 export const initializeParser = (options: ParserInitOptions): Promise<void> => init(options);
+
+/**
+ * Initializes the tokenizer. Call this for consistency, although `countTokens` will auto-initialize.
+ * It's a synchronous and lightweight operation.
+ */
+export const initializeTokenizer = (): boolean => initTokenizer();
 
 // Types for web demo
 export type { ParserInitOptions, SourceFile, LogLevel, InputFile, TsConfig, ScnTsConfig, AnalyzeProjectOptions, LogHandler, FormattingOptions, CodeSymbol, SymbolKind } from './types';
@@ -2839,6 +2876,11 @@ export type FileContent = InputFile;
 
 // Exports for web demo. The constants are exported from index.ts directly.
 export { logger };
+
+/**
+ * Counts tokens in a string using the cl100k_base model.
+ */
+export const countTokens = (text: string): number => countTokensInternal(text);
 
 /**
  * Generate SCN from analyzed source files

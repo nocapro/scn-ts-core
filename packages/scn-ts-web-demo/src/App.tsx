@@ -11,6 +11,7 @@ import { useAnalysis } from './hooks/useAnalysis.hook';
 import { useClipboard } from './hooks/useClipboard.hook';
 import { useResizableSidebar } from './hooks/useResizableSidebar.hook';
 import { useAppStore } from './stores/app.store';
+import { cn } from './lib/utils';
 import type { CodeSymbol } from 'scn-ts-core';
 
 function App() {
@@ -54,10 +55,18 @@ function App() {
     }
   }, [analysisResult, formattingOptions]);
 
-  const tokenCounts = useMemo(() => ({
-    input: countTokens(filesInput),
-    output: countTokens(scnOutput)
-  }), [filesInput, scnOutput]);
+  const { tokenCounts, tokenReductionPercent } = useMemo(() => {
+    const input = countTokens(filesInput);
+    const output = countTokens(scnOutput);
+    let reductionPercent: number | null = null;
+    if (input > 0) {
+      reductionPercent = ((input - output) / input) * 100;
+    }
+    return {
+      tokenCounts: { input, output },
+      tokenReductionPercent: reductionPercent,
+    };
+  }, [filesInput, scnOutput]);
 
   const handleCopy = useCallback(() => {
     performCopy(scnOutput);
@@ -190,6 +199,18 @@ function App() {
               </span>
             )}
             <span className="text-sm font-normal text-muted-foreground tabular-nums">{tokenCounts.output.toLocaleString()} tokens</span>
+            {tokenReductionPercent !== null && analysisResult && (
+              <span
+                className={cn(
+                  "text-sm font-medium tabular-nums",
+                  tokenReductionPercent >= 0 ? "text-green-500" : "text-red-500"
+                )}
+                title="Token count change from input to output"
+              >
+                {tokenReductionPercent >= 0 ? '▼' : '▲'}{' '}
+                {Math.abs(tokenReductionPercent).toFixed(0)}%
+              </span>
+            )}
             <Button variant="ghost" size="icon" onClick={handleCopy} disabled={!scnOutput} title="Copy to clipboard">
               {isCopied ? <Check className="h-4 w-4 text-green-500" /> : <Copy className="h-4 w-4" />}
             </Button>

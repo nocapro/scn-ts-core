@@ -9,6 +9,7 @@ packages/
           button.tsx
           card.tsx
           textarea.tsx
+        Legend.tsx
         LogViewer.tsx
         OutputOptions.tsx
       lib/
@@ -258,6 +259,126 @@ Textarea.displayName = "Textarea"
 export { Textarea }
 ```
 
+## File: packages/scn-ts-web-demo/src/components/Legend.tsx
+```typescript
+import * as React from 'react';
+import { Button } from './ui/button';
+import { HelpCircle, X } from 'lucide-react';
+import { ICONS, SCN_SYMBOLS } from '../../../src/main';
+import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
+import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from "./ui/accordion"
+
+const symbolIcons = [
+  { symbol: ICONS.class, description: 'Class or Component' },
+  { symbol: ICONS.react_component, description: 'Class or Component' },
+  { symbol: ICONS.interface, description: 'Interface or Trait' },
+  { symbol: ICONS.rust_trait, description: 'Interface or Trait' },
+  { symbol: ICONS.function, description: 'Function or Method' },
+  { symbol: ICONS.method, description: 'Function or Method' },
+  { symbol: ICONS.styled_component, description: 'Function or Method' },
+  { symbol: ICONS.variable, description: 'Variable or Property' },
+  { symbol: ICONS.property, description: 'Variable or Property' },
+  { symbol: ICONS.enum, description: 'Enum' },
+  { symbol: ICONS.type_alias, description: 'Type Alias' },
+  { symbol: ICONS.jsx_element, description: 'JSX Element' },
+  { symbol: ICONS.css_class, description: 'CSS Selector' },
+];
+
+const legendSections = [
+  {
+    title: 'Prefixes',
+    items: [
+      { symbol: SCN_SYMBOLS.FILE_PREFIX, description: 'File path' },
+      { symbol: SCN_SYMBOLS.EXPORTED_PREFIX, description: 'Exported symbol' },
+      { symbol: SCN_SYMBOLS.PRIVATE_PREFIX, description: 'Private/unexported symbol' },
+    ],
+  },
+  {
+    title: 'Symbol Icons',
+    items: Array.from(new Map(symbolIcons.map(item => [item.symbol, item])).values()),
+  },
+  {
+    title: 'Relationships',
+    items: [
+      { symbol: SCN_SYMBOLS.OUTGOING_ARROW, description: 'Outgoing dependency' },
+      { symbol: SCN_SYMBOLS.INCOMING_ARROW, description: 'Incoming dependency' },
+    ],
+  },
+  {
+    title: 'Modifiers & Tags',
+    items: [
+      { symbol: SCN_SYMBOLS.ASYNC, description: 'Async' },
+      { symbol: SCN_SYMBOLS.THROWS, description: 'Throws error' },
+      { symbol: SCN_SYMBOLS.PURE, description: 'Pure (no side-effects)' },
+      { symbol: SCN_SYMBOLS.TAG_STYLED, description: 'Styled component' },
+      { symbol: SCN_SYMBOLS.TAG_DYNAMIC, description: 'Dynamic import' },
+      { symbol: SCN_SYMBOLS.TAG_GENERATED, description: 'Generated file' },
+    ],
+  },
+];
+
+const LegendItem: React.FC<{ symbol: string; description: string }> = ({ symbol, description }) => (
+  <div className="grid grid-cols-[3rem_1fr] items-center gap-x-3 text-sm">
+    <code className="font-mono text-base font-bold text-foreground/90 justify-self-center">{symbol}</code>
+    <span className="text-muted-foreground">{description}</span>
+  </div>
+);
+
+export const Legend: React.FC = () => {
+  const [isOpen, setIsOpen] = React.useState(false);
+
+  if (!isOpen) {
+    return (
+      <div className="absolute top-4 right-4 z-30">
+        <Button
+          variant="secondary"
+          size="icon"
+          onClick={() => setIsOpen(true)}
+          title="Show Legend"
+          className="rounded-full shadow-lg"
+        >
+          <HelpCircle className="h-5 w-5" />
+        </Button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="absolute top-4 right-4 z-30">
+      <Card className="w-80 max-h-[80vh] flex flex-col shadow-2xl bg-background/90 backdrop-blur-sm">
+        <CardHeader className="flex flex-row items-center justify-between py-3 px-4 border-b">
+          <CardTitle className="text-base">Legend</CardTitle>
+          <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setIsOpen(false)}>
+            <X className="h-4 w-4" />
+          </Button>
+        </CardHeader>
+        <CardContent className="p-0 overflow-y-auto">
+          <Accordion type="multiple" defaultValue={legendSections.map(s => s.title)} className="w-full">
+            {legendSections.map(({ title, items }) => (
+              <AccordionItem key={title} value={title}>
+                <AccordionTrigger className="px-4 py-2 text-sm hover:no-underline">{title}</AccordionTrigger>
+                <AccordionContent className="px-4 pb-3">
+                  <div className="space-y-1.5">
+                    {items.map(({ symbol, description }) =>
+                      symbol && <LegendItem key={`${symbol}-${description}`} symbol={symbol} description={description} />
+                    )}
+                  </div>
+                </AccordionContent>
+              </AccordionItem>
+            ))}
+          </Accordion>
+        </CardContent>
+      </Card>
+    </div>
+  );
+};
+```
+
 ## File: packages/scn-ts-web-demo/src/components/LogViewer.tsx
 ```typescript
 import React, { useRef, useState, useCallback } from 'react';
@@ -365,7 +486,6 @@ import * as React from 'react';
 import type { FormattingOptions } from '../types';
 import { ChevronDown, ChevronRight, Expand, Shrink } from 'lucide-react';
 import { Button } from './ui/button';
-import { ICONS, SCN_SYMBOLS } from '../../../../index';
 
 interface OutputOptionsProps {
   options: FormattingOptions;
@@ -389,69 +509,6 @@ const OptionCheckbox: React.FC<{
     <label htmlFor={id} className="cursor-pointer select-none text-sm text-muted-foreground">
       {label}
     </label>
-  </div>
-);
-
-const symbolIcons = [
-  { symbol: ICONS.class, description: 'Class or Component' },
-  { symbol: ICONS.react_component, description: 'Class or Component' },
-  { symbol: ICONS.interface, description: 'Interface or Trait' },
-  { symbol: ICONS.rust_trait, description: 'Interface or Trait' },
-  { symbol: ICONS.function, description: 'Function or Method' },
-  { symbol: ICONS.method, description: 'Function or Method' },
-  { symbol: ICONS.styled_component, description: 'Function or Method' },
-  { symbol: ICONS.variable, description: 'Variable or Property' },
-  { symbol: ICONS.property, description: 'Variable or Property' },
-  { symbol: ICONS.enum, description: 'Enum' },
-  { symbol: ICONS.type_alias, description: 'Type Alias' },
-  { symbol: ICONS.jsx_element, description: 'JSX Element' },
-  { symbol: ICONS.css_class, description: 'CSS Selector' },
-];
-
-const legendSections = [
-  {
-    title: 'Prefixes',
-    items: [
-      { symbol: SCN_SYMBOLS.FILE_PREFIX, description: 'File path' },
-      { symbol: SCN_SYMBOLS.EXPORTED_PREFIX, description: 'Exported symbol' },
-      { symbol: SCN_SYMBOLS.PRIVATE_PREFIX, description: 'Private/unexported symbol' },
-    ],
-  },
-  {
-    title: 'Symbol Icons',
-    items: Array.from(new Map(symbolIcons.map(item => [item.symbol, item])).values()),
-  },
-  {
-    title: 'Relationships',
-    items: [
-      { symbol: SCN_SYMBOLS.OUTGOING_ARROW, description: 'Outgoing dependency' },
-      { symbol: SCN_SYMBOLS.INCOMING_ARROW, description: 'Incoming dependency' },
-    ],
-  },
-  {
-    title: 'Modifiers & Tags',
-    items: [
-      { symbol: SCN_SYMBOLS.ASYNC, description: 'Async' },
-      { symbol: SCN_SYMBOLS.THROWS, description: 'Throws error' },
-      { symbol: SCN_SYMBOLS.PURE, description: 'Pure (no side-effects)' },
-      { symbol: SCN_SYMBOLS.TAG_STYLED, description: 'Styled component' },
-      { symbol: SCN_SYMBOLS.TAG_DYNAMIC, description: 'Dynamic import' },
-      { symbol: SCN_SYMBOLS.TAG_GENERATED, description: 'Generated file' },
-    ],
-  },
-];
-
-const LegendItem: React.FC<{ symbol: string; description: string }> = ({ symbol, description }) => (
-  <div className="grid grid-cols-[3rem_1fr] items-center gap-x-3 text-sm">
-    <code className="font-mono text-base font-bold text-foreground/90 justify-self-center">{symbol}</code>
-    <span className="text-muted-foreground">{description}</span>
-  </div>
-);
-
-const LegendSection: React.FC<{ title: string; children: React.ReactNode }> = ({ title, children }) => (
-  <div className="pt-3 first:pt-0">
-    <h4 className="text-sm font-semibold mb-2 text-foreground">{title}</h4>
-    <div className="space-y-1.5">{children}</div>
   </div>
 );
 
@@ -712,18 +769,6 @@ const OutputOptions: React.FC<OutputOptionsProps> = ({ options, setOptions }) =>
       <div className="space-y-1">
         {optionTree.map(item => renderItem(item, 0))}
       </div>
-      <div className="pt-4 mt-4 border-t">
-        <h3 className="text-base font-semibold mb-2">Legend</h3>
-        <div className="space-y-2">
-          {legendSections.map(({title, items}) => (
-            <LegendSection key={title} title={title}>
-              {items.map(({symbol, description}) => (
-                <LegendItem key={`${symbol}-${description}`} symbol={symbol} description={description} />
-              ))}
-            </LegendSection>
-          ))}
-        </div>
-      </div>
     </div>
   );
 };
@@ -747,13 +792,14 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { get_encoding, type Tiktoken } from 'tiktoken';
 import * as Comlink from 'comlink';
 import type { Remote } from 'comlink';
-import { generateScn } from '../../../index';
-import type { SourceFile } from '../../../index';
+import { generateScn } from '../../../src/main';
+import type { SourceFile } from '../../../src/main';
 import { defaultFilesJSON } from './default-files';
 import { Button } from './components/ui/button';
 import { Textarea } from './components/ui/textarea';
 import LogViewer from './components/LogViewer';
 import OutputOptions from './components/OutputOptions';
+import { Legend } from './components/Legend';
 import { Play, Loader, Copy, Check, StopCircle } from 'lucide-react';
 import type { LogEntry, ProgressData, FormattingOptions } from './types';
 import type { WorkerApi } from './worker';
@@ -1003,7 +1049,8 @@ function App() {
       />
 
       {/* Main Content Area */}
-      <main className="flex-grow flex flex-col overflow-hidden">
+      <main className="flex-grow flex flex-col overflow-hidden relative">
+        <Legend />
         <div className="flex justify-between items-center p-4 border-b flex-shrink-0">
           <h2 className="text-lg font-semibold leading-none tracking-tight">Output (SCN)</h2>
           <div className="flex items-center gap-4">
@@ -1468,8 +1515,8 @@ export interface FormattingOptions {
 ## File: packages/scn-ts-web-demo/src/worker.ts
 ```typescript
 import * as Comlink from 'comlink';
-import { initializeParser, analyzeProject, logger } from '../../../index';
-import type { FileContent, LogLevel, SourceFile } from '../../../index';
+import { initializeParser, analyzeProject, logger } from '../../../src/main';
+import type { FileContent, LogLevel, SourceFile } from '../../../src/main';
 import type { LogEntry, ProgressData } from './types';
 
 // Define the API the worker will expose

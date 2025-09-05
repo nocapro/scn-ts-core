@@ -1,10 +1,18 @@
 ===
 
+scn-ts-core should has index.ts
+
+===
+
 make the codebase radically DRY without regression
 
 === DONE
 
 show legend in formatting options
+
+---
+
+show legend in output area as small float window just like vscode navigator, not in formatting options.
 
 === DONE
 

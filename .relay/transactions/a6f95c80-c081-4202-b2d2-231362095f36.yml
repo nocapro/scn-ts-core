@@ -1,0 +1,110 @@
+uuid: a6f95c80-c081-4202-b2d2-231362095f36
+projectId: scn-ts-core
+createdAt: '2025-09-05T03:05:38.491Z'
+linesAdded: 24
+linesRemoved: 2
+gitCommitMsg: 'fix(ts): resolve module export errors in web-demo'
+promptSummary: >-
+  Fix TypeScript errors related to missing exported members from scn-ts-core by
+  making exports in index.ts explicit and adding an `include` path to the root
+  tsconfig.json.
+reasoning:
+  - >-
+    Ah, classic monorepo woes. TypeScript is getting twisted up with the project
+    references and module resolution. The `export *` is sometimes finicky,
+    especially with modern module settings. And the root `tsconfig.json` is
+    missing an `include` which can confuse TypeScript about what files belong to
+    the `scn-ts-core` project.
+  - >-
+    The `implicitly has an 'any' type` error is a dead giveaway that this is a
+    cascading type resolution failure. If `SourceFile` isn't found, then
+    `analyzeProject`'s return type can't be inferred, `analysisResult` becomes
+    `any`, and so `file` becomes `any`.
+  - >-
+    I'll fix this by making the exports from `scn-ts-core` explicit and ensuring
+    the root tsconfig is properly configured.
+  - >-
+    First, I'll make the exports in `src/index.ts` explicit. This is more robust
+    and avoids any weirdness with `export *` and type-only exports.
+  - >-
+    Second, I'll add an `include` path to the root `tsconfig.json`. This tells
+    TypeScript which files are part of the `scn-ts-core` composite project,
+    which is crucial for project references to work correctly.
+  - >-
+    These two changes should clear up the module resolution confusion and get
+    TypeScript back on track.
+operations:
+  - type: write
+    path: src/index.ts
+    content: |-
+      export {
+          initializeParser,
+          generateScn,
+          generateScnFromConfig,
+          analyzeProject,
+          logger,
+          ICONS,
+          SCN_SYMBOLS
+      } from './main';
+
+      export type {
+          ParserInitOptions,
+          SourceFile,
+          LogLevel,
+          InputFile,
+          TsConfig,
+          ScnTsConfig,
+          AnalyzeProjectOptions,
+          LogHandler,
+          FormattingOptions,
+          FileContent
+      } from './main';
+    patchStrategy: replace
+  - type: write
+    path: tsconfig.json
+    content: |-
+      --- tsconfig.json
+      +++ tsconfig.json
+      @@ -23,5 +23,6 @@
+           "noUnusedLocals": true,
+           "noUnusedParameters": true,
+           "noPropertyAccessFromIndexSignature": false
+      -  }
+      +  },
+      +  "include": ["src"]
+       }
+    patchStrategy: new-unified
+snapshot:
+  src/index.ts: export * from './main';
+  tsconfig.json: |
+    {
+      "compilerOptions": {
+        "composite": true,
+        // Environment setup & latest features
+        "lib": ["ESNext", "DOM"],
+        "target": "ESNext",
+        "module": "Preserve",
+        "moduleDetection": "force",
+        "jsx": "react-jsx",
+        "allowJs": true,
+
+        // Bundler mode
+        "moduleResolution": "bundler",
+        "allowImportingTsExtensions": true,
+        "verbatimModuleSyntax": true,
+        "noEmit": true,
+
+        // Best practices
+        "strict": true,
+        "skipLibCheck": true,
+        "noFallthroughCasesInSwitch": true,
+        "noUncheckedIndexedAccess": true,
+        "noImplicitOverride": true,
+
+        // Some stricter flags (disabled by default)
+        "noUnusedLocals": true,
+        "noUnusedParameters": true,
+        "noPropertyAccessFromIndexSignature": false
+      }
+    }
+approved: true

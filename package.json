@@ -1,6 +1,6 @@
 {
   "name": "scn-ts-core",
-  "module": "src/main.ts",
+  "module": "src/index.ts",
   "type": "module",
   "private": true,
   "devDependencies": {

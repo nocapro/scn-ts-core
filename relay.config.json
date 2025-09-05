@@ -3,7 +3,7 @@
   "projectId": "scn-ts-core",
   "core": {
     "logLevel": "info",
-    "enableNotifications": true,
+    "enableNotifications": false,
     "watchConfig": true
   },
   "watcher": {

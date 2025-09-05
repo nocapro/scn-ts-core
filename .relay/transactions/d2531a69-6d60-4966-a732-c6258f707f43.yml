@@ -1,0 +1,1088 @@
+uuid: d2531a69-6d60-4966-a732-c6258f707f43
+projectId: scn-ts-core
+createdAt: '2025-09-05T00:42:13.317Z'
+linesAdded: 128
+linesRemoved: 53
+gitCommitMsg: 'feat(web-demo): refactor sidebar to use accordion layout'
+promptSummary: >-
+  Refactor the web demo sidebar to use an accordion layout for input, options,
+  and logs.
+reasoning:
+  - >-
+    yo, check it. i'm about to refactor this web demo sidebar to use accordions,
+    vscode-style. makes it cleaner and more organized.
+  - >-
+    first, gotta add a new accordion component from shadcn/ui. it's based on
+    radix-ui, so i'll also need to add the `@radix-ui/react-accordion` package
+    and configure tailwind for the animations.
+  - >-
+    then, i'll strip the `Card` wrappers from `OutputOptions` and `LogViewer`
+    since the accordion items will handle the framing.
+  - >-
+    finally, i'll gut the old sidebar layout in `App.tsx` and build it back up
+    with the new `Accordion` component, wrapping the input editor, format
+    options, and log viewer in collapsible sections. this will make the whole UI
+    feel slicker.
+  - let's get to it.
+  - '### 1. Create Accordion Component'
+  - >-
+    I'll start by creating the `accordion.tsx` UI component. This is a standard
+    implementation based on shadcn/ui and Radix UI.
+  - '### 2. Update Dependencies'
+  - I'll add the Radix UI accordion dependency to `package.json`.
+  - '### 3. Configure Animations'
+  - >-
+    Next, I'll add the necessary keyframes and animations for the accordion to
+    `tailwind.config.js`.
+  - '### 4. Refactor Child Components'
+  - >-
+    Now, I'll remove the `Card` wrappers from `LogViewer` and `OutputOptions` so
+    they can be placed inside the accordion.
+  - '### 5. Implement Accordion Layout in App'
+  - >-
+    Finally, I'll update `App.tsx` to use the new `Accordion` component for the
+    sidebar layout.
+operations:
+  - type: write
+    path: packages/scn-ts-web-demo/src/components/ui/accordion.tsx
+    content: |-
+      import * as React from "react"
+      import * as AccordionPrimitive from "@radix-ui/react-accordion"
+      import { ChevronDown } from "lucide-react"
+
+      import { cn } from "../../lib/utils"
+
+      const Accordion = AccordionPrimitive.Root
+
+      const AccordionItem = React.forwardRef<
+        React.ElementRef<typeof AccordionPrimitive.Item>,
+        React.ComponentPropsWithoutRef<typeof AccordionPrimitive.Item>
+      >(({ className, ...props }, ref) => (
+        <AccordionPrimitive.Item
+          ref={ref}
+          className={cn("border-b", className)}
+          {...props}
+        />
+      ))
+      AccordionItem.displayName = "AccordionItem"
+
+      const AccordionTrigger = React.forwardRef<
+        React.ElementRef<typeof AccordionPrimitive.Trigger>,
+        React.ComponentPropsWithoutRef<typeof AccordionPrimitive.Trigger>
+      >(({ className, children, ...props }, ref) => (
+        <AccordionPrimitive.Header className="flex">
+          <AccordionPrimitive.Trigger
+            ref={ref}
+            className={cn(
+              "flex flex-1 items-center justify-between py-4 font-medium transition-all hover:underline [&[data-state=open]>svg]:rotate-180",
+              className
+            )}
+            {...props}
+          >
+            {children}
+            <ChevronDown className="h-4 w-4 shrink-0 transition-transform duration-200" />
+          </AccordionPrimitive.Trigger>
+        </AccordionPrimitive.Header>
+      ))
+      AccordionTrigger.displayName = AccordionPrimitive.Trigger.displayName
+
+      const AccordionContent = React.forwardRef<
+        React.ElementRef<typeof AccordionPrimitive.Content>,
+        React.ComponentPropsWithoutRef<typeof AccordionPrimitive.Content>
+      >(({ className, children, ...props }, ref) => (
+        <AccordionPrimitive.Content
+          ref={ref}
+          className="overflow-hidden text-sm transition-all data-[state=closed]:animate-accordion-up data-[state=open]:animate-accordion-down"
+          {...props}
+        >
+          <div className={cn("pb-4 pt-0", className)}>{children}</div>
+        </AccordionPrimitive.Content>
+      ))
+
+      AccordionContent.displayName = AccordionPrimitive.Content.displayName
+
+      export { Accordion, AccordionItem, AccordionTrigger, AccordionContent }
+    patchStrategy: replace
+  - type: write
+    path: packages/scn-ts-web-demo/package.json
+    content: |-
+      --- packages/scn-ts-web-demo/package.json
+      +++ packages/scn-ts-web-demo/package.json
+      @@ -9,6 +9,7 @@
+           "prepare": "node scripts/prepare-wasm.cjs"
+         },
+         "dependencies": {
+      +    "@radix-ui/react-accordion": "^1.1.2",
+           "@radix-ui/react-slot": "^1.0.2",
+           "class-variance-authority": "^0.7.0",
+           "clsx": "^2.1.1",
+    patchStrategy: new-unified
+  - type: write
+    path: packages/scn-ts-web-demo/tailwind.config.js
+    content: |-
+      --- packages/scn-ts-web-demo/tailwind.config.js
+      +++ packages/scn-ts-web-demo/tailwind.config.js
+      @@ -7,6 +7,21 @@
+         ],
+         theme: {
+           extend: {
+      +      keyframes: {
+      +        "accordion-down": {
+      +          from: { height: 0 },
+      +          to: { height: "var(--radix-accordion-content-height)" },
+      +        },
+      +        "accordion-up": {
+      +          from: { height: "var(--radix-accordion-content-height)" },
+      +          to: { height: 0 },
+      +        },
+      +      },
+      +      animation: {
+      +        "accordion-down": "accordion-down 0.2s ease-out",
+      +        "accordion-up": "accordion-up 0.2s ease-out",
+      +      },
+             colors: {
+               border: "hsl(var(--border))",
+               input: "hsl(var(--input))",
+    patchStrategy: new-unified
+  - type: write
+    path: packages/scn-ts-web-demo/src/components/LogViewer.tsx
+    content: >-
+      --- packages/scn-ts-web-demo/src/components/LogViewer.tsx
+
+      +++ packages/scn-ts-web-demo/src/components/LogViewer.tsx
+
+      @@ -1,5 +1,4 @@
+       import React, { useEffect, useRef } from 'react';
+      -import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
+       import { cn } from '../lib/utils';
+       import type { LogEntry } from '../types';
+       import { levelColorMap } from '../constants';
+      @@ -14,24 +13,19 @@
+         }, [logs]);
+       
+         return (
+      -    <Card className="h-full flex flex-col">
+
+      -      <CardHeader className="py-2 px-4">
+
+      -        <CardTitle>Logs</CardTitle>
+
+      -      </CardHeader>
+
+      -      <CardContent ref={scrollContainerRef} className="flex-grow
+      overflow-auto p-0">
+
+      -        <div className="px-4 pb-4 pt-0 font-mono text-xs">
+
+      -          {logs.length === 0 && <p className="text-muted-foreground">No
+      logs yet. Click "Analyze" to start.</p>}
+
+      -          {logs.map((log, index) => (
+
+      -            <div key={index} className="flex items-start">
+
+      -              <span className="text-muted-foreground/80 mr-4
+      flex-shrink-0">
+
+      -                {new Date(log.timestamp).toLocaleTimeString()}
+
+      -              </span>
+
+      -              <span className={cn("font-bold w-14 flex-shrink-0",
+      levelColorMap[log.level])}>
+
+      -                [{log.level.toUpperCase()}]
+
+      -              </span>
+
+      -              <span className="whitespace-pre-wrap break-all
+      text-foreground">{log.message}</span>
+
+      -            </div>
+
+      -          ))}
+
+      -        </div>
+
+      -      </CardContent>
+
+      -    </Card>
+
+      +    <div ref={scrollContainerRef} className="h-full overflow-auto
+      font-mono text-xs">
+
+      +      {logs.length === 0 && <p className="text-muted-foreground">No logs
+      yet. Click "Analyze" to start.</p>}
+
+      +      {logs.map((log, index) => (
+
+      +        <div key={index} className="flex items-start">
+
+      +          <span className="text-muted-foreground/80 mr-4 flex-shrink-0">
+
+      +            {new Date(log.timestamp).toLocaleTimeString()}
+
+      +          </span>
+
+      +          <span className={cn("font-bold w-14 flex-shrink-0",
+      levelColorMap[log.level])}>
+
+      +            [{log.level.toUpperCase()}]
+
+      +          </span>
+
+      +          <span className="whitespace-pre-wrap break-all
+      text-foreground">{log.message}</span>
+
+      +        </div>
+
+      +      ))}
+
+      +    </div>
+         );
+       };
+       
+       export default LogViewer;
+    patchStrategy: new-unified
+  - type: write
+    path: packages/scn-ts-web-demo/src/components/OutputOptions.tsx
+    content: |-
+      --- packages/scn-ts-web-demo/src/components/OutputOptions.tsx
+      +++ packages/scn-ts-web-demo/src/components/OutputOptions.tsx
+      @@ -1,6 +1,5 @@
+       import * as React from 'react';
+       import type { FormattingOptions } from '../types';
+      -import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
+       import { ChevronDown, ChevronRight } from 'lucide-react';
+       
+       interface OutputOptionsProps {
+      @@ -218,15 +217,9 @@
+         };
+       
+         return (
+      -    <Card>
+      -      <CardHeader className="py-3">
+      -        <CardTitle className="text-base">Formatting Options</CardTitle>
+      -      </CardHeader>
+      -      <CardContent className="pt-0 pb-4 px-4 space-y-1">
+      -        {optionTree.map(item => renderItem(item, 0))}
+      -      </CardContent>
+      -    </Card>
+      +    <div className="space-y-1">
+      +      {optionTree.map(item => renderItem(item, 0))}
+      +    </div>
+         );
+       };
+       
+       export default OutputOptions;
+    patchStrategy: new-unified
+  - type: write
+    path: packages/scn-ts-web-demo/src/App.tsx
+    content: >-
+      --- packages/scn-ts-web-demo/src/App.tsx
+
+      +++ packages/scn-ts-web-demo/src/App.tsx
+
+      @@ -5,12 +5,12 @@
+         generateScn,
+       } from '../../../index';
+       import type { FileContent, LogHandler, SourceFile } from '../../../index';
+       import { defaultFilesJSON } from './default-files';
+       import { Button } from './components/ui/button';
+      -import { Card, CardContent, CardHeader, CardTitle } from
+      './components/ui/card';
+       import { Textarea } from './components/ui/textarea';
+       import LogViewer from './components/LogViewer';
+       import OutputOptions from './components/OutputOptions';
+       import { Play, Loader, Copy, Check } from 'lucide-react';
+       import type { LogEntry, ProgressData, FormattingOptions } from './types';
+      +import { Accordion, AccordionContent, AccordionItem, AccordionTrigger }
+      from './components/ui/accordion';
+       
+       function App() {
+         const [isInitialized, setIsInitialized] = useState(false);
+      @@ -139,39 +139,50 @@
+                 </Button>
+               </div>
+       
+      -        <div className="flex-grow overflow-y-auto p-4 flex flex-col
+      gap-4">
+
+      -          <Card className="flex flex-col min-h-96">
+
+      -            <CardHeader>
+
+      -              <CardTitle className="flex justify-between items-center">
+
+      -                <span>Input Files (JSON)</span>
+
+      -                <span className="text-sm font-normal
+      text-muted-foreground">{tokenCounts.input.toLocaleString()} tokens</span>
+
+      -              </CardTitle>
+
+      -            </CardHeader>
+
+      -            <CardContent className="flex-grow">
+
+      -              <Textarea
+
+      -                value={filesInput}
+
+      -                onChange={(e) => setFilesInput(e.currentTarget.value)}
+
+      -                className="h-full w-full font-mono text-xs resize-none"
+
+      -                placeholder="Paste an array of FileContent objects
+      here..."
+
+      -              />
+
+      -            </CardContent>
+
+      -          </Card>
+
+      -          <OutputOptions options={formattingOptions}
+      setOptions={setFormattingOptions} />
+
+      -          <div className="min-h-60">
+
+      -            <LogViewer logs={logs} />
+
+      -          </div>
+
+      +        <div className="flex-grow overflow-y-auto">
+
+      +          <Accordion type="multiple" defaultValue={['input', 'options',
+      'logs']} className="w-full">
+
+      +            <AccordionItem value="input">
+
+      +              <AccordionTrigger className="px-4 text-sm font-semibold
+      hover:no-underline">
+
+      +                <div className="flex w-full justify-between
+      items-center">
+
+      +                  <span>Input Files (JSON)</span>
+
+      +                  <span className="text-xs font-normal
+      text-muted-foreground tabular-nums">
+
+      +                    {tokenCounts.input.toLocaleString()} tokens
+
+      +                  </span>
+
+      +                </div>
+
+      +              </AccordionTrigger>
+
+      +              <AccordionContent>
+
+      +                <div className="px-4 pb-4 h-96">
+
+      +                  <Textarea
+
+      +                    value={filesInput}
+
+      +                    onChange={(e) =>
+      setFilesInput(e.currentTarget.value)}
+
+      +                    className="h-full w-full font-mono text-xs
+      resize-none"
+
+      +                    placeholder="Paste an array of FileContent objects
+      here..."
+
+      +                  />
+
+      +                </div>
+
+      +              </AccordionContent>
+
+      +            </AccordionItem>
+
+      +
+
+      +            <AccordionItem value="options">
+
+      +              <AccordionTrigger className="px-4 text-sm font-semibold
+      hover:no-underline">Formatting Options</AccordionTrigger>
+
+      +              <AccordionContent className="px-4">
+
+      +                <OutputOptions options={formattingOptions}
+      setOptions={setFormattingOptions} />
+
+      +              </AccordionContent>
+
+      +            </AccordionItem>
+
+      +
+
+      +            <AccordionItem value="logs" className="border-b-0">
+
+      +              <AccordionTrigger className="px-4 text-sm font-semibold
+      hover:no-underline">Logs</AccordionTrigger>
+
+      +              <AccordionContent className="px-4">
+
+      +                <div className="h-96">
+
+      +                  <LogViewer logs={logs} />
+
+      +                </div>
+
+      +              </AccordionContent>
+
+      +            </AccordionItem>
+
+      +          </Accordion>
+               </div>
+             </aside>
+       
+             {/* Main Content Area */}
+             <main className="flex-grow flex flex-col overflow-hidden">
+               <div className="flex justify-between items-center p-4 border-b flex-shrink-0">
+      -          <CardTitle>Output (SCN)</CardTitle>
+
+      +          <h2 className="text-lg font-semibold leading-none
+      tracking-tight">Output (SCN)</h2>
+                 <div className="flex items-center gap-4">
+                   <span className="text-sm font-normal text-muted-foreground tabular-nums">{tokenCounts.output.toLocaleString()} tokens</span>
+                   <Button variant="ghost" size="icon" onClick={handleCopy} disabled={!scnOutput} title="Copy to clipboard">
+    patchStrategy: new-unified
+snapshot:
+  packages/scn-ts-web-demo/src/components/ui/accordion.tsx: null
+  packages/scn-ts-web-demo/package.json: |
+    {
+      "name": "scn-ts-web-demo",
+      "private": true,
+      "version": "0.1.0",
+      "type": "module",
+      "scripts": {
+        "dev": "vite",
+        "build": "tsc && vite build",
+        "check": "tsc --noEmit",
+        "preview": "vite preview",
+        "prepare": "node scripts/prepare-wasm.cjs"
+      },
+      "dependencies": {
+        "@radix-ui/react-slot": "^1.0.2",
+        "class-variance-authority": "^0.7.0",
+        "clsx": "^2.1.1",
+        "lucide-react": "^0.379.0",
+        "react": "^18.3.1",
+        "react-dom": "^18.3.1",
+        "tailwind-merge": "^2.3.0",
+        "tiktoken": "^1.0.14"
+      },
+      "devDependencies": {
+        "@types/node": "^20.12.12",
+        "@types/react": "^18.3.3",
+        "@types/react-dom": "^18.3.0",
+        "@vitejs/plugin-react": "^4.3.0",
+        "autoprefixer": "^10.4.19",
+        "eslint": "^8.57.0",
+        "postcss": "^8.4.38",
+        "tailwindcss": "^3.4.3",
+        "typescript": "^5.4.5",
+        "vite": "^5.2.12",
+        "vite-plugin-top-level-await": "^1.4.1",
+        "vite-plugin-wasm": "^3.3.0"
+      }
+    }
+  packages/scn-ts-web-demo/tailwind.config.js: |-
+    /** @type {import('tailwindcss').Config} */
+    export default {
+      darkMode: "class",
+      content: [
+        "./index.html",
+        "./src/**/*.{js,ts,jsx,tsx}",
+      ],
+      theme: {
+        extend: {
+          colors: {
+            border: "hsl(var(--border))",
+            input: "hsl(var(--input))",
+            ring: "hsl(var(--ring))",
+            background: "hsl(var(--background))",
+            foreground: "hsl(var(--foreground))",
+            primary: {
+              DEFAULT: "hsl(var(--primary))",
+              foreground: "hsl(var(--primary-foreground))",
+            },
+            secondary: {
+              DEFAULT: "hsl(var(--secondary))",
+              foreground: "hsl(var(--secondary-foreground))",
+            },
+            destructive: {
+              DEFAULT: "hsl(var(--destructive))",
+              foreground: "hsl(var(--destructive-foreground))",
+            },
+            muted: {
+              DEFAULT: "hsl(var(--muted))",
+              foreground: "hsl(var(--muted-foreground))",
+            },
+            accent: {
+              DEFAULT: "hsl(var(--accent))",
+              foreground: "hsl(var(--accent-foreground))",
+            },
+            card: {
+              DEFAULT: "hsl(var(--card))",
+              foreground: "hsl(var(--card-foreground))",
+            },
+          },
+          borderRadius: {
+            lg: `var(--radius)`,
+            md: `calc(var(--radius) - 2px)`,
+            sm: `calc(var(--radius) - 4px)`,
+          },
+        },
+      },
+      plugins: [],
+    }
+  packages/scn-ts-web-demo/src/components/LogViewer.tsx: |
+    import React, { useEffect, useRef } from 'react';
+    import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
+    import { cn } from '../lib/utils';
+    import type { LogEntry } from '../types';
+    import { levelColorMap } from '../constants';
+
+    const LogViewer: React.FC<{ logs: readonly LogEntry[] }> = ({ logs }) => {
+      const scrollContainerRef = useRef<HTMLDivElement>(null);
+
+      useEffect(() => {
+        if (scrollContainerRef.current) {
+          scrollContainerRef.current.scrollTop = scrollContainerRef.current.scrollHeight;
+        }
+      }, [logs]);
+
+      return (
+        <Card className="h-full flex flex-col">
+          <CardHeader className="py-2 px-4">
+            <CardTitle>Logs</CardTitle>
+          </CardHeader>
+          <CardContent ref={scrollContainerRef} className="flex-grow overflow-auto p-0">
+            <div className="px-4 pb-4 pt-0 font-mono text-xs">
+              {logs.length === 0 && <p className="text-muted-foreground">No logs yet. Click "Analyze" to start.</p>}
+              {logs.map((log, index) => (
+                <div key={index} className="flex items-start">
+                  <span className="text-muted-foreground/80 mr-4 flex-shrink-0">
+                    {new Date(log.timestamp).toLocaleTimeString()}
+                  </span>
+                  <span className={cn("font-bold w-14 flex-shrink-0", levelColorMap[log.level])}>
+                    [{log.level.toUpperCase()}]
+                  </span>
+                  <span className="whitespace-pre-wrap break-all text-foreground">{log.message}</span>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      );
+    };
+
+    export default LogViewer;
+  packages/scn-ts-web-demo/src/components/OutputOptions.tsx: >-
+    import * as React from 'react';
+
+    import type { FormattingOptions } from '../types';
+
+    import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
+
+    import { ChevronDown, ChevronRight } from 'lucide-react';
+
+
+    interface OutputOptionsProps {
+      options: FormattingOptions;
+      setOptions: React.Dispatch<React.SetStateAction<FormattingOptions>>;
+    }
+
+
+    const OptionCheckbox: React.FC<{
+      id: string;
+      label: string;
+      checked: boolean;
+      onChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
+    }> = ({ id, label, checked, onChange }) => (
+      <div className="flex items-center space-x-1.5">
+        <input
+          type="checkbox"
+          id={id}
+          checked={checked}
+          onChange={onChange}
+          className="h-4 w-4 rounded border-muted-foreground/50 bg-transparent text-primary focus:ring-primary"
+        />
+        <label htmlFor={id} className="cursor-pointer select-none text-sm text-muted-foreground">
+          {label}
+        </label>
+      </div>
+    );
+
+
+    type RegularOptionKey = keyof Omit<FormattingOptions, 'displayFilters'>;
+
+    type OptionItem = RegularOptionKey | string | { name: string; children:
+    OptionItem[] };
+
+
+    const symbolKindLabels: Record<string, string> = {
+      // TS/JS
+      class: 'Classes',
+      interface: 'Interfaces',
+      function: 'Functions',
+      method: 'Methods',
+      constructor: 'Constructors',
+      variable: 'Variables',
+      property: 'Properties',
+      enum: 'Enums',
+      enum_member: 'Enum Members',
+      type_alias: 'Type Aliases',
+      module: 'Modules',
+      // React
+      react_component: 'React Components',
+      styled_component: 'Styled Components',
+      jsx_element: 'JSX Elements',
+      // CSS
+      css_class: 'CSS Classes',
+      css_id: 'CSS IDs',
+      css_tag: 'CSS Tags',
+      css_at_rule: 'CSS At-Rules',
+      css_variable: 'CSS Variables',
+      // Go
+      go_package: 'Go Packages',
+      // Rust
+      rust_struct: 'Rust Structs',
+      rust_trait: 'Rust Traits',
+      rust_impl: 'Rust Impls',
+    };
+
+
+    const symbolVisibilityTree: OptionItem = {
+      name: 'Symbol Visibility',
+      children: [
+        {
+          name: 'TypeScript/JavaScript',
+          children: [
+            {
+              name: 'Declarations',
+              children: [
+                'filter:class', 'filter:interface', 'filter:function', 'filter:variable',
+                'filter:enum', 'filter:type_alias', 'filter:module',
+              ],
+            },
+            { name: 'Members', children: ['filter:method', 'filter:constructor', 'filter:property', 'filter:enum_member'] },
+          ],
+        },
+        { name: 'React', children: ['filter:react_component', 'filter:styled_component', 'filter:jsx_element'] },
+        { name: 'CSS', children: ['filter:css_class', 'filter:css_id', 'filter:css_tag', 'filter:css_at_rule', 'filter:css_variable'] },
+        {
+          name: 'Other Languages',
+          children: [
+            { name: 'Go', children: ['filter:go_package'] },
+            { name: 'Rust', children: ['filter:rust_struct', 'filter:rust_trait', 'filter:rust_impl'] },
+          ],
+        },
+      ],
+    };
+
+
+    const optionTree: OptionItem[] = [
+      {
+        name: 'Display Elements',
+        children: [
+          'showIcons',
+          {
+            name: 'Indicators',
+            children: ['showExportedIndicator', 'showPrivateIndicator'],
+          },
+          'showModifiers',
+          'showTags',
+          {
+            name: 'Identifiers',
+            children: ['showFilePrefix', 'showFileIds', 'showSymbolIds'],
+          },
+        ],
+      },
+      {
+        name: 'Relationships',
+        children: ['showOutgoing', 'showIncoming'],
+      },
+      {
+        name: 'Structure',
+        children: ['groupMembers'],
+      },
+      symbolVisibilityTree,
+    ];
+
+
+    const optionLabels: Record<keyof FormattingOptions, string> = {
+      ...symbolKindLabels,
+      showIcons: 'Icons',
+      showExportedIndicator: 'Exported (+)',
+      showPrivateIndicator: 'Private (-)',
+      showModifiers: 'Modifiers',
+      showTags: 'Tags',
+      showSymbolIds: 'Symbol IDs',
+      showFilePrefix: 'File Prefix (§)',
+      showFileIds: 'File IDs',
+      showOutgoing: 'Outgoing',
+      showIncoming: 'Incoming',
+      groupMembers: 'Group Members',
+    };
+
+
+    function getAllKeys(item: OptionItem): string[] {
+      if (typeof item === 'string') {
+        return [item];
+      }
+      return item.children.flatMap(getAllKeys);
+    }
+
+
+    const OutputOptions: React.FC<OutputOptionsProps> = ({ options, setOptions
+    }) => {
+      const [expandedGroups, setExpandedGroups] = React.useState<Set<string>>(
+        () =>
+          new Set([
+            'Display Elements', 'Indicators', 'Relationships', 'Structure',
+            'TypeScript/JavaScript',
+            'React', 'Identifiers',
+          ])
+      );
+
+      const toggleGroup = (groupName: string) => {
+        setExpandedGroups(prev => {
+          const newSet = new Set(prev);
+          if (newSet.has(groupName)) {
+            newSet.delete(groupName);
+          } else {
+            newSet.add(groupName);
+          }
+          return newSet;
+        });
+      };
+
+      const handleChange = (optionKey: string) => (e: React.ChangeEvent<HTMLInputElement>) => {
+        if (optionKey.startsWith('filter:')) {
+          const kind = optionKey.substring('filter:'.length);
+          setOptions(prev => ({
+            ...prev,
+            displayFilters: { ...(prev.displayFilters ?? {}), [kind]: e.target.checked },
+          }));
+        } else {
+          setOptions(prev => ({ ...prev, [optionKey]: e.target.checked }));
+        }
+      };
+
+      const handleGroupChange = (keys: ReadonlyArray<string>) => (e: React.ChangeEvent<HTMLInputElement>) => {
+        const isChecked = e.target.checked;
+        setOptions(prev => {
+          const newOptions: FormattingOptions = { ...prev };
+          const newDisplayFilters = { ...(prev.displayFilters ?? {}) };
+
+          for (const key of keys) {
+            if (key.startsWith('filter:')) {
+              newDisplayFilters[key.substring('filter:'.length)] = isChecked;
+            } else {
+              newOptions[key as RegularOptionKey] = isChecked;
+            }
+          }
+          newOptions.displayFilters = newDisplayFilters;
+          return newOptions;
+        });
+      };
+
+      const renderItem = (item: OptionItem, level: number): React.ReactNode => {
+        if (typeof item === 'string') {
+          const key = item as string;
+          const isFilter = key.startsWith('filter:');
+          const filterKind = isFilter ? key.substring('filter:'.length) : null;
+          const labelKey = filterKind ?? key;
+
+          return (
+            <div key={key} style={{ paddingLeft: `${level * 1.5}rem` }}>
+              <OptionCheckbox
+                id={key}
+                label={optionLabels[labelKey as keyof typeof optionLabels]}
+                checked={
+                  isFilter ? options.displayFilters?.[filterKind!] ?? true : options[key as RegularOptionKey] ?? true
+                }
+                onChange={handleChange(key)}
+              />
+            </div>
+          );
+        }
+
+        const { name, children } = item;
+        const isExpanded = expandedGroups.has(name);
+        const allKeys = getAllKeys(item);
+        const allChecked = allKeys.every(key => {
+          if (key.startsWith('filter:')) {
+            return options.displayFilters?.[key.substring('filter:'.length)] ?? true;
+          }
+          return options[key as RegularOptionKey] ?? true;
+        });
+
+        return (
+          <div key={name}>
+            <div
+              className="flex items-center space-x-1.5 py-1 rounded-md hover:bg-accent/50 cursor-pointer select-none -mx-2 px-2"
+              style={{ paddingLeft: `calc(${level * 1.5}rem + 0.5rem)` }}
+              onClick={() => toggleGroup(name)}
+            >
+              {isExpanded ? <ChevronDown className="h-4 w-4 flex-shrink-0" /> : <ChevronRight className="h-4 w-4 flex-shrink-0" />}
+              <input
+                type="checkbox"
+                id={`group-${name.replace(/\s+/g, '-')}`}
+                title={`Toggle all in ${name}`}
+                checked={allChecked}
+                onChange={handleGroupChange(allKeys)}
+                onClick={(e) => e.stopPropagation()} // Prevent row click from firing
+                className="h-4 w-4 rounded border-muted-foreground/50 bg-transparent text-primary focus:ring-primary cursor-pointer"
+              />
+              <span className="font-semibold text-sm">{name}</span>
+            </div>
+            {isExpanded && (
+              <div className="pt-1.5 space-y-1.5">
+                {children.map(child => renderItem(child, level + 1))}
+              </div>
+            )}
+          </div>
+        );
+      };
+
+      return (
+        <Card>
+          <CardHeader className="py-3">
+            <CardTitle className="text-base">Formatting Options</CardTitle>
+          </CardHeader>
+          <CardContent className="pt-0 pb-4 px-4 space-y-1">
+            {optionTree.map(item => renderItem(item, 0))}
+          </CardContent>
+        </Card>
+      );
+    };
+
+
+    export default OutputOptions;
+  packages/scn-ts-web-demo/src/App.tsx: >
+    import { useState, useEffect, useCallback } from 'react';
+
+    import { get_encoding, type Tiktoken } from 'tiktoken';
+
+    import {
+      initializeParser,
+      logger,
+      analyzeProject,
+      generateScn,
+    } from '../../../index';
+
+    import type { FileContent, LogHandler, SourceFile } from '../../../index';
+
+    import { defaultFilesJSON } from './default-files';
+
+    import { Button } from './components/ui/button';
+
+    import { Card, CardContent, CardHeader, CardTitle } from
+    './components/ui/card';
+
+    import { Textarea } from './components/ui/textarea';
+
+    import LogViewer from './components/LogViewer';
+
+    import OutputOptions from './components/OutputOptions';
+
+    import { Play, Loader, Copy, Check } from 'lucide-react';
+
+    import type { LogEntry, ProgressData, FormattingOptions } from './types';
+
+
+    function App() {
+      const [isInitialized, setIsInitialized] = useState(false);
+      const [isLoading, setIsLoading] = useState(false);
+      const [filesInput, setFilesInput] = useState(defaultFilesJSON);
+      const [scnOutput, setScnOutput] = useState('');
+      const [analysisResult, setAnalysisResult] = useState<SourceFile[] | null>(null);
+      const [isCopied, setIsCopied] = useState(false);
+      const [formattingOptions, setFormattingOptions] = useState<FormattingOptions>({
+        showOutgoing: true,
+        showIncoming: true,
+        showIcons: true,
+        showExportedIndicator: true,
+        showPrivateIndicator: true,
+        showModifiers: true,
+        showTags: true,
+        showSymbolIds: true,
+        groupMembers: true,
+        displayFilters: {},
+        showFilePrefix: true,
+        showFileIds: true,
+      });
+      const [progress, setProgress] = useState<ProgressData | null>(null);
+      const [logs, setLogs] = useState<LogEntry[]>([]);
+      const [encoder, setEncoder] = useState<Tiktoken | null>(null);
+      const [tokenCounts, setTokenCounts] = useState({ input: 0, output: 0 });
+
+      useEffect(() => {
+        const init = async () => {
+          try {
+            await initializeParser({ wasmBaseUrl: '/wasm/' });
+            const enc = get_encoding("cl100k_base");
+            setEncoder(enc);
+            setIsInitialized(true);
+            setLogs(prev => [...prev, { level: 'info', message: 'Parser and tokenizer initialized.', timestamp: Date.now() }]);
+          } catch (error) {
+            const message = error instanceof Error ? error.message : String(error);
+            setLogs(prev => [...prev, { level: 'error', message: `Failed to initialize: ${message}`, timestamp: Date.now() }]);
+          }
+        };
+        init();
+      }, []);
+
+      useEffect(() => {
+        if (!encoder) return;
+        try {
+          const inputTokens = encoder.encode(filesInput).length;
+          const outputTokens = encoder.encode(scnOutput).length;
+          setTokenCounts({ input: inputTokens, output: outputTokens });
+        } catch (e) {
+          console.error("Tokenization error:", e);
+          setTokenCounts({ input: 0, output: 0 });
+        }
+      }, [filesInput, scnOutput, encoder]);
+
+      useEffect(() => {
+        if (analysisResult) {
+          const scn = generateScn(analysisResult, formattingOptions);
+          setScnOutput(scn);
+        }
+      }, [analysisResult, formattingOptions]);
+
+      const handleCopy = useCallback(() => {
+        if (scnOutput) {
+          navigator.clipboard.writeText(scnOutput).then(
+            () => {
+              setIsCopied(true);
+              setTimeout(() => setIsCopied(false), 2000);
+            }
+          );
+        }
+      }, [scnOutput]);
+
+      const handleAnalyze = useCallback(async () => {
+        if (!isInitialized) {
+          setLogs(prev => [...prev, { level: 'warn', message: 'Parser not ready.', timestamp: Date.now() }]);
+          return;
+        }
+
+        setIsLoading(true);
+        setLogs([]);
+        setScnOutput('');
+        setAnalysisResult(null);
+        setProgress(null);
+
+        const logHandler: LogHandler = (level, ...args) => {
+          const message = args.map(arg => typeof arg === 'object' ? JSON.stringify(arg) : String(arg)).join(' ');
+          setLogs(prev => [...prev, { level, message, timestamp: Date.now() }]);
+        };
+        logger.setLogHandler(logHandler);
+        logger.setLevel('debug');
+
+        const onProgress = (progressData: ProgressData) => {
+          setProgress(progressData);
+          logger.info(`[${Math.round(progressData.percentage)}%] ${progressData.message}`);
+        };
+
+        try {
+          let files: FileContent[] = [];
+          try {
+            files = JSON.parse(filesInput);
+            if (!Array.isArray(files)) throw new Error("Input is not an array.");
+          } catch (error) {
+            throw new Error(`Invalid JSON input: ${error instanceof Error ? error.message : String(error)}`);
+          }
+
+          const rankedGraph = await analyzeProject({ files, onProgress, logLevel: 'debug' });
+          setAnalysisResult(rankedGraph);
+          logger.info('Analysis complete.');
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          logger.error('Analysis failed:', message);
+        } finally {
+          setIsLoading(false);
+          setProgress(null);
+          logger.setLogHandler(null);
+        }
+      }, [filesInput, isInitialized]);
+
+      return (
+        <div className="h-screen w-screen flex bg-background text-foreground">
+          {/* Sidebar */}
+          <aside className="w-[30rem] max-w-[40%] flex-shrink-0 flex flex-col border-r">
+            <div className="flex-shrink-0 flex items-center justify-between p-4 border-b">
+              <h1 className="text-xl font-bold tracking-tight">SCN-TS Web Demo</h1>
+              <Button onClick={handleAnalyze} disabled={isLoading || !isInitialized} className="w-32 justify-center">
+                {isLoading ? (
+                  <>
+                    <Loader className="mr-2 h-4 w-4 animate-spin" />
+                    <span>{progress ? `${Math.round(progress.percentage)}%` : 'Analyzing...'}</span>
+                  </>
+                ) : (
+                  <>
+                    <Play className="mr-2 h-4 w-4" />
+                    <span>Analyze</span>
+                  </>
+                )}
+              </Button>
+            </div>
+
+            <div className="flex-grow overflow-y-auto p-4 flex flex-col gap-4">
+              <Card className="flex flex-col min-h-96">
+                <CardHeader>
+                  <CardTitle className="flex justify-between items-center">
+                    <span>Input Files (JSON)</span>
+                    <span className="text-sm font-normal text-muted-foreground">{tokenCounts.input.toLocaleString()} tokens</span>
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="flex-grow">
+                  <Textarea
+                    value={filesInput}
+                    onChange={(e) => setFilesInput(e.currentTarget.value)}
+                    className="h-full w-full font-mono text-xs resize-none"
+                    placeholder="Paste an array of FileContent objects here..."
+                  />
+                </CardContent>
+              </Card>
+              <OutputOptions options={formattingOptions} setOptions={setFormattingOptions} />
+              <div className="min-h-60">
+                <LogViewer logs={logs} />
+              </div>
+            </div>
+          </aside>
+
+          {/* Main Content Area */}
+          <main className="flex-grow flex flex-col overflow-hidden">
+            <div className="flex justify-between items-center p-4 border-b flex-shrink-0">
+              <CardTitle>Output (SCN)</CardTitle>
+              <div className="flex items-center gap-4">
+                <span className="text-sm font-normal text-muted-foreground tabular-nums">{tokenCounts.output.toLocaleString()} tokens</span>
+                <Button variant="ghost" size="icon" onClick={handleCopy} disabled={!scnOutput} title="Copy to clipboard">
+                  {isCopied ? <Check className="h-4 w-4 text-green-500" /> : <Copy className="h-4 w-4" />}
+                </Button>
+              </div>
+            </div>
+            <div className="p-4 flex-grow overflow-auto font-mono text-xs">
+              <pre className="whitespace-pre-wrap">
+                {scnOutput || (isLoading ? "Generating..." : "Output will appear here.")}
+              </pre>
+            </div>
+          </main>
+        </div>
+      );
+    }
+
+
+    export default App;
+approved: true

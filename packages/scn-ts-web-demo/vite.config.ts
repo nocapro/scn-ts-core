@@ -2,13 +2,11 @@ import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import path from 'path'
 import wasm from 'vite-plugin-wasm'
-import topLevelAwait from 'vite-plugin-top-level-await'
 
 // https://vitejs.dev/config/
 export default defineConfig({
   plugins: [
     wasm(),
-    topLevelAwait(),
     react()
   ],
   resolve: {
@@ -20,7 +18,7 @@ export default defineConfig({
   optimizeDeps: {
     // Exclude packages that have special loading mechanisms (like wasm)
     // to prevent Vite from pre-bundling them and causing issues.
-    exclude: ['web-tree-sitter', 'tiktoken'],
+    exclude: ['web-tree-sitter'],
     // Force pre-bundling of our monorepo packages. As linked dependencies,
     // Vite doesn't optimize it by default. We need to include it so Vite
     // discovers its deep CJS dependencies (like graphology) and converts

@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
-import { get_encoding, type Tiktoken } from 'tiktoken';
+import { Tiktoken } from "js-tiktoken/lite";
+import cl100k_base from "js-tiktoken/ranks/cl100k_base";
 import type { LogEntry } from '../types';
 
 export function useTokenCounter(
@@ -12,7 +13,7 @@ export function useTokenCounter(
 
   useEffect(() => {
     try {
-      const enc = get_encoding("cl100k_base");
+      const enc = new Tiktoken(cl100k_base);
       setEncoder(enc);
     } catch (e) {
       console.error("Failed to initialize tokenizer:", e);

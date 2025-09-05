@@ -1,7 +1,7 @@
 import * as React from 'react';
 import type { FormattingOptions } from '../types';
 import { ChevronDown, ChevronRight } from 'lucide-react';
-import { Button } from './ui/button';
+
 import { Checkbox } from './ui/checkbox';
 import { Label } from './ui/label';
 
@@ -254,7 +254,7 @@ const OutputOptions = React.forwardRef<OutputOptionsHandle, OutputOptionsProps>(
             title={`Toggle all in ${name}`}
             checked={allChecked}
             onCheckedChange={handleGroupChange(allKeys)}
-            onClick={(e) => e.stopPropagation()} // Prevent row click from firing
+            onClick={(e: React.MouseEvent) => e.stopPropagation()} // Prevent row click from firing
           />
           <Label
             htmlFor={`group-${name.replace(/\s+/g, '-')}`}

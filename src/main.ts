@@ -31,7 +31,7 @@ export const generateScn = (analyzedFiles: SourceFile[], options?: FormattingOpt
  * Legacy API: Generate SCN from config (for backward compatibility)
  */
 export const generateScnFromConfig = async (config: ScnTsConfig): Promise<string> => {
-    const analyzedFiles = await analyzeProject({
+    const { sourceFiles: analyzedFiles } = await analyzeProject({
         files: config.files,
         tsconfig: config.tsconfig,
         root: config.root,
@@ -42,14 +42,17 @@ export const generateScnFromConfig = async (config: ScnTsConfig): Promise<string
 /**
  * Parses and analyzes a project's files to build a dependency graph.
  */
-export const analyzeProject = async ({
-    files,
-    tsconfig,
-    root = '/',
-    onProgress,
-    logLevel,
-    signal,
-}: AnalyzeProjectOptions): Promise<SourceFile[]> => {
+export const analyzeProject = async (
+    {
+        files,
+        tsconfig,
+        root = '/',
+        onProgress,
+        logLevel,
+        signal,
+    }: AnalyzeProjectOptions
+): Promise<{ sourceFiles: SourceFile[], analysisTime: number }> => {
+    const startTime = performance.now();
     if (logLevel) {
         logger.setLevel(logLevel);
     }
@@ -124,5 +127,6 @@ export const analyzeProject = async ({
     
     onProgress?.({ percentage: 100, message: 'Analysis complete.' });
     logger.info('Graph resolution complete. Project analysis finished.');
-    return resolvedGraph;
+    const analysisTime = performance.now() - startTime;
+    return { sourceFiles: resolvedGraph, analysisTime };
 };

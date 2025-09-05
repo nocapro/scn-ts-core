@@ -1,0 +1,352 @@
+uuid: f1935c13-a448-4e31-91a1-9b19e913a0c0
+projectId: scn-ts-core
+createdAt: '2025-09-05T02:34:10.463Z'
+linesAdded: 15
+linesRemoved: 14
+gitCommitMsg: 'refactor(core): move analysis timing into analyzeProject API'
+promptSummary: >-
+  Refactor the analysis timing to be part of the core API instead of the web
+  demo worker.
+reasoning:
+  - >-
+    You got it. Refactoring the analysis timing into the core API makes a lot of
+    sense. It keeps the core logic self-contained. Here are the changes to move
+    the performance timing from the web-demo worker into `analyzeProject`.
+  - >-
+    First, I'll modify `analyzeProject` in `src/main.ts` to handle the timing
+    and return it along with the analysis result. I'll also update
+    `generateScnFromConfig` to accommodate this.
+  - >-
+    Next, I'll update the web worker to use this new return value from
+    `analyzeProject` and remove its own timing logic. It'll just pass the result
+    through.
+  - >-
+    And that's it. The core now provides the analysis time, and the web demo
+    just consumes it. Clean.
+operations:
+  - type: write
+    path: src/main.ts
+    content: |-
+      --- src/main.ts
+      +++ src/main.ts
+      @@ -21,21 +21,24 @@
+        * Legacy API: Generate SCN from config (for backward compatibility)
+        */
+       export const generateScnFromConfig = async (config: ScnTsConfig): Promise<string> => {
+      -    const analyzedFiles = await analyzeProject({
+      +    const { sourceFiles: analyzedFiles } = await analyzeProject({
+               files: config.files,
+               tsconfig: config.tsconfig,
+               root: config.root,
+           });
+           return formatScn(analyzedFiles, config.formattingOptions);
+       };
+       
+       /**
+        * Parses and analyzes a project's files to build a dependency graph.
+        */
+      -export const analyzeProject = async ({
+      -    files,
+      -    tsconfig,
+      -    root = '/',
+      -    onProgress,
+      -    logLevel,
+      -    signal,
+      -}: AnalyzeProjectOptions): Promise<SourceFile[]> => {
+      +export const analyzeProject = async (
+      +    {
+      +        files,
+      +        tsconfig,
+      +        root = '/',
+      +        onProgress,
+      +        logLevel,
+      +        signal,
+      +    }: AnalyzeProjectOptions
+      +): Promise<{ sourceFiles: SourceFile[], analysisTime: number }> => {
+      +    const startTime = performance.now();
+           if (logLevel) {
+               logger.setLevel(logLevel);
+           }
+      @@ -99,5 +102,6 @@
+           
+           onProgress?.({ percentage: 100, message: 'Analysis complete.' });
+           logger.info('Graph resolution complete. Project analysis finished.');
+      -    return resolvedGraph;
+      +    const analysisTime = performance.now() - startTime;
+      +    return { sourceFiles: resolvedGraph, analysisTime };
+       };
+    patchStrategy: new-unified
+  - type: write
+    path: packages/scn-ts-web-demo/src/worker.ts
+    content: >-
+      --- packages/scn-ts-web-demo/src/worker.ts
+
+      +++ packages/scn-ts-web-demo/src/worker.ts
+
+      @@ -16,12 +16,9 @@
+             throw new Error('Worker not initialized.');
+           }
+       
+           this.abortController = new AbortController();
+       
+      -    const startTime = performance.now();
+           logger.setLogHandler((level, ...args) => {
+             const message = args.map(arg => typeof arg === 'object' ? JSON.stringify(arg, null, 2) : String(arg)).join(' ');
+             onLog({ level, message, timestamp: Date.now() });
+      @@ -35,16 +32,14 @@
+               throw new Error(`Invalid JSON input: ${error instanceof Error ? error.message : String(error)}`);
+             }
+       
+      -      const analysisResult = await analyzeProject({
+
+      +      const { sourceFiles: analysisResult, analysisTime } = await
+      analyzeProject({
+               files,
+               onProgress,
+               logLevel,
+               signal: this.abortController.signal,
+             });
+       
+      -      const analysisTime = performance.now() - startTime;
+
+      -
+             // Sanitize the result to make it structured-clonable.
+             analysisResult.forEach(file => {
+               delete file.ast;
+    patchStrategy: new-unified
+snapshot:
+  src/main.ts: >-
+    import { getLanguageForFile } from './languages';
+
+    import { initializeParser as init, parse } from './parser';
+
+    import type { ParserInitOptions, SourceFile, InputFile, ScnTsConfig,
+    AnalyzeProjectOptions, FormattingOptions } from './types';
+
+    import { analyze } from './analyzer';
+
+    import { formatScn } from './formatter';
+
+    import path from './utils/path';
+
+    import { getPathResolver } from './utils/tsconfig';
+
+    import { resolveGraph } from './graph-resolver';
+
+    import { logger } from './logger';
+
+
+    /**
+     * Public API to initialize the parser. Must be called before any other APIs.
+     */
+    export const initializeParser = (options: ParserInitOptions): Promise<void>
+    => init(options);
+
+
+    // Types for web demo
+
+    export type { ParserInitOptions, SourceFile, LogLevel, InputFile, TsConfig,
+    ScnTsConfig, AnalyzeProjectOptions, LogHandler, FormattingOptions } from
+    './types';
+
+    export type FileContent = InputFile;
+
+
+    // Exports for web demo
+
+    export { logger };
+
+
+    /**
+     * Generate SCN from analyzed source files
+     */
+    export const generateScn = (analyzedFiles: SourceFile[], options?:
+    FormattingOptions): string => {
+        return formatScn(analyzedFiles, options);
+    };
+
+
+    /**
+     * Legacy API: Generate SCN from config (for backward compatibility)
+     */
+    export const generateScnFromConfig = async (config: ScnTsConfig):
+    Promise<string> => {
+        const analyzedFiles = await analyzeProject({
+            files: config.files,
+            tsconfig: config.tsconfig,
+            root: config.root,
+        });
+        return formatScn(analyzedFiles, config.formattingOptions);
+    };
+
+
+    /**
+     * Parses and analyzes a project's files to build a dependency graph.
+     */
+    export const analyzeProject = async ({
+        files,
+        tsconfig,
+        root = '/',
+        onProgress,
+        logLevel,
+        signal,
+    }: AnalyzeProjectOptions): Promise<SourceFile[]> => {
+        if (logLevel) {
+            logger.setLevel(logLevel);
+        }
+        logger.info(`Starting analysis of ${files.length} files...`);
+        const pathResolver = getPathResolver(tsconfig);
+
+        const checkAborted = () => { if (signal?.aborted) throw new DOMException('Aborted', 'AbortError'); };
+        let fileIdCounter = 1;
+
+        onProgress?.({ percentage: 0, message: 'Creating source files...' });
+
+        // Step 1: Create SourceFile objects for all files
+        const sourceFiles = files.map((file) => {
+            checkAborted();
+            const absolutePath = path.join(root, file.path);
+            const sourceFile: SourceFile = {
+                id: fileIdCounter++,
+                relativePath: file.path,
+                absolutePath,
+                sourceCode: file.content,
+                language: getLanguageForFile(file.path)!,
+                symbols: [],
+                parseError: false,
+            };
+            return sourceFile;
+        });
+
+        logger.debug(`Created ${sourceFiles.length} SourceFile objects.`);
+        onProgress?.({ percentage: 10, message: `Parsing ${sourceFiles.length} files...` });
+
+        // Step 2: Parse all files
+        const parsedFiles = sourceFiles.map((file, i) => {
+            checkAborted();
+            if (!file.language || !file.language.wasmPath || file.sourceCode.trim() === '') {
+                return file;
+            }
+            logger.debug(`Parsing ${file.relativePath}`);
+            const tree = parse(file.sourceCode, file.language);
+            if (!tree) {
+                file.parseError = true;
+                logger.warn(`Failed to parse ${file.relativePath}`);
+            } else {
+                file.ast = tree;
+            }
+            const percentage = 10 + (40 * (i + 1) / sourceFiles.length);
+            onProgress?.({ percentage, message: `Parsing ${file.relativePath}` });
+            return file;
+        });
+
+        onProgress?.({ percentage: 50, message: 'Analyzing files...' });
+        logger.info(`Parsing complete. Analyzing symbols and relationships...`);
+
+        // Step 3: Analyze all parsed files
+        const analyzedFiles = parsedFiles.map((file, i) => {
+            checkAborted();
+            if (file.ast) {
+                logger.debug(`Analyzing ${file.relativePath}`);
+                const analyzed = analyze(file);
+                const percentage = 50 + (40 * (i + 1) / sourceFiles.length);
+                onProgress?.({ percentage, message: `Analyzing ${file.relativePath}` });
+                return analyzed;
+            }
+            return file;
+        });
+        
+        onProgress?.({ percentage: 90, message: 'Resolving dependency graph...' });
+        logger.info('Analysis complete. Resolving dependency graph...');
+
+        // Step 4: Resolve the dependency graph across all files
+        checkAborted();
+        const resolvedGraph = resolveGraph(analyzedFiles, pathResolver, root);
+        
+        onProgress?.({ percentage: 100, message: 'Analysis complete.' });
+        logger.info('Graph resolution complete. Project analysis finished.');
+        return resolvedGraph;
+    };
+  packages/scn-ts-web-demo/src/worker.ts: |-
+    import * as Comlink from 'comlink';
+    import { initializeParser, analyzeProject, logger } from '../../../index';
+    import type { FileContent, LogLevel, SourceFile } from '../../../index';
+    import type { LogEntry, ProgressData } from './types';
+
+    // Define the API the worker will expose
+    const workerApi = {
+      isInitialized: false,
+      abortController: null as AbortController | null,
+
+      async init() {
+        if (this.isInitialized) return;
+        await initializeParser({ wasmBaseUrl: '/wasm/' });
+        this.isInitialized = true;
+      },
+
+      async analyze(
+        { filesInput, logLevel }: { filesInput: string; logLevel: LogLevel },
+        onProgress: (progress: ProgressData) => void,
+        onLog: (log: LogEntry) => void
+      ): Promise<{ result: SourceFile[], analysisTime: number }> {
+        if (!this.isInitialized) {
+          throw new Error('Worker not initialized.');
+        }
+
+        this.abortController = new AbortController();
+
+        const startTime = performance.now();
+        logger.setLogHandler((level, ...args) => {
+          const message = args.map(arg => typeof arg === 'object' ? JSON.stringify(arg, null, 2) : String(arg)).join(' ');
+          onLog({ level, message, timestamp: Date.now() });
+        });
+        logger.setLevel(logLevel);
+
+        try {
+          let files: FileContent[] = [];
+          try {
+            files = JSON.parse(filesInput);
+            if (!Array.isArray(files)) throw new Error("Input is not an array.");
+          } catch (error) {
+            throw new Error(`Invalid JSON input: ${error instanceof Error ? error.message : String(error)}`);
+          }
+
+          const analysisResult = await analyzeProject({
+            files,
+            onProgress,
+            logLevel,
+            signal: this.abortController.signal,
+          });
+
+          const analysisTime = performance.now() - startTime;
+
+          // Sanitize the result to make it structured-clonable.
+          analysisResult.forEach(file => {
+            delete file.ast;
+            if (file.language) {
+              // The language object on the source file is a reference to a global
+              // singleton. We must clone it before deleting non-serializable properties,
+              // otherwise the parser state is destroyed for subsequent analysis runs.
+              const sanitizedLanguage = { ...file.language };
+              delete sanitizedLanguage.parser;
+              delete sanitizedLanguage.loadedLanguage;
+              file.language = sanitizedLanguage;
+            }
+          });
+          
+          return { result: analysisResult, analysisTime };
+        } finally {
+          logger.setLogHandler(null);
+          this.abortController = null;
+        }
+      },
+
+      cancel() {
+        this.abortController?.abort();
+      },
+    };
+
+    Comlink.expose(workerApi);
+
+    export type WorkerApi = typeof workerApi;
+approved: true

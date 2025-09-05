@@ -1,0 +1,1022 @@
+uuid: 429f4b36-a365-4f40-8902-6c382103f56f
+projectId: scn-ts-core
+createdAt: '2025-09-05T04:52:02.950Z'
+linesAdded: 70
+linesRemoved: 28
+gitCommitMsg: 'refactor(web-demo): improve formatting options UI'
+promptSummary: >-
+  Refactor the 'Formatting Options' component in the web demo: make
+  expand/collapse controls icon-only buttons on the right side of the accordion
+  header, and display symbol visibility statistics (e.g., 'X / Y symbols
+  visible') in the header as well.
+reasoning:
+  - >-
+    Alright, let's get this UI spruced up. Moving some controls around and
+    adding some context to the formatting options header is a solid idea. It'll
+    make the interface cleaner and more informative. Let's dive in.
+  - >-
+    First, I'll need to expose `CodeSymbol` and `SymbolKind` from the core
+    library so the web-demo can use them for calculating stats.
+  - >-
+    Next, I'll refactor the `OutputOptions` component to be a `forwardRef`
+    component. This will allow the parent `App` component to call its
+    `expandAll` and `collapseAll` methods. I'll also remove the expand/collapse
+    buttons from its own render output, as they're moving to the accordion
+    header in `App.tsx`.
+  - >-
+    Finally, I'll update the `App` component. It will now manage the
+    expand/collapse actions for the formatting options and display the symbol
+    visibility stats in the accordion header. This is where I'll add the new
+    icon buttons and the logic to count total vs. visible symbols.
+  - >-
+    These changes should implement the requested UI improvements. The formatting
+    options will be more compact and the header will provide useful at-a-glance
+    information about the analysis output.
+operations:
+  - type: write
+    path: src/main.ts
+    content: >-
+      --- src/main.ts
+
+      +++ src/main.ts
+
+      @@ -6,7 +6,7 @@
+       export const initializeParser = (options: ParserInitOptions): Promise<void> => init(options);
+       
+       // Types for web demo
+      -export type { ParserInitOptions, SourceFile, LogLevel, InputFile,
+      TsConfig, ScnTsConfig, AnalyzeProjectOptions, LogHandler,
+      FormattingOptions } from './types';
+
+      +export type { ParserInitOptions, SourceFile, LogLevel, InputFile,
+      TsConfig, ScnTsConfig, AnalyzeProjectOptions, LogHandler,
+      FormattingOptions, CodeSymbol, SymbolKind } from './types';
+       export type FileContent = InputFile;
+       
+       // Exports for web demo. The constants are exported from index.ts directly.
+    patchStrategy: new-unified
+  - type: write
+    path: src/index.ts
+    content: |-
+      --- src/index.ts
+      +++ src/index.ts
+      @@ -15,5 +15,7 @@
+           AnalyzeProjectOptions,
+           LogHandler,
+           FormattingOptions,
+      -    FileContent
+      +    FileContent,
+      +    CodeSymbol,
+      +    SymbolKind
+       } from './main';
+    patchStrategy: new-unified
+  - type: write
+    path: packages/scn-ts-web-demo/src/components/OutputOptions.tsx
+    content: >-
+      --- packages/scn-ts-web-demo/src/components/OutputOptions.tsx
+
+      +++ packages/scn-ts-web-demo/src/components/OutputOptions.tsx
+
+      @@ -1,6 +1,6 @@
+       import * as React from 'react';
+       import type { FormattingOptions } from '../types';
+      -import { ChevronDown, ChevronRight, Expand, Shrink } from 'lucide-react';
+
+      +import { ChevronDown, ChevronRight } from 'lucide-react';
+       import { Button } from './ui/button';
+       import { Checkbox } from './ui/checkbox';
+       import { Label } from './ui/label';
+      @@ -11,6 +11,11 @@
+         setOptions: React.Dispatch<React.SetStateAction<FormattingOptions>>;
+       }
+       
+      +export interface OutputOptionsHandle {
+
+      +  expandAll: () => void;
+
+      +  collapseAll: () => void;
+
+      +}
+
+      +
+       type RegularOptionKey = keyof Omit<FormattingOptions, 'displayFilters'>;
+       type OptionItem = RegularOptionKey | string | { name: string; children: OptionItem[] };
+       
+      @@ -127,7 +132,7 @@
+         });
+       }
+       
+      -const OutputOptions: React.FC<OutputOptionsProps> = ({ options,
+      setOptions }) => {
+
+      +const OutputOptions = React.forwardRef<OutputOptionsHandle,
+      OutputOptionsProps>(({ options, setOptions }, ref) => {
+         const [expandedGroups, setExpandedGroups] = React.useState<Set<string>>(
+           () =>
+             new Set([
+      @@ -139,15 +144,20 @@
+       
+         const allGroupNames = React.useMemo(() => getAllGroupNames(optionTree), []);
+       
+      -  const expandAll = () => {
+
+      +  const expandAll = React.useCallback(() => {
+           setExpandedGroups(new Set(allGroupNames));
+      -  };
+
+      -
+
+      -  const collapseAll = () => {
+
+      +  }, [allGroupNames]);
+
+      +
+
+      +  const collapseAll = React.useCallback(() => {
+           setExpandedGroups(new Set());
+      -  };
+
+      +  }, []);
+
+      +
+
+      +  React.useImperativeHandle(ref, () => ({
+
+      +    expandAll,
+
+      +    collapseAll,
+
+      +  }), [expandAll, collapseAll]);
+       
+         const toggleGroup = (groupName: string) => {
+           setExpandedGroups(prev => {
+      @@ -256,26 +266,12 @@
+         };
+       
+         return (
+      -    <div className="space-y-2">
+
+      -      <div className="flex items-center space-x-2 -mx-2">
+
+      -        <Button variant="ghost" size="sm" onClick={expandAll}
+      className="text-muted-foreground hover:text-foreground h-auto px-2 py-1
+      text-xs">
+
+      -          <Expand className="mr-1.5 h-3.5 w-3.5" />
+
+      -          Expand all
+
+      -        </Button>
+
+      -        <Button variant="ghost" size="sm" onClick={collapseAll}
+      className="text-muted-foreground hover:text-foreground h-auto px-2 py-1
+      text-xs">
+
+      -          <Shrink className="mr-1.5 h-3.5 w-3.5" />
+
+      -          Collapse all
+
+      -        </Button>
+
+      -      </div>
+
+      -      <div className="space-y-1">
+
+      -        {optionTree.map(item => renderItem(item, 0))}
+
+      -      </div>
+
+      +    <div className="space-y-1">
+
+      +      {optionTree.map(item => renderItem(item, 0))}
+           </div>
+         );
+      -};
+
+      +});
+       
+       export default OutputOptions;
+    patchStrategy: new-unified
+  - type: write
+    path: packages/scn-ts-web-demo/src/App.tsx
+    content: >-
+      --- packages/scn-ts-web-demo/src/App.tsx
+
+      +++ packages/scn-ts-web-demo/src/App.tsx
+
+      @@ -1,14 +1,15 @@
+
+      -import { useEffect, useCallback } from 'react';
+
+      +import { useEffect, useCallback, useMemo, useRef } from 'react';
+       import { generateScn } from 'scn-ts-core';
+       import { Button } from './components/ui/button';
+       import { Textarea } from './components/ui/textarea';
+       import LogViewer from './components/LogViewer';
+      -import OutputOptions from './components/OutputOptions';
+
+      +import OutputOptions, { type OutputOptionsHandle } from
+      './components/OutputOptions';
+       import { Legend } from './components/Legend';
+      -import { Play, Loader, Copy, Check, StopCircle } from 'lucide-react';
+
+      +import { Play, Loader, Copy, Check, StopCircle, ChevronsDown, ChevronsUp
+      } from 'lucide-react';
+       import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from './components/ui/accordion';
+       import { useAnalysis } from './hooks/useAnalysis.hook';
+       import { useClipboard } from './hooks/useClipboard.hook';
+       import { useResizableSidebar } from './hooks/useResizableSidebar.hook';
+       import { useTokenCounter } from './hooks/useTokenCounter.hook';
+       import { useAppStore } from './stores/app.store';
+      +import type { CodeSymbol } from 'scn-ts-core';
+       
+       function App() {
+         const {
+      @@ -33,6 +34,8 @@
+           handleStop,
+           onLogPartial,
+         } = useAnalysis();
+      +
+
+      +  const outputOptionsRef = useRef<OutputOptionsHandle>(null);
+       
+         const { sidebarWidth, handleMouseDown } = useResizableSidebar(480);
+         const { isCopied, handleCopy: performCopy } = useClipboard();
+      @@ -52,6 +55,29 @@
+         const handleAnalyze = useCallback(async () => {
+           performAnalysis(filesInput);
+         }, [performAnalysis, filesInput]);
+      +
+
+      +  const handleExpandOptions = (e: React.MouseEvent) => {
+
+      +    e.stopPropagation();
+
+      +    outputOptionsRef.current?.expandAll();
+
+      +  };
+
+      +
+
+      +  const handleCollapseOptions = (e: React.MouseEvent) => {
+
+      +    e.stopPropagation();
+
+      +    outputOptionsRef.current?.collapseAll();
+
+      +  };
+
+      +
+
+      +  const { totalSymbols, visibleSymbols } = useMemo(() => {
+
+      +    if (!analysisResult) {
+
+      +      return { totalSymbols: 0, visibleSymbols: 0 };
+
+      +    }
+
+      +    const allSymbols: CodeSymbol[] = analysisResult.flatMap(file =>
+      file.symbols);
+
+      +    const total = allSymbols.length;
+
+      +    const visible = allSymbols.filter(symbol => {
+
+      +      return formattingOptions.displayFilters?.[symbol.kind] !== false;
+
+      +    }).length;
+
+      +    return { totalSymbols: total, visibleSymbols: visible };
+
+      +  }, [analysisResult, formattingOptions.displayFilters]);
+       
+         return (
+           <div className="h-screen w-screen flex bg-background text-foreground overflow-hidden">
+      @@ -96,9 +122,25 @@
+                   </AccordionItem>
+       
+                   <AccordionItem value="options">
+      -              <AccordionTrigger className="px-4 text-sm font-semibold
+      hover:no-underline">Formatting Options</AccordionTrigger>
+
+      +              <AccordionTrigger className="px-4 text-sm font-semibold
+      hover:no-underline">
+
+      +                <div className="flex w-full justify-between
+      items-center">
+
+      +                  <span>Formatting Options</span>
+
+      +                  <div className="flex items-center gap-2">
+
+      +                    {analysisResult && (
+
+      +                      <span className="text-xs font-normal
+      text-muted-foreground tabular-nums">
+
+      +                        {visibleSymbols} / {totalSymbols} symbols
+
+      +                      </span>
+
+      +                    )}
+
+      +                    <Button variant="ghost" size="icon"
+      onClick={handleExpandOptions} title="Expand all" className="h-7 w-7
+      text-muted-foreground hover:text-foreground">
+
+      +                      <ChevronsDown className="h-4 w-4" />
+
+      +                    </Button>
+
+      +                    <Button variant="ghost" size="icon"
+      onClick={handleCollapseOptions} title="Collapse all" className="h-7 w-7
+      text-muted-foreground hover:text-foreground">
+
+      +                      <ChevronsUp className="h-4 w-4" />
+
+      +                    </Button>
+
+      +                  </div>
+
+      +                </div>
+
+      +              </AccordionTrigger>
+                     <AccordionContent className="px-4">
+      -                <OutputOptions options={formattingOptions}
+      setOptions={setFormattingOptions} />
+
+      +                <OutputOptions ref={outputOptionsRef}
+      options={formattingOptions} setOptions={setFormattingOptions} />
+                     </AccordionContent>
+                   </AccordionItem>
+    patchStrategy: new-unified
+snapshot:
+  src/main.ts: >-
+    import { getLanguageForFile } from './languages';
+
+    import { initializeParser as init, parse } from './parser';
+
+    import type { ParserInitOptions, SourceFile, InputFile, ScnTsConfig,
+    AnalyzeProjectOptions, FormattingOptions } from './types';
+
+    import { analyze } from './analyzer';
+
+    import { formatScn } from './formatter';
+
+    import path from './utils/path';
+
+    import { getPathResolver } from './utils/tsconfig';
+
+    import { resolveGraph } from './graph-resolver';
+
+    import { logger } from './logger';
+
+
+    /**
+     * Public API to initialize the parser. Must be called before any other APIs.
+     */
+    export const initializeParser = (options: ParserInitOptions): Promise<void>
+    => init(options);
+
+
+    // Types for web demo
+
+    export type { ParserInitOptions, SourceFile, LogLevel, InputFile, TsConfig,
+    ScnTsConfig, AnalyzeProjectOptions, LogHandler, FormattingOptions } from
+    './types';
+
+    export type FileContent = InputFile;
+
+
+    // Exports for web demo. The constants are exported from index.ts directly.
+
+    export { logger };
+
+
+    /**
+     * Generate SCN from analyzed source files
+     */
+    export const generateScn = (analyzedFiles: SourceFile[], options?:
+    FormattingOptions): string => {
+        return formatScn(analyzedFiles, options);
+    };
+
+
+    /**
+     * Legacy API: Generate SCN from config (for backward compatibility)
+     */
+    export const generateScnFromConfig = async (config: ScnTsConfig):
+    Promise<string> => {
+        const { sourceFiles: analyzedFiles } = await analyzeProject({
+            files: config.files,
+            tsconfig: config.tsconfig,
+            root: config.root,
+        });
+        return formatScn(analyzedFiles, config.formattingOptions);
+    };
+
+
+    /**
+     * Parses and analyzes a project's files to build a dependency graph.
+     */
+    export const analyzeProject = async (
+        {
+            files,
+            tsconfig,
+            root = '/',
+            onProgress,
+            logLevel,
+            signal,
+        }: AnalyzeProjectOptions
+    ): Promise<{ sourceFiles: SourceFile[], analysisTime: number }> => {
+        const startTime = performance.now();
+        if (logLevel) {
+            logger.setLevel(logLevel);
+        }
+        logger.info(`Starting analysis of ${files.length} files...`);
+        const pathResolver = getPathResolver(tsconfig);
+
+        const checkAborted = () => { if (signal?.aborted) throw new DOMException('Aborted', 'AbortError'); };
+        let fileIdCounter = 1;
+
+        onProgress?.({ percentage: 0, message: 'Creating source files...' });
+
+        // Step 1: Create SourceFile objects for all files
+        const sourceFiles = files.map((file) => {
+            checkAborted();
+            const absolutePath = path.join(root, file.path);
+            const sourceFile: SourceFile = {
+                id: fileIdCounter++,
+                relativePath: file.path,
+                absolutePath,
+                sourceCode: file.content,
+                language: getLanguageForFile(file.path)!,
+                symbols: [],
+                parseError: false,
+            };
+            return sourceFile;
+        });
+
+        logger.debug(`Created ${sourceFiles.length} SourceFile objects.`);
+        onProgress?.({ percentage: 10, message: `Parsing ${sourceFiles.length} files...` });
+
+        // Step 2: Parse all files
+        const parsedFiles = sourceFiles.map((file, i) => {
+            checkAborted();
+            if (!file.language || !file.language.wasmPath || file.sourceCode.trim() === '') {
+                return file;
+            }
+            logger.debug(`Parsing ${file.relativePath}`);
+            const tree = parse(file.sourceCode, file.language);
+            if (!tree) {
+                file.parseError = true;
+                logger.warn(`Failed to parse ${file.relativePath}`);
+            } else {
+                file.ast = tree;
+            }
+            const percentage = 10 + (40 * (i + 1) / sourceFiles.length);
+            onProgress?.({ percentage, message: `Parsing ${file.relativePath}` });
+            return file;
+        });
+
+        onProgress?.({ percentage: 50, message: 'Analyzing files...' });
+        logger.info(`Parsing complete. Analyzing symbols and relationships...`);
+
+        // Step 3: Analyze all parsed files
+        const analyzedFiles = parsedFiles.map((file, i) => {
+            checkAborted();
+            if (file.ast) {
+                logger.debug(`Analyzing ${file.relativePath}`);
+                const analyzed = analyze(file);
+                const percentage = 50 + (40 * (i + 1) / sourceFiles.length);
+                onProgress?.({ percentage, message: `Analyzing ${file.relativePath}` });
+                return analyzed;
+            }
+            return file;
+        });
+        
+        onProgress?.({ percentage: 90, message: 'Resolving dependency graph...' });
+        logger.info('Analysis complete. Resolving dependency graph...');
+
+        // Step 4: Resolve the dependency graph across all files
+        checkAborted();
+        const resolvedGraph = resolveGraph(analyzedFiles, pathResolver, root);
+        
+        onProgress?.({ percentage: 100, message: 'Analysis complete.' });
+        logger.info('Graph resolution complete. Project analysis finished.');
+        const analysisTime = performance.now() - startTime;
+        return { sourceFiles: resolvedGraph, analysisTime };
+    };
+  src/index.ts: |-
+    export {
+        initializeParser,
+        generateScn,
+        generateScnFromConfig,
+        analyzeProject,
+        logger,
+    } from './main';
+
+    export { ICONS, SCN_SYMBOLS } from './constants';
+
+    export type {
+        ParserInitOptions,
+        SourceFile,
+        LogLevel,
+        InputFile,
+        TsConfig,
+        ScnTsConfig,
+        AnalyzeProjectOptions,
+        LogHandler,
+        FormattingOptions,
+        FileContent
+    } from './main';
+  packages/scn-ts-web-demo/src/components/OutputOptions.tsx: >-
+    import * as React from 'react';
+
+    import type { FormattingOptions } from '../types';
+
+    import { ChevronDown, ChevronRight, Expand, Shrink } from 'lucide-react';
+
+    import { Button } from './ui/button';
+
+    import { Checkbox } from './ui/checkbox';
+
+    import { Label } from './ui/label';
+
+
+    interface OutputOptionsProps {
+      options: FormattingOptions;
+      setOptions: React.Dispatch<React.SetStateAction<FormattingOptions>>;
+    }
+
+
+
+    type RegularOptionKey = keyof Omit<FormattingOptions, 'displayFilters'>;
+
+    type OptionItem = RegularOptionKey | string | { name: string; children:
+    OptionItem[] };
+
+
+    const symbolKindLabels: Record<string, string> = {
+      // TS/JS
+      class: 'Classes',
+      interface: 'Interfaces',
+      function: 'Functions',
+      method: 'Methods',
+      constructor: 'Constructors',
+      variable: 'Variables',
+      property: 'Properties',
+      enum: 'Enums',
+      enum_member: 'Enum Members',
+      type_alias: 'Type Aliases',
+      module: 'Modules',
+      // React
+      react_component: 'React Components',
+      styled_component: 'Styled Components',
+      jsx_element: 'JSX Elements',
+      // CSS
+      css_class: 'CSS Classes',
+      css_id: 'CSS IDs',
+      css_tag: 'CSS Tags',
+      css_at_rule: 'CSS At-Rules',
+      css_variable: 'CSS Variables',
+      // Go
+      go_package: 'Go Packages',
+      // Rust
+      rust_struct: 'Rust Structs',
+      rust_trait: 'Rust Traits',
+      rust_impl: 'Rust Impls',
+    };
+
+
+    const tsDeclarationKinds = ['class', 'interface', 'function', 'variable',
+    'enum', 'type_alias', 'module'];
+
+    const tsMemberKinds = ['method', 'constructor', 'property', 'enum_member'];
+
+    const reactKinds = ['react_component', 'styled_component', 'jsx_element'];
+
+    const cssKinds = ['css_class', 'css_id', 'css_tag', 'css_at_rule',
+    'css_variable'];
+
+    const goKinds = ['go_package'];
+
+    const rustKinds = ['rust_struct', 'rust_trait', 'rust_impl'];
+
+
+    const toFilter = (kind: string): string => `filter:${kind}`;
+
+
+    const symbolVisibilityTree: OptionItem = {
+      name: 'Symbol Visibility',
+      children: [
+        {
+          name: 'TypeScript/JavaScript',
+          children: [
+            { name: 'Declarations', children: tsDeclarationKinds.map(toFilter) },
+            { name: 'Members', children: tsMemberKinds.map(toFilter) },
+          ],
+        },
+        { name: 'React', children: reactKinds.map(toFilter) },
+        { name: 'CSS', children: cssKinds.map(toFilter) },
+        {
+          name: 'Other Languages',
+          children: [
+            { name: 'Go', children: goKinds.map(toFilter) },
+            { name: 'Rust', children: rustKinds.map(toFilter) },
+          ],
+        },
+      ],
+    };
+
+
+    const optionTree: OptionItem[] = [
+      {
+        name: 'Display Elements',
+        children: [
+          'showIcons',
+          {
+            name: 'Indicators',
+            children: ['showExportedIndicator', 'showPrivateIndicator'],
+          },
+          'showModifiers',
+          'showTags',
+          {
+            name: 'Identifiers',
+            children: ['showFilePrefix', 'showFileIds', 'showSymbolIds'],
+          },
+        ],
+      },
+      {
+        name: 'Relationships',
+        children: ['showOutgoing', 'showIncoming'],
+      },
+      {
+        name: 'Structure',
+        children: ['groupMembers'],
+      },
+      symbolVisibilityTree,
+    ];
+
+
+    const optionLabels: Record<RegularOptionKey, string> & Record<string,
+    string> = {
+      ...symbolKindLabels,
+      showIcons: 'Icons',
+      showExportedIndicator: 'Exported (+)',
+      showPrivateIndicator: 'Private (-)',
+      showModifiers: 'Modifiers',
+      showTags: 'Tags',
+      showSymbolIds: 'Symbol IDs',
+      showFilePrefix: 'File Prefix (§)',
+      showFileIds: 'File IDs',
+      showOutgoing: 'Outgoing',
+      showIncoming: 'Incoming',
+      groupMembers: 'Group Members',
+    };
+
+
+    function getAllKeys(item: OptionItem): string[] {
+      if (typeof item === 'string') {
+        return [item];
+      }
+      return item.children.flatMap(getAllKeys);
+    }
+
+
+    const getAllGroupNames = (items: OptionItem[]): string[] => {
+      return items.flatMap(item => {
+        if (typeof item === 'object' && 'name' in item) {
+          return [item.name, ...getAllGroupNames(item.children)];
+        }
+        return [];
+      });
+    }
+
+
+    const OutputOptions: React.FC<OutputOptionsProps> = ({ options, setOptions
+    }) => {
+      const [expandedGroups, setExpandedGroups] = React.useState<Set<string>>(
+        () =>
+          new Set([
+            'Display Elements', 'Indicators', 'Relationships', 'Structure',
+            'TypeScript/JavaScript',
+            'React', 'Identifiers',
+          ])
+      );
+
+      const allGroupNames = React.useMemo(() => getAllGroupNames(optionTree), []);
+
+      const expandAll = () => {
+        setExpandedGroups(new Set(allGroupNames));
+      };
+
+      const collapseAll = () => {
+        setExpandedGroups(new Set());
+      };
+
+      const toggleGroup = (groupName: string) => {
+        setExpandedGroups(prev => {
+          const newSet = new Set(prev);
+          if (newSet.has(groupName)) {
+            newSet.delete(groupName);
+          } else {
+            newSet.add(groupName);
+          }
+          return newSet;
+        });
+      };
+
+      const handleChange = (optionKey: string) => (checked: boolean | 'indeterminate') => {
+        const isChecked = checked === true;
+        if (optionKey.startsWith('filter:')) {
+          const kind = optionKey.substring('filter:'.length);
+          setOptions(prev => ({
+            ...prev,
+            displayFilters: { ...(prev.displayFilters ?? {}), [kind]: isChecked },
+          }));
+        } else {
+          setOptions(prev => ({ ...prev, [optionKey]: isChecked }));
+        }
+      };
+
+      const handleGroupChange = (keys: ReadonlyArray<string>) => (checked: boolean | 'indeterminate') => {
+        const isChecked = checked === true;
+        setOptions(prev => {
+          const newOptions: FormattingOptions = { ...prev };
+          const newDisplayFilters = { ...(prev.displayFilters ?? {}) };
+
+          for (const key of keys) {
+            if (key.startsWith('filter:')) {
+              newDisplayFilters[key.substring('filter:'.length)] = isChecked;
+            } else {
+              newOptions[key as RegularOptionKey] = isChecked;
+            }
+          }
+          newOptions.displayFilters = newDisplayFilters;
+          return newOptions;
+        });
+      };
+
+      const renderItem = (item: OptionItem, level: number): React.ReactNode => {
+        if (typeof item === 'string') {
+          const key = item as string;
+          const isFilter = key.startsWith('filter:');
+          const filterKind = isFilter ? key.substring('filter:'.length) : null;
+          const labelKey = filterKind ?? key;
+
+          return (
+            <div key={key} style={{ paddingLeft: `${level * 1.5}rem` }} className="flex items-center space-x-1.5">
+              <Checkbox
+                id={key}
+                checked={
+                  isFilter ? options.displayFilters?.[filterKind!] ?? true : options[key as RegularOptionKey] ?? true
+                }
+                onCheckedChange={handleChange(key)}
+              />
+              <Label htmlFor={key} className="cursor-pointer select-none text-sm text-muted-foreground font-normal">
+                {optionLabels[labelKey as keyof typeof optionLabels] ?? labelKey}
+              </Label>
+            </div>
+          );
+        }
+
+        const { name, children } = item;
+        const isExpanded = expandedGroups.has(name);
+        const allKeys = getAllKeys(item);
+        const allChecked = allKeys.every(key => {
+          if (key.startsWith('filter:')) {
+            return options.displayFilters?.[key.substring('filter:'.length)] ?? true;
+          }
+          return options[key as RegularOptionKey] ?? true;
+        });
+
+        return (
+          <div key={name}>
+            <div
+              className="flex items-center space-x-1.5 py-1 rounded-md hover:bg-accent/50 cursor-pointer select-none -mx-2 px-2"
+              style={{ paddingLeft: `calc(${level * 1.5}rem + 0.5rem)` }}
+              onClick={() => toggleGroup(name)}
+            >
+              {isExpanded ? <ChevronDown className="h-4 w-4 flex-shrink-0" /> : <ChevronRight className="h-4 w-4 flex-shrink-0" />}
+              <Checkbox
+                id={`group-${name.replace(/\s+/g, '-')}`}
+                title={`Toggle all in ${name}`}
+                checked={allChecked}
+                onCheckedChange={handleGroupChange(allKeys)}
+                onClick={(e) => e.stopPropagation()} // Prevent row click from firing
+              />
+              <Label
+                htmlFor={`group-${name.replace(/\s+/g, '-')}`}
+                className="font-semibold text-sm cursor-pointer select-none"
+              >
+                {name}
+              </Label>
+            </div>
+            {isExpanded && (
+              <div className="pt-1.5 space-y-1.5">
+                {children.map(child => renderItem(child, level + 1))}
+              </div>
+            )}
+          </div>
+        );
+      };
+
+      return (
+        <div className="space-y-2">
+          <div className="flex items-center space-x-2 -mx-2">
+            <Button variant="ghost" size="sm" onClick={expandAll} className="text-muted-foreground hover:text-foreground h-auto px-2 py-1 text-xs">
+              <Expand className="mr-1.5 h-3.5 w-3.5" />
+              Expand all
+            </Button>
+            <Button variant="ghost" size="sm" onClick={collapseAll} className="text-muted-foreground hover:text-foreground h-auto px-2 py-1 text-xs">
+              <Shrink className="mr-1.5 h-3.5 w-3.5" />
+              Collapse all
+            </Button>
+          </div>
+          <div className="space-y-1">
+            {optionTree.map(item => renderItem(item, 0))}
+          </div>
+        </div>
+      );
+    };
+
+
+    export default OutputOptions;
+  packages/scn-ts-web-demo/src/App.tsx: >
+    import { useEffect, useCallback } from 'react';
+
+    import { generateScn } from 'scn-ts-core';
+
+    import { Button } from './components/ui/button';
+
+    import { Textarea } from './components/ui/textarea';
+
+    import LogViewer from './components/LogViewer';
+
+    import OutputOptions from './components/OutputOptions';
+
+    import { Legend } from './components/Legend';
+
+    import { Play, Loader, Copy, Check, StopCircle } from 'lucide-react';
+
+    import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from
+    './components/ui/accordion';
+
+    import { useAnalysis } from './hooks/useAnalysis.hook';
+
+    import { useClipboard } from './hooks/useClipboard.hook';
+
+    import { useResizableSidebar } from './hooks/useResizableSidebar.hook';
+
+    import { useTokenCounter } from './hooks/useTokenCounter.hook';
+
+    import { useAppStore } from './stores/app.store';
+
+
+    function App() {
+      const {
+        filesInput,
+        setFilesInput,
+        scnOutput,
+        setScnOutput,
+        formattingOptions,
+        setFormattingOptions,
+      } = useAppStore();
+
+      const {
+        isInitialized,
+        isLoading,
+        analysisResult,
+        progress,
+        logs,
+        analysisTime,
+        handleAnalyze: performAnalysis,
+        handleStop,
+        onLogPartial,
+      } = useAnalysis();
+
+      const { sidebarWidth, handleMouseDown } = useResizableSidebar(480);
+      const { isCopied, handleCopy: performCopy } = useClipboard();
+      const tokenCounts = useTokenCounter(filesInput, scnOutput, onLogPartial);
+
+      useEffect(() => {
+        if (analysisResult) {
+          setScnOutput(generateScn(analysisResult, formattingOptions));
+        } else {
+          setScnOutput('');
+        }
+      }, [analysisResult, formattingOptions]);
+
+      const handleCopy = useCallback(() => {
+        performCopy(scnOutput);
+      }, [performCopy, scnOutput]);
+
+      const handleAnalyze = useCallback(async () => {
+        performAnalysis(filesInput);
+      }, [performAnalysis, filesInput]);
+
+      return (
+        <div className="h-screen w-screen flex bg-background text-foreground overflow-hidden">
+          {/* Sidebar */}
+          <aside style={{ width: `${sidebarWidth}px` }} className="max-w-[80%] min-w-[320px] flex-shrink-0 flex flex-col border-r">
+            <div className="flex-shrink-0 flex items-center justify-between p-4 border-b bg-background relative z-20">
+              <h1 className="text-xl font-bold tracking-tight">SCN-TS Web Demo</h1>
+              <div className="flex items-center space-x-2">
+                {isLoading ? (
+                  <>
+                    <Button disabled className="w-32 justify-center">
+                      <Loader className="mr-2 h-4 w-4 animate-spin" />
+                      <span>{progress ? `${Math.round(progress.percentage)}%` : 'Analyzing...'}</span>
+                    </Button>
+                    <Button onClick={handleStop} variant="outline" size="icon" title="Stop analysis">
+                      <StopCircle className="h-4 w-4" />
+                    </Button>
+                  </>
+                ) : (
+                  <Button onClick={handleAnalyze} disabled={!isInitialized} className="w-32 justify-center">
+                    <Play className="mr-2 h-4 w-4" />
+                    <span>Analyze</span>
+                  </Button>
+                )}
+              </div>
+            </div>
+
+            <div className="flex-grow overflow-y-auto">
+              <Accordion type="multiple" defaultValue={['input', 'options', 'logs']} className="w-full">
+                <AccordionItem value="input">
+                  <AccordionTrigger className="px-4 text-sm font-semibold hover:no-underline">
+                    <div className="flex w-full justify-between items-center">
+                      <span>Input Files (JSON)</span>
+                      <span className="text-xs font-normal text-muted-foreground tabular-nums">
+                        {tokenCounts.input.toLocaleString()} tokens
+                      </span>
+                    </div>
+                  </AccordionTrigger>
+                  <AccordionContent>
+                    <div className="px-4 pb-4 h-96">
+                      <Textarea
+                        value={filesInput}
+                        onChange={(e) => setFilesInput(e.currentTarget.value)}
+                        className="h-full w-full font-mono text-xs resize-none"
+                        placeholder="Paste an array of FileContent objects here..."
+                      />
+                    </div>
+                  </AccordionContent>
+                </AccordionItem>
+
+                <AccordionItem value="options">
+                  <AccordionTrigger className="px-4 text-sm font-semibold hover:no-underline">Formatting Options</AccordionTrigger>
+                  <AccordionContent className="px-4">
+                    <OutputOptions options={formattingOptions} setOptions={setFormattingOptions} />
+                  </AccordionContent>
+                </AccordionItem>
+
+                <AccordionItem value="logs">
+                  <AccordionTrigger className="px-4 text-sm font-semibold hover:no-underline">Logs</AccordionTrigger>
+                  <AccordionContent className="px-4">
+                    <LogViewer logs={logs} />
+                  </AccordionContent>
+                </AccordionItem>
+              </Accordion>
+            </div>
+          </aside>
+
+          {/* Resizer */}
+          <div
+            role="separator"
+            onMouseDown={handleMouseDown}
+            className="w-1.5 flex-shrink-0 cursor-col-resize hover:bg-primary/20 transition-colors duration-200"
+          />
+
+          {/* Main Content Area */}
+          <main className="flex-grow flex flex-col overflow-hidden relative">
+            <div className="flex justify-between items-center p-4 border-b flex-shrink-0">
+              <h2 className="text-lg font-semibold leading-none tracking-tight">Output (SCN)</h2>
+              <div className="flex items-center gap-4">
+                {analysisTime !== null && (
+                  <span className="text-sm text-muted-foreground">
+                    Analyzed in {(analysisTime / 1000).toFixed(2)}s
+                  </span>
+                )}
+                <span className="text-sm font-normal text-muted-foreground tabular-nums">{tokenCounts.output.toLocaleString()} tokens</span>
+                <Button variant="ghost" size="icon" onClick={handleCopy} disabled={!scnOutput} title="Copy to clipboard">
+                  {isCopied ? <Check className="h-4 w-4 text-green-500" /> : <Copy className="h-4 w-4" />}
+                </Button>
+              </div>
+            </div>
+            <div className="p-4 flex-grow overflow-auto font-mono text-xs relative">
+              <Legend />
+              <pre className="whitespace-pre-wrap">
+                {scnOutput || (isLoading ? "Generating..." : "Output will appear here.")}
+              </pre>
+            </div>
+          </main>
+        </div>
+      );
+    }
+
+
+    export default App;
+approved: true

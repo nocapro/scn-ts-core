@@ -1,17 +1,18 @@
-import { useEffect, useCallback } from 'react';
+import { useEffect, useCallback, useMemo, useRef } from 'react';
 import { generateScn } from 'scn-ts-core';
 import { Button } from './components/ui/button';
 import { Textarea } from './components/ui/textarea';
 import LogViewer from './components/LogViewer';
-import OutputOptions from './components/OutputOptions';
+import OutputOptions, { type OutputOptionsHandle } from './components/OutputOptions';
 import { Legend } from './components/Legend';
-import { Play, Loader, Copy, Check, StopCircle } from 'lucide-react';
+import { Play, Loader, Copy, Check, StopCircle, ChevronsDown, ChevronsUp } from 'lucide-react';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from './components/ui/accordion';
 import { useAnalysis } from './hooks/useAnalysis.hook';
 import { useClipboard } from './hooks/useClipboard.hook';
 import { useResizableSidebar } from './hooks/useResizableSidebar.hook';
 import { useTokenCounter } from './hooks/useTokenCounter.hook';
 import { useAppStore } from './stores/app.store';
+import type { CodeSymbol } from 'scn-ts-core';
 
 function App() {
   const {
@@ -35,6 +36,8 @@ function App() {
     onLogPartial,
   } = useAnalysis();
 
+  const outputOptionsRef = useRef<OutputOptionsHandle>(null);
+
   const { sidebarWidth, handleMouseDown } = useResizableSidebar(480);
   const { isCopied, handleCopy: performCopy } = useClipboard();
   const tokenCounts = useTokenCounter(filesInput, scnOutput, onLogPartial);
@@ -54,6 +57,28 @@ function App() {
   const handleAnalyze = useCallback(async () => {
     performAnalysis(filesInput);
   }, [performAnalysis, filesInput]);
+
+  const handleExpandOptions = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    outputOptionsRef.current?.expandAll();
+  };
+
+  const handleCollapseOptions = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    outputOptionsRef.current?.collapseAll();
+  };
+
+  const { totalSymbols, visibleSymbols } = useMemo(() => {
+    if (!analysisResult) {
+      return { totalSymbols: 0, visibleSymbols: 0 };
+    }
+    const allSymbols: CodeSymbol[] = analysisResult.flatMap(file => file.symbols);
+    const total = allSymbols.length;
+    const visible = allSymbols.filter(symbol => {
+      return formattingOptions.displayFilters?.[symbol.kind] !== false;
+    }).length;
+    return { totalSymbols: total, visibleSymbols: visible };
+  }, [analysisResult, formattingOptions.displayFilters]);
 
   return (
     <div className="h-screen w-screen flex bg-background text-foreground overflow-hidden">
@@ -105,9 +130,26 @@ function App() {
             </AccordionItem>
 
             <AccordionItem value="options">
-              <AccordionTrigger className="px-4 text-sm font-semibold hover:no-underline">Formatting Options</AccordionTrigger>
+              <AccordionTrigger className="px-4 text-sm font-semibold hover:no-underline">
+                <div className="flex w-full justify-between items-center">
+                  <span>Formatting Options</span>
+                  <div className="flex items-center gap-2">
+                    {analysisResult && (
+                      <span className="text-xs font-normal text-muted-foreground tabular-nums">
+                        {visibleSymbols} / {totalSymbols} symbols
+                      </span>
+                    )}
+                    <Button variant="ghost" size="icon" onClick={handleExpandOptions} title="Expand all" className="h-7 w-7 text-muted-foreground hover:text-foreground">
+                      <ChevronsDown className="h-4 w-4" />
+                    </Button>
+                    <Button variant="ghost" size="icon" onClick={handleCollapseOptions} title="Collapse all" className="h-7 w-7 text-muted-foreground hover:text-foreground">
+                      <ChevronsUp className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
+              </AccordionTrigger>
               <AccordionContent className="px-4">
-                <OutputOptions options={formattingOptions} setOptions={setFormattingOptions} />
+                <OutputOptions ref={outputOptionsRef} options={formattingOptions} setOptions={setFormattingOptions} />
               </AccordionContent>
             </AccordionItem>
 

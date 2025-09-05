@@ -1,6 +1,6 @@
 import * as React from 'react';
 import type { FormattingOptions } from '../types';
-import { ChevronDown, ChevronRight, Expand, Shrink } from 'lucide-react';
+import { ChevronDown, ChevronRight } from 'lucide-react';
 import { Button } from './ui/button';
 import { Checkbox } from './ui/checkbox';
 import { Label } from './ui/label';
@@ -10,6 +10,11 @@ interface OutputOptionsProps {
   setOptions: React.Dispatch<React.SetStateAction<FormattingOptions>>;
 }
 
+
+export interface OutputOptionsHandle {
+  expandAll: () => void;
+  collapseAll: () => void;
+}
 
 type RegularOptionKey = keyof Omit<FormattingOptions, 'displayFilters'>;
 type OptionItem = RegularOptionKey | string | { name: string; children: OptionItem[] };
@@ -135,7 +140,7 @@ const getAllGroupNames = (items: OptionItem[]): string[] => {
   });
 }
 
-const OutputOptions: React.FC<OutputOptionsProps> = ({ options, setOptions }) => {
+const OutputOptions = React.forwardRef<OutputOptionsHandle, OutputOptionsProps>(({ options, setOptions }, ref) => {
   const [expandedGroups, setExpandedGroups] = React.useState<Set<string>>(
     () =>
       new Set([
@@ -147,13 +152,18 @@ const OutputOptions: React.FC<OutputOptionsProps> = ({ options, setOptions }) =>
 
   const allGroupNames = React.useMemo(() => getAllGroupNames(optionTree), []);
 
-  const expandAll = () => {
+  const expandAll = React.useCallback(() => {
     setExpandedGroups(new Set(allGroupNames));
-  };
+  }, [allGroupNames]);
 
-  const collapseAll = () => {
+  const collapseAll = React.useCallback(() => {
     setExpandedGroups(new Set());
-  };
+  }, []);
+
+  React.useImperativeHandle(ref, () => ({
+    expandAll,
+    collapseAll,
+  }), [expandAll, collapseAll]);
 
   const toggleGroup = (groupName: string) => {
     setExpandedGroups(prev => {
@@ -263,22 +273,10 @@ const OutputOptions: React.FC<OutputOptionsProps> = ({ options, setOptions }) =>
   };
 
   return (
-    <div className="space-y-2">
-      <div className="flex items-center space-x-2 -mx-2">
-        <Button variant="ghost" size="sm" onClick={expandAll} className="text-muted-foreground hover:text-foreground h-auto px-2 py-1 text-xs">
-          <Expand className="mr-1.5 h-3.5 w-3.5" />
-          Expand all
-        </Button>
-        <Button variant="ghost" size="sm" onClick={collapseAll} className="text-muted-foreground hover:text-foreground h-auto px-2 py-1 text-xs">
-          <Shrink className="mr-1.5 h-3.5 w-3.5" />
-          Collapse all
-        </Button>
-      </div>
-      <div className="space-y-1">
-        {optionTree.map(item => renderItem(item, 0))}
-      </div>
+    <div className="space-y-1">
+      {optionTree.map(item => renderItem(item, 0))}
     </div>
   );
-};
+});
 
 export default OutputOptions;

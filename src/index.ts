@@ -18,5 +18,7 @@ export type {
     AnalyzeProjectOptions,
     LogHandler,
     FormattingOptions,
-    FileContent
+    FileContent,
+    CodeSymbol,
+    SymbolKind
 } from './main';

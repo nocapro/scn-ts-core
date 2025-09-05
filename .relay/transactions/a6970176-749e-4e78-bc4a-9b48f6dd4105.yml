@@ -1,0 +1,222 @@
+uuid: a6970176-749e-4e78-bc4a-9b48f6dd4105
+projectId: scn-ts-core
+createdAt: '2025-09-05T00:48:45.720Z'
+linesAdded: 52
+linesRemoved: 14
+gitCommitMsg: 'feat(web-demo): add copy button to log viewer'
+promptSummary: add copy button to log
+reasoning:
+  - >-
+    yo, check it, fam. i'm about to drop a feature that's straight fire. the
+    user wants a copy button for the logs, so you can snag 'em for debugging or
+    whatever. easy peasy.
+  - >-
+    instead of jamming a button in the accordion trigger and wrestling with
+    hover styles, i'm encapsulating that logic right inside the `LogViewer`
+    component. keeps things tidy, you know?
+  - >-
+    i'm wrapping the `LogViewer`'s content in a `relative` positioned div. then,
+    i'll slap an `absolute` positioned copy button in the top-right corner.
+    it'll have its own state for that slick "copied" checkmark feedback. a
+    little `pr-10` on the log container div makes sure the button doesn't crowd
+    the text. clean, component-scoped, and a better UX. let's ship it.
+operations:
+  - type: write
+    path: packages/scn-ts-web-demo/src/components/LogViewer.tsx
+    content: >-
+      --- packages/scn-ts-web-demo/src/components/LogViewer.tsx
+
+      +++ packages/scn-ts-web-demo/src/components/LogViewer.tsx
+
+      @@ -1,30 +1,68 @@
+
+      -import React, { useEffect, useRef } from 'react';
+
+      +import React, { useEffect, useRef, useState, useCallback } from 'react';
+       import { cn } from '../lib/utils';
+       import type { LogEntry } from '../types';
+       import { levelColorMap } from '../constants';
+      +import { Button } from './ui/button';
+
+      +import { Copy, Check } from 'lucide-react';
+       
+       const LogViewer: React.FC<{ logs: readonly LogEntry[] }> = ({ logs }) => {
+         const scrollContainerRef = useRef<HTMLDivElement>(null);
+      +  const [isCopied, setIsCopied] = useState(false);
+       
+         useEffect(() => {
+           if (scrollContainerRef.current) {
+             scrollContainerRef.current.scrollTop = scrollContainerRef.current.scrollHeight;
+           }
+         }, [logs]);
+       
+      +  const handleCopy = useCallback(() => {
+
+      +    if (logs.length > 0) {
+
+      +      const logText = logs
+
+      +        .map(
+
+      +          log =>
+
+      +            `${new Date(log.timestamp).toLocaleTimeString()}
+      [${log.level.toUpperCase()}] ${log.message}`,
+
+      +        )
+
+      +        .join('\n');
+
+      +      navigator.clipboard.writeText(logText).then(() => {
+
+      +        setIsCopied(true);
+
+      +        setTimeout(() => setIsCopied(false), 2000);
+
+      +      });
+
+      +    }
+
+      +  }, [logs]);
+
+      +
+         return (
+      -    <div ref={scrollContainerRef} className="h-full overflow-auto
+      font-mono text-xs">
+
+      -      {logs.length === 0 && <p className="text-muted-foreground">No logs
+      yet. Click "Analyze" to start.</p>}
+
+      -      {logs.map((log, index) => (
+
+      -        <div key={index} className="flex items-start">
+
+      -          <span className="text-muted-foreground/80 mr-4 flex-shrink-0">
+
+      -            {new Date(log.timestamp).toLocaleTimeString()}
+
+      -          </span>
+
+      -          <span className={cn("font-bold w-14 flex-shrink-0",
+      levelColorMap[log.level])}>
+
+      -            [{log.level.toUpperCase()}]
+
+      -          </span>
+
+      -          <span className="whitespace-pre-wrap break-all
+      text-foreground">{log.message}</span>
+
+      -        </div>
+
+      -      ))}
+
+      +    <div className="relative h-full">
+
+      +      <div
+
+      +        ref={scrollContainerRef}
+
+      +        className="h-full overflow-auto font-mono text-xs pr-10"
+
+      +      >
+
+      +        {logs.length === 0 && <p className="text-muted-foreground">No
+      logs yet. Click "Analyze" to start.</p>}
+
+      +        {logs.map((log, index) => (
+
+      +          <div key={index} className="flex items-start">
+
+      +            <span className="text-muted-foreground/80 mr-4
+      flex-shrink-0">
+
+      +              {new Date(log.timestamp).toLocaleTimeString()}
+
+      +            </span>
+
+      +            <span className={cn("font-bold w-14 flex-shrink-0",
+      levelColorMap[log.level])}>
+
+      +              [{log.level.toUpperCase()}]
+
+      +            </span>
+
+      +            <span className="whitespace-pre-wrap break-all
+      text-foreground">{log.message}</span>
+
+      +          </div>
+
+      +        ))}
+
+      +      </div>
+
+      +      {logs.length > 0 && (
+
+      +        <Button
+
+      +          variant="ghost"
+
+      +          size="icon"
+
+      +          className="absolute top-0 right-0 h-8 w-8"
+
+      +          onClick={handleCopy}
+
+      +          title="Copy logs to clipboard"
+
+      +        >
+
+      +          {isCopied ? (
+
+      +            <Check className="h-4 w-4 text-green-500" />
+
+      +          ) : (
+
+      +            <Copy className="h-4 w-4" />
+
+      +          )}
+
+      +        </Button>
+
+      +      )}
+           </div>
+         );
+       };
+    patchStrategy: new-unified
+snapshot:
+  packages/scn-ts-web-demo/src/components/LogViewer.tsx: |
+    import React, { useEffect, useRef } from 'react';
+    import { cn } from '../lib/utils';
+    import type { LogEntry } from '../types';
+    import { levelColorMap } from '../constants';
+
+    const LogViewer: React.FC<{ logs: readonly LogEntry[] }> = ({ logs }) => {
+      const scrollContainerRef = useRef<HTMLDivElement>(null);
+
+      useEffect(() => {
+        if (scrollContainerRef.current) {
+          scrollContainerRef.current.scrollTop = scrollContainerRef.current.scrollHeight;
+        }
+      }, [logs]);
+
+      return (
+        <div ref={scrollContainerRef} className="h-full overflow-auto font-mono text-xs">
+          {logs.length === 0 && <p className="text-muted-foreground">No logs yet. Click "Analyze" to start.</p>}
+          {logs.map((log, index) => (
+            <div key={index} className="flex items-start">
+              <span className="text-muted-foreground/80 mr-4 flex-shrink-0">
+                {new Date(log.timestamp).toLocaleTimeString()}
+              </span>
+              <span className={cn("font-bold w-14 flex-shrink-0", levelColorMap[log.level])}>
+                [{log.level.toUpperCase()}]
+              </span>
+              <span className="whitespace-pre-wrap break-all text-foreground">{log.message}</span>
+            </div>
+          ))}
+        </div>
+      );
+    };
+
+    export default LogViewer;
+approved: true

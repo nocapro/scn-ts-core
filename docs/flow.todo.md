@@ -1,5 +1,17 @@
 === DONE
 
+web log; add multi toggle to show log levels
+
+=== DONE
+
+add copy button to log
+
+=== DONE
+
+fix doubling log
+
+=== DONE
+
 add copy button for output
 
 === DONE

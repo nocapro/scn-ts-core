@@ -57,7 +57,6 @@ export const analyzeProject = async ({
     let fileIdCounter = 1;
 
     onProgress?.({ percentage: 0, message: 'Creating source files...' });
-    logger.debug('Creating source files...');
 
     // Step 1: Create SourceFile objects for all files
     const sourceFiles = files.map((file) => {
@@ -76,7 +75,6 @@ export const analyzeProject = async ({
     });
 
     onProgress?.({ percentage: 10, message: `Parsing ${sourceFiles.length} files...` });
-    logger.debug(`Parsing ${sourceFiles.length} files...`);
 
     // Step 2: Parse all files
     const parsedFiles = sourceFiles.map((file, i) => {
@@ -92,12 +90,10 @@ export const analyzeProject = async ({
         }
         const percentage = 10 + (40 * (i + 1) / sourceFiles.length);
         onProgress?.({ percentage, message: `Parsing ${file.relativePath}` });
-        logger.debug(`[${Math.round(percentage)}%] Parsed ${file.relativePath}`);
         return file;
     });
 
     onProgress?.({ percentage: 50, message: 'Analyzing files...' });
-    logger.debug('Analyzing files...');
 
     // Step 3: Analyze all parsed files
     const analyzedFiles = parsedFiles.map((file, i) => {
@@ -105,19 +101,16 @@ export const analyzeProject = async ({
             const analyzed = analyze(file);
             const percentage = 50 + (40 * (i + 1) / sourceFiles.length);
             onProgress?.({ percentage, message: `Analyzing ${file.relativePath}` });
-            logger.debug(`[${Math.round(percentage)}%] Analyzed ${file.relativePath}`);
             return analyzed;
         }
         return file;
     });
     
     onProgress?.({ percentage: 90, message: 'Resolving dependency graph...' });
-    logger.debug('Resolving dependency graph...');
 
     // Step 4: Resolve the dependency graph across all files
     const resolvedGraph = resolveGraph(analyzedFiles, pathResolver, root);
     
     onProgress?.({ percentage: 100, message: 'Analysis complete.' });
-    logger.debug('Analysis complete.');
     return resolvedGraph;
 };

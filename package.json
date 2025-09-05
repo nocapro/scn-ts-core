@@ -3,6 +3,9 @@
   "module": "src/index.ts",
   "type": "module",
   "private": true,
+  "dependencies": {
+    "js-tiktoken": "^1.0.21"
+  },
   "scripts": {
     "check": "tsc --build"
   },

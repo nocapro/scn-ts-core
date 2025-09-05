@@ -7,11 +7,18 @@ import path from './utils/path';
 import { getPathResolver } from './utils/tsconfig';
 import { resolveGraph } from './graph-resolver';
 import { logger } from './logger';
+import { initializeTokenizer as initTokenizer, countTokens as countTokensInternal } from './tokenizer';
 
 /**
  * Public API to initialize the parser. Must be called before any other APIs.
  */
 export const initializeParser = (options: ParserInitOptions): Promise<void> => init(options);
+
+/**
+ * Initializes the tokenizer. Call this for consistency, although `countTokens` will auto-initialize.
+ * It's a synchronous and lightweight operation.
+ */
+export const initializeTokenizer = (): boolean => initTokenizer();
 
 // Types for web demo
 export type { ParserInitOptions, SourceFile, LogLevel, InputFile, TsConfig, ScnTsConfig, AnalyzeProjectOptions, LogHandler, FormattingOptions, CodeSymbol, SymbolKind } from './types';
@@ -19,6 +26,11 @@ export type FileContent = InputFile;
 
 // Exports for web demo. The constants are exported from index.ts directly.
 export { logger };
+
+/**
+ * Counts tokens in a string using the cl100k_base model.
+ */
+export const countTokens = (text: string): number => countTokensInternal(text);
 
 /**
  * Generate SCN from analyzed source files

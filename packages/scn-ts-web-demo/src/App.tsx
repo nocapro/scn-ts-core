@@ -1,5 +1,5 @@
 import { useEffect, useCallback, useMemo, useRef } from 'react';
-import { generateScn } from 'scn-ts-core';
+import { generateScn, initializeTokenizer, countTokens } from 'scn-ts-core';
 import { Button } from './components/ui/button';
 import { Textarea } from './components/ui/textarea';
 import LogViewer from './components/LogViewer';
@@ -10,7 +10,6 @@ import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from './
 import { useAnalysis } from './hooks/useAnalysis.hook';
 import { useClipboard } from './hooks/useClipboard.hook';
 import { useResizableSidebar } from './hooks/useResizableSidebar.hook';
-import { useTokenCounter } from './hooks/useTokenCounter.hook';
 import { useAppStore } from './stores/app.store';
 import type { CodeSymbol } from 'scn-ts-core';
 
@@ -40,7 +39,12 @@ function App() {
 
   const { sidebarWidth, handleMouseDown } = useResizableSidebar(480);
   const { isCopied, handleCopy: performCopy } = useClipboard();
-  const tokenCounts = useTokenCounter(filesInput, scnOutput, onLogPartial);
+
+  useEffect(() => {
+    if (!initializeTokenizer()) {
+      onLogPartial({ level: 'error', message: 'Failed to initialize tokenizer.' });
+    }
+  }, [onLogPartial]);
 
   useEffect(() => {
     if (analysisResult) {
@@ -49,6 +53,11 @@ function App() {
       setScnOutput('');
     }
   }, [analysisResult, formattingOptions]);
+
+  const tokenCounts = useMemo(() => ({
+    input: countTokens(filesInput),
+    output: countTokens(scnOutput)
+  }), [filesInput, scnOutput]);
 
   const handleCopy = useCallback(() => {
     performCopy(scnOutput);

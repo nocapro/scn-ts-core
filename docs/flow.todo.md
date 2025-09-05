@@ -1,5 +1,15 @@
 ===
 
+give cool stat of how many token difference between input and output. should provided by scn-ts-core level api
+
+===
+
+token counter; js-tiktoken
+
+the feature should be provided by scn-ts-core instead as core api level so web demo can directly use it
+
+===
+
 formatting options
 
 show token cost for each item

@@ -549,294 +549,6 @@ const LogViewer: React.FC<{ logs: readonly LogEntry[] }> = ({ logs }) => {
 export default LogViewer;
 ```
 
-## File: packages/scn-ts-web-demo/src/components/OutputOptions.tsx
-```typescript
-import * as React from 'react';
-import type { FormattingOptions } from '../types';
-import { ChevronDown, ChevronRight, Expand, Shrink } from 'lucide-react';
-import { Button } from './ui/button';
-import { Checkbox } from './ui/checkbox';
-import { Label } from './ui/label';
-
-interface OutputOptionsProps {
-  options: FormattingOptions;
-  setOptions: React.Dispatch<React.SetStateAction<FormattingOptions>>;
-}
-
-
-type RegularOptionKey = keyof Omit<FormattingOptions, 'displayFilters'>;
-type OptionItem = RegularOptionKey | string | { name: string; children: OptionItem[] };
-
-const symbolKindLabels: Record<string, string> = {
-  // TS/JS
-  class: 'Classes',
-  interface: 'Interfaces',
-  function: 'Functions',
-  method: 'Methods',
-  constructor: 'Constructors',
-  variable: 'Variables',
-  property: 'Properties',
-  enum: 'Enums',
-  enum_member: 'Enum Members',
-  type_alias: 'Type Aliases',
-  module: 'Modules',
-  // React
-  react_component: 'React Components',
-  styled_component: 'Styled Components',
-  jsx_element: 'JSX Elements',
-  // CSS
-  css_class: 'CSS Classes',
-  css_id: 'CSS IDs',
-  css_tag: 'CSS Tags',
-  css_at_rule: 'CSS At-Rules',
-  css_variable: 'CSS Variables',
-  // Go
-  go_package: 'Go Packages',
-  // Rust
-  rust_struct: 'Rust Structs',
-  rust_trait: 'Rust Traits',
-  rust_impl: 'Rust Impls',
-};
-
-const tsDeclarationKinds = ['class', 'interface', 'function', 'variable', 'enum', 'type_alias', 'module'];
-const tsMemberKinds = ['method', 'constructor', 'property', 'enum_member'];
-const reactKinds = ['react_component', 'styled_component', 'jsx_element'];
-const cssKinds = ['css_class', 'css_id', 'css_tag', 'css_at_rule', 'css_variable'];
-const goKinds = ['go_package'];
-const rustKinds = ['rust_struct', 'rust_trait', 'rust_impl'];
-
-const toFilter = (kind: string): string => `filter:${kind}`;
-
-const symbolVisibilityTree: OptionItem = {
-  name: 'Symbol Visibility',
-  children: [
-    {
-      name: 'TypeScript/JavaScript',
-      children: [
-        { name: 'Declarations', children: tsDeclarationKinds.map(toFilter) },
-        { name: 'Members', children: tsMemberKinds.map(toFilter) },
-      ],
-    },
-    { name: 'React', children: reactKinds.map(toFilter) },
-    { name: 'CSS', children: cssKinds.map(toFilter) },
-    {
-      name: 'Other Languages',
-      children: [
-        { name: 'Go', children: goKinds.map(toFilter) },
-        { name: 'Rust', children: rustKinds.map(toFilter) },
-      ],
-    },
-  ],
-};
-
-const optionTree: OptionItem[] = [
-  {
-    name: 'Display Elements',
-    children: [
-      'showIcons',
-      {
-        name: 'Indicators',
-        children: ['showExportedIndicator', 'showPrivateIndicator'],
-      },
-      'showModifiers',
-      'showTags',
-      {
-        name: 'Identifiers',
-        children: ['showFilePrefix', 'showFileIds', 'showSymbolIds'],
-      },
-    ],
-  },
-  {
-    name: 'Relationships',
-    children: ['showOutgoing', 'showIncoming'],
-  },
-  {
-    name: 'Structure',
-    children: ['groupMembers'],
-  },
-  symbolVisibilityTree,
-];
-
-const optionLabels: Record<RegularOptionKey, string> & Record<string, string> = {
-  ...symbolKindLabels,
-  showIcons: 'Icons',
-  showExportedIndicator: 'Exported (+)',
-  showPrivateIndicator: 'Private (-)',
-  showModifiers: 'Modifiers',
-  showTags: 'Tags',
-  showSymbolIds: 'Symbol IDs',
-  showFilePrefix: 'File Prefix (§)',
-  showFileIds: 'File IDs',
-  showOutgoing: 'Outgoing',
-  showIncoming: 'Incoming',
-  groupMembers: 'Group Members',
-};
-
-function getAllKeys(item: OptionItem): string[] {
-  if (typeof item === 'string') {
-    return [item];
-  }
-  return item.children.flatMap(getAllKeys);
-}
-
-const getAllGroupNames = (items: OptionItem[]): string[] => {
-  return items.flatMap(item => {
-    if (typeof item === 'object' && 'name' in item) {
-      return [item.name, ...getAllGroupNames(item.children)];
-    }
-    return [];
-  });
-}
-
-const OutputOptions: React.FC<OutputOptionsProps> = ({ options, setOptions }) => {
-  const [expandedGroups, setExpandedGroups] = React.useState<Set<string>>(
-    () =>
-      new Set([
-        'Display Elements', 'Indicators', 'Relationships', 'Structure',
-        'TypeScript/JavaScript',
-        'React', 'Identifiers',
-      ])
-  );
-
-  const allGroupNames = React.useMemo(() => getAllGroupNames(optionTree), []);
-
-  const expandAll = () => {
-    setExpandedGroups(new Set(allGroupNames));
-  };
-
-  const collapseAll = () => {
-    setExpandedGroups(new Set());
-  };
-
-  const toggleGroup = (groupName: string) => {
-    setExpandedGroups(prev => {
-      const newSet = new Set(prev);
-      if (newSet.has(groupName)) {
-        newSet.delete(groupName);
-      } else {
-        newSet.add(groupName);
-      }
-      return newSet;
-    });
-  };
-
-  const handleChange = (optionKey: string) => (checked: boolean | 'indeterminate') => {
-    const isChecked = checked === true;
-    if (optionKey.startsWith('filter:')) {
-      const kind = optionKey.substring('filter:'.length);
-      setOptions(prev => ({
-        ...prev,
-        displayFilters: { ...(prev.displayFilters ?? {}), [kind]: isChecked },
-      }));
-    } else {
-      setOptions(prev => ({ ...prev, [optionKey]: isChecked }));
-    }
-  };
-
-  const handleGroupChange = (keys: ReadonlyArray<string>) => (checked: boolean | 'indeterminate') => {
-    const isChecked = checked === true;
-    setOptions(prev => {
-      const newOptions: FormattingOptions = { ...prev };
-      const newDisplayFilters = { ...(prev.displayFilters ?? {}) };
-
-      for (const key of keys) {
-        if (key.startsWith('filter:')) {
-          newDisplayFilters[key.substring('filter:'.length)] = isChecked;
-        } else {
-          newOptions[key as RegularOptionKey] = isChecked;
-        }
-      }
-      newOptions.displayFilters = newDisplayFilters;
-      return newOptions;
-    });
-  };
-
-  const renderItem = (item: OptionItem, level: number): React.ReactNode => {
-    if (typeof item === 'string') {
-      const key = item as string;
-      const isFilter = key.startsWith('filter:');
-      const filterKind = isFilter ? key.substring('filter:'.length) : null;
-      const labelKey = filterKind ?? key;
-
-      return (
-        <div key={key} style={{ paddingLeft: `${level * 1.5}rem` }} className="flex items-center space-x-1.5">
-          <Checkbox
-            id={key}
-            checked={
-              isFilter ? options.displayFilters?.[filterKind!] ?? true : options[key as RegularOptionKey] ?? true
-            }
-            onCheckedChange={handleChange(key)}
-          />
-          <Label htmlFor={key} className="cursor-pointer select-none text-sm text-muted-foreground font-normal">
-            {optionLabels[labelKey as keyof typeof optionLabels] ?? labelKey}
-          </Label>
-        </div>
-      );
-    }
-
-    const { name, children } = item;
-    const isExpanded = expandedGroups.has(name);
-    const allKeys = getAllKeys(item);
-    const allChecked = allKeys.every(key => {
-      if (key.startsWith('filter:')) {
-        return options.displayFilters?.[key.substring('filter:'.length)] ?? true;
-      }
-      return options[key as RegularOptionKey] ?? true;
-    });
-
-    return (
-      <div key={name}>
-        <div
-          className="flex items-center space-x-1.5 py-1 rounded-md hover:bg-accent/50 cursor-pointer select-none -mx-2 px-2"
-          style={{ paddingLeft: `calc(${level * 1.5}rem + 0.5rem)` }}
-          onClick={() => toggleGroup(name)}
-        >
-          {isExpanded ? <ChevronDown className="h-4 w-4 flex-shrink-0" /> : <ChevronRight className="h-4 w-4 flex-shrink-0" />}
-          <Checkbox
-            id={`group-${name.replace(/\s+/g, '-')}`}
-            title={`Toggle all in ${name}`}
-            checked={allChecked}
-            onCheckedChange={handleGroupChange(allKeys)}
-            onClick={(e) => e.stopPropagation()} // Prevent row click from firing
-          />
-          <Label
-            htmlFor={`group-${name.replace(/\s+/g, '-')}`}
-            className="font-semibold text-sm cursor-pointer select-none"
-          >
-            {name}
-          </Label>
-        </div>
-        {isExpanded && (
-          <div className="pt-1.5 space-y-1.5">
-            {children.map(child => renderItem(child, level + 1))}
-          </div>
-        )}
-      </div>
-    );
-  };
-
-  return (
-    <div className="space-y-2">
-      <div className="flex items-center space-x-2 -mx-2">
-        <Button variant="ghost" size="sm" onClick={expandAll} className="text-muted-foreground hover:text-foreground h-auto px-2 py-1 text-xs">
-          <Expand className="mr-1.5 h-3.5 w-3.5" />
-          Expand all
-        </Button>
-        <Button variant="ghost" size="sm" onClick={collapseAll} className="text-muted-foreground hover:text-foreground h-auto px-2 py-1 text-xs">
-          <Shrink className="mr-1.5 h-3.5 w-3.5" />
-          Collapse all
-        </Button>
-      </div>
-      <div className="space-y-1">
-        {optionTree.map(item => renderItem(item, 0))}
-      </div>
-    </div>
-  );
-};
-
-export default OutputOptions;
-```
-
 ## File: packages/scn-ts-web-demo/src/hooks/useClipboard.hook.ts
 ```typescript
 import { useState, useCallback } from 'react';
@@ -892,46 +604,6 @@ export function useResizableSidebar(initialWidth: number, minWidth = 320, maxWid
   }, [minWidth, maxWidthPercent]);
 
   return { sidebarWidth, handleMouseDown };
-}
-```
-
-## File: packages/scn-ts-web-demo/src/hooks/useTokenCounter.hook.ts
-```typescript
-import { useState, useEffect } from 'react';
-import { get_encoding, type Tiktoken } from 'tiktoken';
-import type { LogEntry } from '../types';
-
-export function useTokenCounter(
-  filesInput: string,
-  scnOutput: string,
-  onLog: (log: Pick<LogEntry, 'level' | 'message'>) => void
-) {
-  const [encoder, setEncoder] = useState<Tiktoken | null>(null);
-  const [tokenCounts, setTokenCounts] = useState({ input: 0, output: 0 });
-
-  useEffect(() => {
-    try {
-      const enc = get_encoding("cl100k_base");
-      setEncoder(enc);
-    } catch (e) {
-      console.error("Failed to initialize tokenizer:", e);
-      onLog({ level: 'error', message: 'Failed to initialize tokenizer.' });
-    }
-  }, [onLog]);
-
-  useEffect(() => {
-    if (!encoder) return;
-    try {
-      const inputTokens = encoder.encode(filesInput).length;
-      const outputTokens = encoder.encode(scnOutput).length;
-      setTokenCounts({ input: inputTokens, output: outputTokens });
-    } catch (e) {
-      console.error("Tokenization error:", e);
-      setTokenCounts({ input: 0, output: 0 });
-    }
-  }, [filesInput, scnOutput, encoder]);
-
-  return tokenCounts;
 }
 ```
 
@@ -1133,50 +805,6 @@ export interface FormattingOptions {
 </html>
 ```
 
-## File: packages/scn-ts-web-demo/package.json
-```json
-{
-  "name": "scn-ts-web-demo",
-  "private": true,
-  "version": "0.1.0",
-  "type": "module",
-  "scripts": {
-    "dev": "vite",
-    "build": "tsc && vite build",
-    "check": "tsc --noEmit",
-    "preview": "vite preview",
-    "prepare": "node scripts/prepare-wasm.cjs"
-  },
-  "dependencies": {
-    "@radix-ui/react-accordion": "^1.1.2",
-    "@radix-ui/react-label": "^2.1.7",
-    "@radix-ui/react-slot": "^1.0.2",
-    "class-variance-authority": "^0.7.0",
-    "clsx": "^2.1.1",
-    "comlink": "^4.4.1",
-    "lucide-react": "^0.379.0",
-    "react": "^18.3.1",
-    "react-dom": "^18.3.1",
-    "tailwind-merge": "^2.3.0",
-    "tiktoken": "^1.0.14"
-  },
-  "devDependencies": {
-    "@types/node": "^20.12.12",
-    "@types/react": "^18.3.3",
-    "@types/react-dom": "^18.3.0",
-    "@vitejs/plugin-react": "^4.3.0",
-    "autoprefixer": "^10.4.19",
-    "eslint": "^8.57.0",
-    "postcss": "^8.4.38",
-    "tailwindcss": "^3.4.3",
-    "typescript": "^5.4.5",
-    "vite": "^5.2.12",
-    "vite-plugin-top-level-await": "^1.4.1",
-    "vite-plugin-wasm": "^3.3.0"
-  }
-}
-```
-
 ## File: packages/scn-ts-web-demo/postcss.config.js
 ```javascript
 export default {
@@ -1300,50 +928,6 @@ export default {
   },
   "include": ["vite.config.ts"]
 }
-```
-
-## File: packages/scn-ts-web-demo/vite.config.ts
-```typescript
-import { defineConfig } from 'vite'
-import react from '@vitejs/plugin-react'
-import path from 'path'
-import wasm from 'vite-plugin-wasm'
-import topLevelAwait from 'vite-plugin-top-level-await'
-
-// https://vitejs.dev/config/
-export default defineConfig({
-  plugins: [
-    wasm(),
-    topLevelAwait(),
-    react()
-  ],
-  resolve: {
-    alias: {
-      "@": path.resolve(__dirname, "src"),
-      "scn-ts-core": path.resolve(__dirname, "../../src/index.ts"),
-    },
-  },
-  optimizeDeps: {
-    // Exclude packages that have special loading mechanisms (like wasm)
-    // to prevent Vite from pre-bundling them and causing issues.
-    exclude: ['web-tree-sitter', 'tiktoken'],
-    // Force pre-bundling of our monorepo packages. As linked dependencies,
-    // Vite doesn't optimize it by default. We need to include it so Vite
-    // discovers its deep CJS dependencies (like graphology) and converts
-    // them to ESM for the dev server. We specifically `exclude` 'web-tree-sitter'
-    // above to prevent Vite from interfering with its unique WASM loading mechanism.
-    include: ['scn-ts-core'],
-  },
-  server: {
-    headers: {
-      // These headers are required for SharedArrayBuffer, which is used by
-      // web-tree-sitter and is good practice for applications using wasm
-      // with threading or advanced memory features.
-      'Cross-Origin-Embedder-Policy': 'require-corp',
-      'Cross-Origin-Opener-Policy': 'same-origin',
-    },
-  },
-})
 ```
 
 ## File: src/utils/graph.ts
@@ -1524,6 +1108,47 @@ export const SCN_SYMBOLS = {
 export const RESOLVE_EXTENSIONS = ['.ts', '.tsx', '.js', '.jsx', '.css', '.go', '.rs', '.py', '.java', '.graphql', ''];
 ```
 
+## File: packages/scn-ts-web-demo/src/hooks/useTokenCounter.hook.ts
+```typescript
+import { useState, useEffect } from 'react';
+import { Tiktoken } from "js-tiktoken/lite";
+import cl100k_base from "js-tiktoken/ranks/cl100k_base";
+import type { LogEntry } from '../types';
+
+export function useTokenCounter(
+  filesInput: string,
+  scnOutput: string,
+  onLog: (log: Pick<LogEntry, 'level' | 'message'>) => void
+) {
+  const [encoder, setEncoder] = useState<Tiktoken | null>(null);
+  const [tokenCounts, setTokenCounts] = useState({ input: 0, output: 0 });
+
+  useEffect(() => {
+    try {
+      const enc = new Tiktoken(cl100k_base);
+      setEncoder(enc);
+    } catch (e) {
+      console.error("Failed to initialize tokenizer:", e);
+      onLog({ level: 'error', message: 'Failed to initialize tokenizer.' });
+    }
+  }, [onLog]);
+
+  useEffect(() => {
+    if (!encoder) return;
+    try {
+      const inputTokens = encoder.encode(filesInput).length;
+      const outputTokens = encoder.encode(scnOutput).length;
+      setTokenCounts({ input: inputTokens, output: outputTokens });
+    } catch (e) {
+      console.error("Tokenization error:", e);
+      setTokenCounts({ input: 0, output: 0 });
+    }
+  }, [filesInput, scnOutput, encoder]);
+
+  return tokenCounts;
+}
+```
+
 ## File: packages/scn-ts-web-demo/src/services/analysis.service.ts
 ```typescript
 import * as Comlink from 'comlink';
@@ -1576,168 +1201,6 @@ export function createAnalysisService(): AnalysisServiceAPI {
     cleanup,
   };
 }
-```
-
-## File: packages/scn-ts-web-demo/src/App.tsx
-```typescript
-import { useEffect, useCallback } from 'react';
-import { generateScn } from 'scn-ts-core';
-import { Button } from './components/ui/button';
-import { Textarea } from './components/ui/textarea';
-import LogViewer from './components/LogViewer';
-import OutputOptions from './components/OutputOptions';
-import { Legend } from './components/Legend';
-import { Play, Loader, Copy, Check, StopCircle } from 'lucide-react';
-import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from './components/ui/accordion';
-import { useAnalysis } from './hooks/useAnalysis.hook';
-import { useClipboard } from './hooks/useClipboard.hook';
-import { useResizableSidebar } from './hooks/useResizableSidebar.hook';
-import { useTokenCounter } from './hooks/useTokenCounter.hook';
-import { useAppStore } from './stores/app.store';
-
-function App() {
-  const {
-    filesInput,
-    setFilesInput,
-    scnOutput,
-    setScnOutput,
-    formattingOptions,
-    setFormattingOptions,
-  } = useAppStore();
-
-  const {
-    isInitialized,
-    isLoading,
-    analysisResult,
-    progress,
-    logs,
-    analysisTime,
-    handleAnalyze: performAnalysis,
-    handleStop,
-    onLogPartial,
-  } = useAnalysis();
-
-  const { sidebarWidth, handleMouseDown } = useResizableSidebar(480);
-  const { isCopied, handleCopy: performCopy } = useClipboard();
-  const tokenCounts = useTokenCounter(filesInput, scnOutput, onLogPartial);
-
-  useEffect(() => {
-    if (analysisResult) {
-      setScnOutput(generateScn(analysisResult, formattingOptions));
-    } else {
-      setScnOutput('');
-    }
-  }, [analysisResult, formattingOptions]);
-
-  const handleCopy = useCallback(() => {
-    performCopy(scnOutput);
-  }, [performCopy, scnOutput]);
-
-  const handleAnalyze = useCallback(async () => {
-    performAnalysis(filesInput);
-  }, [performAnalysis, filesInput]);
-
-  return (
-    <div className="h-screen w-screen flex bg-background text-foreground overflow-hidden">
-      {/* Sidebar */}
-      <aside style={{ width: `${sidebarWidth}px` }} className="max-w-[80%] min-w-[320px] flex-shrink-0 flex flex-col border-r">
-        <div className="flex-shrink-0 flex items-center justify-between p-4 border-b bg-background relative z-20">
-          <h1 className="text-xl font-bold tracking-tight">SCN-TS Web Demo</h1>
-          <div className="flex items-center space-x-2">
-            {isLoading ? (
-              <>
-                <Button disabled className="w-32 justify-center">
-                  <Loader className="mr-2 h-4 w-4 animate-spin" />
-                  <span>{progress ? `${Math.round(progress.percentage)}%` : 'Analyzing...'}</span>
-                </Button>
-                <Button onClick={handleStop} variant="outline" size="icon" title="Stop analysis">
-                  <StopCircle className="h-4 w-4" />
-                </Button>
-              </>
-            ) : (
-              <Button onClick={handleAnalyze} disabled={!isInitialized} className="w-32 justify-center">
-                <Play className="mr-2 h-4 w-4" />
-                <span>Analyze</span>
-              </Button>
-            )}
-          </div>
-        </div>
-
-        <div className="flex-grow overflow-y-auto">
-          <Accordion type="multiple" defaultValue={['input', 'options', 'logs']} className="w-full">
-            <AccordionItem value="input">
-              <AccordionTrigger className="px-4 text-sm font-semibold hover:no-underline">
-                <div className="flex w-full justify-between items-center">
-                  <span>Input Files (JSON)</span>
-                  <span className="text-xs font-normal text-muted-foreground tabular-nums">
-                    {tokenCounts.input.toLocaleString()} tokens
-                  </span>
-                </div>
-              </AccordionTrigger>
-              <AccordionContent>
-                <div className="px-4 pb-4 h-96">
-                  <Textarea
-                    value={filesInput}
-                    onChange={(e) => setFilesInput(e.currentTarget.value)}
-                    className="h-full w-full font-mono text-xs resize-none"
-                    placeholder="Paste an array of FileContent objects here..."
-                  />
-                </div>
-              </AccordionContent>
-            </AccordionItem>
-
-            <AccordionItem value="options">
-              <AccordionTrigger className="px-4 text-sm font-semibold hover:no-underline">Formatting Options</AccordionTrigger>
-              <AccordionContent className="px-4">
-                <OutputOptions options={formattingOptions} setOptions={setFormattingOptions} />
-              </AccordionContent>
-            </AccordionItem>
-
-            <AccordionItem value="logs">
-              <AccordionTrigger className="px-4 text-sm font-semibold hover:no-underline">Logs</AccordionTrigger>
-              <AccordionContent className="px-4">
-                <LogViewer logs={logs} />
-              </AccordionContent>
-            </AccordionItem>
-          </Accordion>
-        </div>
-      </aside>
-
-      {/* Resizer */}
-      <div
-        role="separator"
-        onMouseDown={handleMouseDown}
-        className="w-1.5 flex-shrink-0 cursor-col-resize hover:bg-primary/20 transition-colors duration-200"
-      />
-
-      {/* Main Content Area */}
-      <main className="flex-grow flex flex-col overflow-hidden relative">
-        <div className="flex justify-between items-center p-4 border-b flex-shrink-0">
-          <h2 className="text-lg font-semibold leading-none tracking-tight">Output (SCN)</h2>
-          <div className="flex items-center gap-4">
-            {analysisTime !== null && (
-              <span className="text-sm text-muted-foreground">
-                Analyzed in {(analysisTime / 1000).toFixed(2)}s
-              </span>
-            )}
-            <span className="text-sm font-normal text-muted-foreground tabular-nums">{tokenCounts.output.toLocaleString()} tokens</span>
-            <Button variant="ghost" size="icon" onClick={handleCopy} disabled={!scnOutput} title="Copy to clipboard">
-              {isCopied ? <Check className="h-4 w-4 text-green-500" /> : <Copy className="h-4 w-4" />}
-            </Button>
-          </div>
-        </div>
-        <div className="p-4 flex-grow overflow-auto font-mono text-xs relative">
-          <Legend />
-          <pre className="whitespace-pre-wrap">
-            {scnOutput || (isLoading ? "Generating..." : "Output will appear here.")}
-          </pre>
-        </div>
-      </main>
-    </div>
-  );
-}
-
-export default App;
 ```
 
 ## File: packages/scn-ts-web-demo/src/default-files.ts
@@ -2125,30 +1588,377 @@ Comlink.expose(workerApi);
 export type WorkerApi = typeof workerApi;
 ```
 
-## File: src/index.ts
+## File: packages/scn-ts-web-demo/package.json
+```json
+{
+  "name": "scn-ts-web-demo",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "check": "tsc --noEmit",
+    "preview": "vite preview",
+    "prepare": "node scripts/prepare-wasm.cjs"
+  },
+  "dependencies": {
+    "@radix-ui/react-accordion": "^1.1.2",
+    "@radix-ui/react-checkbox": "^1.3.3",
+    "@radix-ui/react-label": "^2.1.7",
+    "@radix-ui/react-slot": "^1.0.2",
+    "class-variance-authority": "^0.7.0",
+    "clsx": "^2.1.1",
+    "comlink": "^4.4.1",
+    "js-tiktoken": "^1.0.21",
+    "lucide-react": "^0.379.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "tailwind-merge": "^2.3.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.12.12",
+    "@types/react": "^18.3.3",
+    "@types/react-dom": "^18.3.0",
+    "@vitejs/plugin-react": "^4.3.0",
+    "autoprefixer": "^10.4.19",
+    "eslint": "^8.57.0",
+    "postcss": "^8.4.38",
+    "tailwindcss": "^3.4.3",
+    "typescript": "^5.4.5",
+    "vite": "^5.2.12",
+    "vite-plugin-top-level-await": "^1.4.1",
+    "vite-plugin-wasm": "^3.3.0"
+  }
+}
+```
+
+## File: packages/scn-ts-web-demo/vite.config.ts
 ```typescript
-export {
-    initializeParser,
-    generateScn,
-    generateScnFromConfig,
-    analyzeProject,
-    logger,
-} from './main';
+import { defineConfig } from 'vite'
+import react from '@vitejs/plugin-react'
+import path from 'path'
+import wasm from 'vite-plugin-wasm'
 
-export { ICONS, SCN_SYMBOLS } from './constants';
+// https://vitejs.dev/config/
+export default defineConfig({
+  plugins: [
+    wasm(),
+    react()
+  ],
+  resolve: {
+    alias: {
+      "@": path.resolve(__dirname, "src"),
+      "scn-ts-core": path.resolve(__dirname, "../../src/index.ts"),
+    },
+  },
+  optimizeDeps: {
+    // Exclude packages that have special loading mechanisms (like wasm)
+    // to prevent Vite from pre-bundling them and causing issues.
+    exclude: ['web-tree-sitter'],
+    // Force pre-bundling of our monorepo packages. As linked dependencies,
+    // Vite doesn't optimize it by default. We need to include it so Vite
+    // discovers its deep CJS dependencies (like graphology) and converts
+    // them to ESM for the dev server. We specifically `exclude` 'web-tree-sitter'
+    // above to prevent Vite from interfering with its unique WASM loading mechanism.
+    include: ['scn-ts-core'],
+  },
+  server: {
+    headers: {
+      // These headers are required for SharedArrayBuffer, which is used by
+      // web-tree-sitter and is good practice for applications using wasm
+      // with threading or advanced memory features.
+      'Cross-Origin-Embedder-Policy': 'require-corp',
+      'Cross-Origin-Opener-Policy': 'same-origin',
+    },
+  },
+})
+```
 
-export type {
-    ParserInitOptions,
-    SourceFile,
-    LogLevel,
-    InputFile,
-    TsConfig,
-    ScnTsConfig,
-    AnalyzeProjectOptions,
-    LogHandler,
-    FormattingOptions,
-    FileContent
-} from './main';
+## File: packages/scn-ts-web-demo/src/components/OutputOptions.tsx
+```typescript
+import * as React from 'react';
+import type { FormattingOptions } from '../types';
+import { ChevronDown, ChevronRight } from 'lucide-react';
+
+import { Checkbox } from './ui/checkbox';
+import { Label } from './ui/label';
+
+interface OutputOptionsProps {
+  options: FormattingOptions;
+  setOptions: React.Dispatch<React.SetStateAction<FormattingOptions>>;
+}
+
+
+export interface OutputOptionsHandle {
+  expandAll: () => void;
+  collapseAll: () => void;
+}
+
+type RegularOptionKey = keyof Omit<FormattingOptions, 'displayFilters'>;
+type OptionItem = RegularOptionKey | string | { name: string; children: OptionItem[] };
+
+const symbolKindLabels: Record<string, string> = {
+  // TS/JS
+  class: 'Classes',
+  interface: 'Interfaces',
+  function: 'Functions',
+  method: 'Methods',
+  constructor: 'Constructors',
+  variable: 'Variables',
+  property: 'Properties',
+  enum: 'Enums',
+  enum_member: 'Enum Members',
+  type_alias: 'Type Aliases',
+  module: 'Modules',
+  // React
+  react_component: 'React Components',
+  styled_component: 'Styled Components',
+  jsx_element: 'JSX Elements',
+  // CSS
+  css_class: 'CSS Classes',
+  css_id: 'CSS IDs',
+  css_tag: 'CSS Tags',
+  css_at_rule: 'CSS At-Rules',
+  css_variable: 'CSS Variables',
+  // Go
+  go_package: 'Go Packages',
+  // Rust
+  rust_struct: 'Rust Structs',
+  rust_trait: 'Rust Traits',
+  rust_impl: 'Rust Impls',
+};
+
+const tsDeclarationKinds = ['class', 'interface', 'function', 'variable', 'enum', 'type_alias', 'module'];
+const tsMemberKinds = ['method', 'constructor', 'property', 'enum_member'];
+const reactKinds = ['react_component', 'styled_component', 'jsx_element'];
+const cssKinds = ['css_class', 'css_id', 'css_tag', 'css_at_rule', 'css_variable'];
+const goKinds = ['go_package'];
+const rustKinds = ['rust_struct', 'rust_trait', 'rust_impl'];
+
+const toFilter = (kind: string): string => `filter:${kind}`;
+
+const symbolVisibilityTree: OptionItem = {
+  name: 'Symbol Visibility',
+  children: [
+    {
+      name: 'TypeScript/JavaScript',
+      children: [
+        { name: 'Declarations', children: tsDeclarationKinds.map(toFilter) },
+        { name: 'Members', children: tsMemberKinds.map(toFilter) },
+      ],
+    },
+    { name: 'React', children: reactKinds.map(toFilter) },
+    { name: 'CSS', children: cssKinds.map(toFilter) },
+    {
+      name: 'Other Languages',
+      children: [
+        { name: 'Go', children: goKinds.map(toFilter) },
+        { name: 'Rust', children: rustKinds.map(toFilter) },
+      ],
+    },
+  ],
+};
+
+const optionTree: OptionItem[] = [
+  {
+    name: 'Display Elements',
+    children: [
+      'showIcons',
+      {
+        name: 'Indicators',
+        children: ['showExportedIndicator', 'showPrivateIndicator'],
+      },
+      'showModifiers',
+      'showTags',
+      {
+        name: 'Identifiers',
+        children: ['showFilePrefix', 'showFileIds', 'showSymbolIds'],
+      },
+    ],
+  },
+  {
+    name: 'Relationships',
+    children: ['showOutgoing', 'showIncoming'],
+  },
+  {
+    name: 'Structure',
+    children: ['groupMembers'],
+  },
+  symbolVisibilityTree,
+];
+
+const optionLabels: Record<RegularOptionKey, string> & Record<string, string> = {
+  ...symbolKindLabels,
+  showIcons: 'Icons',
+  showExportedIndicator: 'Exported (+)',
+  showPrivateIndicator: 'Private (-)',
+  showModifiers: 'Modifiers',
+  showTags: 'Tags',
+  showSymbolIds: 'Symbol IDs',
+  showFilePrefix: 'File Prefix (§)',
+  showFileIds: 'File IDs',
+  showOutgoing: 'Outgoing',
+  showIncoming: 'Incoming',
+  groupMembers: 'Group Members',
+};
+
+function getAllKeys(item: OptionItem): string[] {
+  if (typeof item === 'string') {
+    return [item];
+  }
+  return item.children.flatMap(getAllKeys);
+}
+
+const getAllGroupNames = (items: OptionItem[]): string[] => {
+  return items.flatMap(item => {
+    if (typeof item === 'object' && 'name' in item) {
+      return [item.name, ...getAllGroupNames(item.children)];
+    }
+    return [];
+  });
+}
+
+const OutputOptions = React.forwardRef<OutputOptionsHandle, OutputOptionsProps>(({ options, setOptions }, ref) => {
+  const [expandedGroups, setExpandedGroups] = React.useState<Set<string>>(
+    () =>
+      new Set([
+        'Display Elements', 'Indicators', 'Relationships', 'Structure',
+        'TypeScript/JavaScript',
+        'React', 'Identifiers',
+      ])
+  );
+
+  const allGroupNames = React.useMemo(() => getAllGroupNames(optionTree), []);
+
+  const expandAll = React.useCallback(() => {
+    setExpandedGroups(new Set(allGroupNames));
+  }, [allGroupNames]);
+
+  const collapseAll = React.useCallback(() => {
+    setExpandedGroups(new Set());
+  }, []);
+
+  React.useImperativeHandle(ref, () => ({
+    expandAll,
+    collapseAll,
+  }), [expandAll, collapseAll]);
+
+  const toggleGroup = (groupName: string) => {
+    setExpandedGroups(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(groupName)) {
+        newSet.delete(groupName);
+      } else {
+        newSet.add(groupName);
+      }
+      return newSet;
+    });
+  };
+
+  const handleChange = (optionKey: string) => (checked: boolean | 'indeterminate') => {
+    const isChecked = checked === true;
+    if (optionKey.startsWith('filter:')) {
+      const kind = optionKey.substring('filter:'.length);
+      setOptions(prev => ({
+        ...prev,
+        displayFilters: { ...(prev.displayFilters ?? {}), [kind]: isChecked },
+      }));
+    } else {
+      setOptions(prev => ({ ...prev, [optionKey]: isChecked }));
+    }
+  };
+
+  const handleGroupChange = (keys: ReadonlyArray<string>) => (checked: boolean | 'indeterminate') => {
+    const isChecked = checked === true;
+    setOptions(prev => {
+      const newOptions: FormattingOptions = { ...prev };
+      const newDisplayFilters = { ...(prev.displayFilters ?? {}) };
+
+      for (const key of keys) {
+        if (key.startsWith('filter:')) {
+          newDisplayFilters[key.substring('filter:'.length)] = isChecked;
+        } else {
+          newOptions[key as RegularOptionKey] = isChecked;
+        }
+      }
+      newOptions.displayFilters = newDisplayFilters;
+      return newOptions;
+    });
+  };
+
+  const renderItem = (item: OptionItem, level: number): React.ReactNode => {
+    if (typeof item === 'string') {
+      const key = item as string;
+      const isFilter = key.startsWith('filter:');
+      const filterKind = isFilter ? key.substring('filter:'.length) : null;
+      const labelKey = filterKind ?? key;
+
+      return (
+        <div key={key} style={{ paddingLeft: `${level * 1.5}rem` }} className="flex items-center space-x-1.5">
+          <Checkbox
+            id={key}
+            checked={
+              isFilter ? options.displayFilters?.[filterKind!] ?? true : options[key as RegularOptionKey] ?? true
+            }
+            onCheckedChange={handleChange(key)}
+          />
+          <Label htmlFor={key} className="cursor-pointer select-none text-sm text-muted-foreground font-normal">
+            {optionLabels[labelKey as keyof typeof optionLabels] ?? labelKey}
+          </Label>
+        </div>
+      );
+    }
+
+    const { name, children } = item;
+    const isExpanded = expandedGroups.has(name);
+    const allKeys = getAllKeys(item);
+    const allChecked = allKeys.every(key => {
+      if (key.startsWith('filter:')) {
+        return options.displayFilters?.[key.substring('filter:'.length)] ?? true;
+      }
+      return options[key as RegularOptionKey] ?? true;
+    });
+
+    return (
+      <div key={name}>
+        <div
+          className="flex items-center space-x-1.5 py-1 rounded-md hover:bg-accent/50 cursor-pointer select-none -mx-2 px-2"
+          style={{ paddingLeft: `calc(${level * 1.5}rem + 0.5rem)` }}
+          onClick={() => toggleGroup(name)}
+        >
+          {isExpanded ? <ChevronDown className="h-4 w-4 flex-shrink-0" /> : <ChevronRight className="h-4 w-4 flex-shrink-0" />}
+          <Checkbox
+            id={`group-${name.replace(/\s+/g, '-')}`}
+            title={`Toggle all in ${name}`}
+            checked={allChecked}
+            onCheckedChange={handleGroupChange(allKeys)}
+            onClick={(e: React.MouseEvent) => e.stopPropagation()} // Prevent row click from firing
+          />
+          <Label
+            htmlFor={`group-${name.replace(/\s+/g, '-')}`}
+            className="font-semibold text-sm cursor-pointer select-none"
+          >
+            {name}
+          </Label>
+        </div>
+        {isExpanded && (
+          <div className="pt-1.5 space-y-1.5">
+            {children.map(child => renderItem(child, level + 1))}
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  return (
+    <div className="space-y-1">
+      {optionTree.map(item => renderItem(item, 0))}
+    </div>
+  );
+});
+
+export default OutputOptions;
 ```
 
 ## File: packages/scn-ts-web-demo/src/hooks/useAnalysis.hook.ts
@@ -2260,6 +2070,210 @@ export function useAnalysis() {
 }
 ```
 
+## File: packages/scn-ts-web-demo/src/App.tsx
+```typescript
+import { useEffect, useCallback, useMemo, useRef } from 'react';
+import { generateScn } from 'scn-ts-core';
+import { Button } from './components/ui/button';
+import { Textarea } from './components/ui/textarea';
+import LogViewer from './components/LogViewer';
+import OutputOptions, { type OutputOptionsHandle } from './components/OutputOptions';
+import { Legend } from './components/Legend';
+import { Play, Loader, Copy, Check, StopCircle, ChevronsDown, ChevronsUp } from 'lucide-react';
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from './components/ui/accordion';
+import { useAnalysis } from './hooks/useAnalysis.hook';
+import { useClipboard } from './hooks/useClipboard.hook';
+import { useResizableSidebar } from './hooks/useResizableSidebar.hook';
+import { useTokenCounter } from './hooks/useTokenCounter.hook';
+import { useAppStore } from './stores/app.store';
+import type { CodeSymbol } from 'scn-ts-core';
+
+function App() {
+  const {
+    filesInput,
+    setFilesInput,
+    scnOutput,
+    setScnOutput,
+    formattingOptions,
+    setFormattingOptions,
+  } = useAppStore();
+
+  const {
+    isInitialized,
+    isLoading,
+    analysisResult,
+    progress,
+    logs,
+    analysisTime,
+    handleAnalyze: performAnalysis,
+    handleStop,
+    onLogPartial,
+  } = useAnalysis();
+
+  const outputOptionsRef = useRef<OutputOptionsHandle>(null);
+
+  const { sidebarWidth, handleMouseDown } = useResizableSidebar(480);
+  const { isCopied, handleCopy: performCopy } = useClipboard();
+  const tokenCounts = useTokenCounter(filesInput, scnOutput, onLogPartial);
+
+  useEffect(() => {
+    if (analysisResult) {
+      setScnOutput(generateScn(analysisResult, formattingOptions));
+    } else {
+      setScnOutput('');
+    }
+  }, [analysisResult, formattingOptions]);
+
+  const handleCopy = useCallback(() => {
+    performCopy(scnOutput);
+  }, [performCopy, scnOutput]);
+
+  const handleAnalyze = useCallback(async () => {
+    performAnalysis(filesInput);
+  }, [performAnalysis, filesInput]);
+
+  const handleExpandOptions = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    outputOptionsRef.current?.expandAll();
+  };
+
+  const handleCollapseOptions = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    outputOptionsRef.current?.collapseAll();
+  };
+
+  const { totalSymbols, visibleSymbols } = useMemo(() => {
+    if (!analysisResult) {
+      return { totalSymbols: 0, visibleSymbols: 0 };
+    }
+    const allSymbols: CodeSymbol[] = analysisResult.flatMap(file => file.symbols);
+    const total = allSymbols.length;
+    const visible = allSymbols.filter(symbol => {
+      return formattingOptions.displayFilters?.[symbol.kind] !== false;
+    }).length;
+    return { totalSymbols: total, visibleSymbols: visible };
+  }, [analysisResult, formattingOptions.displayFilters]);
+
+  return (
+    <div className="h-screen w-screen flex bg-background text-foreground overflow-hidden">
+      {/* Sidebar */}
+      <aside style={{ width: `${sidebarWidth}px` }} className="max-w-[80%] min-w-[320px] flex-shrink-0 flex flex-col border-r">
+        <div className="flex-shrink-0 flex items-center justify-between p-4 border-b bg-background relative z-20">
+          <h1 className="text-xl font-bold tracking-tight">SCN-TS Web Demo</h1>
+          <div className="flex items-center space-x-2">
+            {isLoading ? (
+              <>
+                <Button disabled className="w-32 justify-center">
+                  <Loader className="mr-2 h-4 w-4 animate-spin" />
+                  <span>{progress ? `${Math.round(progress.percentage)}%` : 'Analyzing...'}</span>
+                </Button>
+                <Button onClick={handleStop} variant="outline" size="icon" title="Stop analysis">
+                  <StopCircle className="h-4 w-4" />
+                </Button>
+              </>
+            ) : (
+              <Button onClick={handleAnalyze} disabled={!isInitialized} className="w-32 justify-center">
+                <Play className="mr-2 h-4 w-4" />
+                <span>Analyze</span>
+              </Button>
+            )}
+          </div>
+        </div>
+
+        <div className="flex-grow overflow-y-auto">
+          <Accordion type="multiple" defaultValue={['input', 'options', 'logs']} className="w-full">
+            <AccordionItem value="input">
+              <AccordionTrigger className="px-4 text-sm font-semibold hover:no-underline">
+                <div className="flex w-full justify-between items-center">
+                  <span>Input Files (JSON)</span>
+                  <span className="text-xs font-normal text-muted-foreground tabular-nums">
+                    {tokenCounts.input.toLocaleString()} tokens
+                  </span>
+                </div>
+              </AccordionTrigger>
+              <AccordionContent>
+                <div className="px-4 pb-4 h-96">
+                  <Textarea
+                    value={filesInput}
+                    onChange={(e) => setFilesInput(e.currentTarget.value)}
+                    className="h-full w-full font-mono text-xs resize-none"
+                    placeholder="Paste an array of FileContent objects here..."
+                  />
+                </div>
+              </AccordionContent>
+            </AccordionItem>
+
+            <AccordionItem value="options">
+              <AccordionTrigger className="px-4 text-sm font-semibold hover:no-underline">
+                <div className="flex w-full justify-between items-center">
+                  <span>Formatting Options</span>
+                  <div className="flex items-center gap-2">
+                    {analysisResult && (
+                      <span className="text-xs font-normal text-muted-foreground tabular-nums">
+                        {visibleSymbols} / {totalSymbols} symbols
+                      </span>
+                    )}
+                    <Button variant="ghost" size="icon" onClick={handleExpandOptions} title="Expand all" className="h-7 w-7 text-muted-foreground hover:text-foreground">
+                      <ChevronsDown className="h-4 w-4" />
+                    </Button>
+                    <Button variant="ghost" size="icon" onClick={handleCollapseOptions} title="Collapse all" className="h-7 w-7 text-muted-foreground hover:text-foreground">
+                      <ChevronsUp className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
+              </AccordionTrigger>
+              <AccordionContent className="px-4">
+                <OutputOptions ref={outputOptionsRef} options={formattingOptions} setOptions={setFormattingOptions} />
+              </AccordionContent>
+            </AccordionItem>
+
+            <AccordionItem value="logs">
+              <AccordionTrigger className="px-4 text-sm font-semibold hover:no-underline">Logs</AccordionTrigger>
+              <AccordionContent className="px-4">
+                <LogViewer logs={logs} />
+              </AccordionContent>
+            </AccordionItem>
+          </Accordion>
+        </div>
+      </aside>
+
+      {/* Resizer */}
+      <div
+        role="separator"
+        onMouseDown={handleMouseDown}
+        className="w-1.5 flex-shrink-0 cursor-col-resize hover:bg-primary/20 transition-colors duration-200"
+      />
+
+      {/* Main Content Area */}
+      <main className="flex-grow flex flex-col overflow-hidden relative">
+        <div className="flex justify-between items-center p-4 border-b flex-shrink-0">
+          <h2 className="text-lg font-semibold leading-none tracking-tight">Output (SCN)</h2>
+          <div className="flex items-center gap-4">
+            {analysisTime !== null && (
+              <span className="text-sm text-muted-foreground">
+                Analyzed in {(analysisTime / 1000).toFixed(2)}s
+              </span>
+            )}
+            <span className="text-sm font-normal text-muted-foreground tabular-nums">{tokenCounts.output.toLocaleString()} tokens</span>
+            <Button variant="ghost" size="icon" onClick={handleCopy} disabled={!scnOutput} title="Copy to clipboard">
+              {isCopied ? <Check className="h-4 w-4 text-green-500" /> : <Copy className="h-4 w-4" />}
+            </Button>
+          </div>
+        </div>
+        <div className="p-4 flex-grow overflow-auto font-mono text-xs relative">
+          <Legend />
+          <pre className="whitespace-pre-wrap">
+            {scnOutput || (isLoading ? "Generating..." : "Output will appear here.")}
+          </pre>
+        </div>
+      </main>
+    </div>
+  );
+}
+
+export default App;
+```
+
 ## File: src/utils/ast.ts
 ```typescript
 import type { Range } from '../types';
@@ -2330,6 +2344,34 @@ export const getPathResolver = (tsconfig?: TsConfig | null): PathResolver => {
     // The final paths we create should be relative to the root to match our file list.
     return createPathResolver(baseUrl, paths);
 };
+```
+
+## File: src/index.ts
+```typescript
+export {
+    initializeParser,
+    generateScn,
+    generateScnFromConfig,
+    analyzeProject,
+    logger,
+} from './main';
+
+export { ICONS, SCN_SYMBOLS } from './constants';
+
+export type {
+    ParserInitOptions,
+    SourceFile,
+    LogLevel,
+    InputFile,
+    TsConfig,
+    ScnTsConfig,
+    AnalyzeProjectOptions,
+    LogHandler,
+    FormattingOptions,
+    FileContent,
+    CodeSymbol,
+    SymbolKind
+} from './main';
 ```
 
 ## File: src/languages.ts
@@ -2792,7 +2834,7 @@ import { logger } from './logger';
 export const initializeParser = (options: ParserInitOptions): Promise<void> => init(options);
 
 // Types for web demo
-export type { ParserInitOptions, SourceFile, LogLevel, InputFile, TsConfig, ScnTsConfig, AnalyzeProjectOptions, LogHandler, FormattingOptions } from './types';
+export type { ParserInitOptions, SourceFile, LogLevel, InputFile, TsConfig, ScnTsConfig, AnalyzeProjectOptions, LogHandler, FormattingOptions, CodeSymbol, SymbolKind } from './types';
 export type FileContent = InputFile;
 
 // Exports for web demo. The constants are exported from index.ts directly.

@@ -1,0 +1,704 @@
+uuid: a63a7585-614f-4a0b-93c6-f7f502c525f0
+projectId: scn-ts-core
+createdAt: '2025-09-05T08:55:14.256Z'
+linesAdded: 80
+linesRemoved: 41
+gitCommitMsg: 'feat(core): add token counting utility and integrate into web demo'
+promptSummary: >-
+  Refactor token counting logic from web demo into scn-ts-core and update web
+  demo to use the new core API.
+reasoning:
+  - >-
+    Alright, let's get this token counting feature shipped. Moving it from the
+    web demo into `scn-ts-core` makes a lot of sense. Good call.
+  - '### Step 1: Add `js-tiktoken` to `scn-ts-core`'
+  - >-
+    First things first, let's get the dependency into the core package's
+    `package.json`.
+  - '### Step 2: Create the Tokenizer Logic in Core'
+  - >-
+    I'll create a new `src/tokenizer.ts` file to house the token counting logic.
+    This keeps it nice and separate from the main analysis pipeline.
+  - '### Step 3: Expose Tokenizer Functions from the Core API'
+  - >-
+    Now, let's wire up the new functions into `src/main.ts` so they're part of
+    the public API.
+  - And let's make sure they are re-exported from the main `index.ts`.
+  - '### Step 4: Refactor the Web Demo'
+  - >-
+    With the core logic in place, we can rip out the old hook from the web demo
+    and use the new, shiny core functions.
+  - First, delete the old hook.
+  - Now, update `App.tsx` to use the new core API. This cleans things up nicely.
+  - >-
+    Done. The token counting logic is now properly part of the core library and
+    the web demo is simplified. Much cleaner architecture.
+operations:
+  - type: write
+    path: package.json
+    content: |-
+      <<<<<<< SEARCH
+        "private": true,
+        "scripts": {
+      =======
+        "private": true,
+        "dependencies": {
+          "js-tiktoken": "^1.0.21"
+        },
+        "scripts": {
+      >>>>>>> REPLACE
+    patchStrategy: multi-search-replace
+  - type: write
+    path: src/tokenizer.ts
+    content: |-
+      import { Tiktoken } from "js-tiktoken/lite";
+      import cl100k_base from "js-tiktoken/ranks/cl100k_base";
+      import { logger } from './logger';
+
+      let encoder: Tiktoken | null = null;
+
+      /**
+       * Initializes the tokenizer. This is a lightweight, synchronous operation for the pure JS version.
+       * It's safe to call this multiple times.
+       * @returns {boolean} - True if initialization was successful, false otherwise.
+       */
+      export function initializeTokenizer(): boolean {
+          if (encoder) {
+              return true;
+          }
+          try {
+              encoder = new Tiktoken(cl100k_base);
+              logger.debug('Tokenizer initialized.');
+              return true;
+          } catch (e) {
+              logger.error("Failed to initialize tokenizer:", e);
+              return false;
+          }
+      }
+
+      /**
+       * Counts the number of tokens in a given text string using the cl100k_base model.
+       * The tokenizer will be initialized on the first call if it hasn't been already.
+       *
+       * @param {string} text - The text to count tokens for.
+       * @returns {number} - The number of tokens, or 0 if tokenization fails.
+       */
+      export function countTokens(text: string): number {
+          if (!encoder) {
+              const success = initializeTokenizer();
+              if (!success) {
+                  return 0;
+              }
+          }
+
+          if (!text || !encoder) {
+              return 0;
+          }
+
+          try {
+              return encoder.encode(text).length;
+          } catch (e) {
+              logger.error("Tokenization error:", e);
+              return 0;
+          }
+      }
+    patchStrategy: replace
+  - type: write
+    path: src/main.ts
+    content: >-
+      --- src/main.ts
+
+      +++ src/main.ts
+
+      @@ -4,12 +4,26 @@
+       import path from './utils/path';
+       import { getPathResolver } from './utils/tsconfig';
+       import { resolveGraph } from './graph-resolver';
+       import { logger } from './logger';
+      +import { initializeTokenizer as initTokenizer, countTokens as
+      countTokensInternal } from './tokenizer';
+       
+       /**
+        * Public API to initialize the parser. Must be called before any other APIs.
+        */
+       export const initializeParser = (options: ParserInitOptions): Promise<void> => init(options);
+       
+      +/**
+
+      + * Initializes the tokenizer. Call this for consistency, although
+      `countTokens` will auto-initialize.
+
+      + * It's a synchronous and lightweight operation.
+
+      + */
+
+      +export const initializeTokenizer = (): boolean => initTokenizer();
+
+      +
+       // Types for web demo
+       export type { ParserInitOptions, SourceFile, LogLevel, InputFile, TsConfig, ScnTsConfig, AnalyzeProjectOptions, LogHandler, FormattingOptions, CodeSymbol, SymbolKind } from './types';
+       export type FileContent = InputFile;
+       
+       // Exports for web demo. The constants are exported from index.ts directly.
+       export { logger };
+       
+       /**
+      + * Counts tokens in a string using the cl100k_base model.
+
+      + */
+
+      +export const countTokens = (text: string): number =>
+      countTokensInternal(text);
+
+      +
+
+      +/**
+        * Generate SCN from analyzed source files
+        */
+       export const generateScn = (analyzedFiles: SourceFile[], options?: FormattingOptions): string => {
+    patchStrategy: new-unified
+  - type: write
+    path: src/index.ts
+    content: |-
+      --- src/index.ts
+      +++ src/index.ts
+      @@ -4,6 +4,8 @@
+           generateScnFromConfig,
+           analyzeProject,
+           logger,
+      +    initializeTokenizer,
+      +    countTokens,
+       } from './main';
+       
+       export { ICONS, SCN_SYMBOLS } from './constants';
+    patchStrategy: new-unified
+  - type: delete
+    path: packages/scn-ts-web-demo/src/hooks/useTokenCounter.hook.ts
+  - type: write
+    path: packages/scn-ts-web-demo/src/App.tsx
+    content: >-
+      --- packages/scn-ts-web-demo/src/App.tsx
+
+      +++ packages/scn-ts-web-demo/src/App.tsx
+
+      @@ -1,5 +1,5 @@
+       import { useEffect, useCallback, useMemo, useRef } from 'react';
+      -import { generateScn } from 'scn-ts-core';
+
+      +import { generateScn, initializeTokenizer, countTokens } from
+      'scn-ts-core';
+       import { Button } from './components/ui/button';
+       import { Textarea } from './components/ui/textarea';
+       import LogViewer from './components/LogViewer';
+      @@ -8,7 +8,6 @@
+       import { Play, Loader, Copy, Check, StopCircle, ChevronsDown, ChevronsUp } from 'lucide-react';
+       import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from './components/ui/accordion';
+       import { useAnalysis } from './hooks/useAnalysis.hook';
+       import { useClipboard } from './hooks/useClipboard.hook';
+       import { useResizableSidebar } from './hooks/useResizableSidebar.hook';
+      -import { useTokenCounter } from './hooks/useTokenCounter.hook';
+       import { useAppStore } from './stores/app.store';
+       import type { CodeSymbol } from 'scn-ts-core';
+       
+      @@ -34,19 +33,25 @@
+         const outputOptionsRef = useRef<OutputOptionsHandle>(null);
+       
+         const { sidebarWidth, handleMouseDown } = useResizableSidebar(480);
+         const { isCopied, handleCopy: performCopy } = useClipboard();
+      -  const tokenCounts = useTokenCounter(filesInput, scnOutput,
+      onLogPartial);
+
+      +
+
+      +  useEffect(() => {
+
+      +    if (!initializeTokenizer()) {
+
+      +      onLogPartial({ level: 'error', message: 'Failed to initialize
+      tokenizer.' });
+
+      +    }
+
+      +  }, [onLogPartial]);
+       
+         useEffect(() => {
+           if (analysisResult) {
+             setScnOutput(generateScn(analysisResult, formattingOptions));
+           } else {
+             setScnOutput('');
+           }
+         }, [analysisResult, formattingOptions]);
+       
+      +  const tokenCounts = useMemo(() => ({
+
+      +    input: countTokens(filesInput),
+
+      +    output: countTokens(scnOutput)
+
+      +  }), [filesInput, scnOutput]);
+
+      +
+         const handleCopy = useCallback(() => {
+           performCopy(scnOutput);
+         }, [performCopy, scnOutput]);
+    patchStrategy: new-unified
+snapshot:
+  src/tokenizer.ts: null
+  package.json: |
+    {
+      "name": "scn-ts-core",
+      "module": "src/index.ts",
+      "type": "module",
+      "private": true,
+      "scripts": {
+        "check": "tsc --build"
+      },
+      "devDependencies": {
+        "@types/bun": "latest",
+        "web-tree-sitter": "0.25.6",
+        "typescript": "^5.4.5"
+      },
+      "peerDependencies": {
+        "typescript": "^5"
+      }
+    }
+  src/main.ts: >-
+    import { getLanguageForFile } from './languages';
+
+    import { initializeParser as init, parse } from './parser';
+
+    import type { ParserInitOptions, SourceFile, InputFile, ScnTsConfig,
+    AnalyzeProjectOptions, FormattingOptions } from './types';
+
+    import { analyze } from './analyzer';
+
+    import { formatScn } from './formatter';
+
+    import path from './utils/path';
+
+    import { getPathResolver } from './utils/tsconfig';
+
+    import { resolveGraph } from './graph-resolver';
+
+    import { logger } from './logger';
+
+
+    /**
+     * Public API to initialize the parser. Must be called before any other APIs.
+     */
+    export const initializeParser = (options: ParserInitOptions): Promise<void>
+    => init(options);
+
+
+    // Types for web demo
+
+    export type { ParserInitOptions, SourceFile, LogLevel, InputFile, TsConfig,
+    ScnTsConfig, AnalyzeProjectOptions, LogHandler, FormattingOptions,
+    CodeSymbol, SymbolKind } from './types';
+
+    export type FileContent = InputFile;
+
+
+    // Exports for web demo. The constants are exported from index.ts directly.
+
+    export { logger };
+
+
+    /**
+     * Generate SCN from analyzed source files
+     */
+    export const generateScn = (analyzedFiles: SourceFile[], options?:
+    FormattingOptions): string => {
+        return formatScn(analyzedFiles, options);
+    };
+
+
+    /**
+     * Legacy API: Generate SCN from config (for backward compatibility)
+     */
+    export const generateScnFromConfig = async (config: ScnTsConfig):
+    Promise<string> => {
+        const { sourceFiles: analyzedFiles } = await analyzeProject({
+            files: config.files,
+            tsconfig: config.tsconfig,
+            root: config.root,
+        });
+        return formatScn(analyzedFiles, config.formattingOptions);
+    };
+
+
+    /**
+     * Parses and analyzes a project's files to build a dependency graph.
+     */
+    export const analyzeProject = async (
+        {
+            files,
+            tsconfig,
+            root = '/',
+            onProgress,
+            logLevel,
+            signal,
+        }: AnalyzeProjectOptions
+    ): Promise<{ sourceFiles: SourceFile[], analysisTime: number }> => {
+        const startTime = performance.now();
+        if (logLevel) {
+            logger.setLevel(logLevel);
+        }
+        logger.info(`Starting analysis of ${files.length} files...`);
+        const pathResolver = getPathResolver(tsconfig);
+
+        const checkAborted = () => { if (signal?.aborted) throw new DOMException('Aborted', 'AbortError'); };
+        let fileIdCounter = 1;
+
+        onProgress?.({ percentage: 0, message: 'Creating source files...' });
+
+        // Step 1: Create SourceFile objects for all files
+        const sourceFiles = files.map((file) => {
+            checkAborted();
+            const absolutePath = path.join(root, file.path);
+            const sourceFile: SourceFile = {
+                id: fileIdCounter++,
+                relativePath: file.path,
+                absolutePath,
+                sourceCode: file.content,
+                language: getLanguageForFile(file.path)!,
+                symbols: [],
+                parseError: false,
+            };
+            return sourceFile;
+        });
+
+        logger.debug(`Created ${sourceFiles.length} SourceFile objects.`);
+        onProgress?.({ percentage: 10, message: `Parsing ${sourceFiles.length} files...` });
+
+        // Step 2: Parse all files
+        const parsedFiles = sourceFiles.map((file, i) => {
+            checkAborted();
+            if (!file.language || !file.language.wasmPath || file.sourceCode.trim() === '') {
+                return file;
+            }
+            logger.debug(`Parsing ${file.relativePath}`);
+            const tree = parse(file.sourceCode, file.language);
+            if (!tree) {
+                file.parseError = true;
+                logger.warn(`Failed to parse ${file.relativePath}`);
+            } else {
+                file.ast = tree;
+            }
+            const percentage = 10 + (40 * (i + 1) / sourceFiles.length);
+            onProgress?.({ percentage, message: `Parsing ${file.relativePath}` });
+            return file;
+        });
+
+        onProgress?.({ percentage: 50, message: 'Analyzing files...' });
+        logger.info(`Parsing complete. Analyzing symbols and relationships...`);
+
+        // Step 3: Analyze all parsed files
+        const analyzedFiles = parsedFiles.map((file, i) => {
+            checkAborted();
+            if (file.ast) {
+                logger.debug(`Analyzing ${file.relativePath}`);
+                const analyzed = analyze(file);
+                const percentage = 50 + (40 * (i + 1) / sourceFiles.length);
+                onProgress?.({ percentage, message: `Analyzing ${file.relativePath}` });
+                return analyzed;
+            }
+            return file;
+        });
+        
+        onProgress?.({ percentage: 90, message: 'Resolving dependency graph...' });
+        logger.info('Analysis complete. Resolving dependency graph...');
+
+        // Step 4: Resolve the dependency graph across all files
+        checkAborted();
+        const resolvedGraph = resolveGraph(analyzedFiles, pathResolver, root);
+        
+        onProgress?.({ percentage: 100, message: 'Analysis complete.' });
+        logger.info('Graph resolution complete. Project analysis finished.');
+        const analysisTime = performance.now() - startTime;
+        return { sourceFiles: resolvedGraph, analysisTime };
+    };
+  packages/scn-ts-web-demo/src/hooks/useTokenCounter.hook.ts: |
+    import { useState, useEffect } from 'react';
+    import { Tiktoken } from "js-tiktoken/lite";
+    import cl100k_base from "js-tiktoken/ranks/cl100k_base";
+    import type { LogEntry } from '../types';
+
+    export function useTokenCounter(
+      filesInput: string,
+      scnOutput: string,
+      onLog: (log: Pick<LogEntry, 'level' | 'message'>) => void
+    ) {
+      const [encoder, setEncoder] = useState<Tiktoken | null>(null);
+      const [tokenCounts, setTokenCounts] = useState({ input: 0, output: 0 });
+
+      useEffect(() => {
+        try {
+          const enc = new Tiktoken(cl100k_base);
+          setEncoder(enc);
+        } catch (e) {
+          console.error("Failed to initialize tokenizer:", e);
+          onLog({ level: 'error', message: 'Failed to initialize tokenizer.' });
+        }
+      }, [onLog]);
+
+      useEffect(() => {
+        if (!encoder) return;
+        try {
+          const inputTokens = encoder.encode(filesInput).length;
+          const outputTokens = encoder.encode(scnOutput).length;
+          setTokenCounts({ input: inputTokens, output: outputTokens });
+        } catch (e) {
+          console.error("Tokenization error:", e);
+          setTokenCounts({ input: 0, output: 0 });
+        }
+      }, [filesInput, scnOutput, encoder]);
+
+      return tokenCounts;
+    }
+  src/index.ts: |-
+    export {
+        initializeParser,
+        generateScn,
+        generateScnFromConfig,
+        analyzeProject,
+        logger,
+    } from './main';
+
+    export { ICONS, SCN_SYMBOLS } from './constants';
+
+    export type {
+        ParserInitOptions,
+        SourceFile,
+        LogLevel,
+        InputFile,
+        TsConfig,
+        ScnTsConfig,
+        AnalyzeProjectOptions,
+        LogHandler,
+        FormattingOptions,
+        FileContent,
+        CodeSymbol,
+        SymbolKind
+    } from './main';
+  packages/scn-ts-web-demo/src/App.tsx: >
+    import { useEffect, useCallback, useMemo, useRef } from 'react';
+
+    import { generateScn } from 'scn-ts-core';
+
+    import { Button } from './components/ui/button';
+
+    import { Textarea } from './components/ui/textarea';
+
+    import LogViewer from './components/LogViewer';
+
+    import OutputOptions, { type OutputOptionsHandle } from
+    './components/OutputOptions';
+
+    import { Legend } from './components/Legend';
+
+    import { Play, Loader, Copy, Check, StopCircle, ChevronsDown, ChevronsUp }
+    from 'lucide-react';
+
+    import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from
+    './components/ui/accordion';
+
+    import { useAnalysis } from './hooks/useAnalysis.hook';
+
+    import { useClipboard } from './hooks/useClipboard.hook';
+
+    import { useResizableSidebar } from './hooks/useResizableSidebar.hook';
+
+    import { useTokenCounter } from './hooks/useTokenCounter.hook';
+
+    import { useAppStore } from './stores/app.store';
+
+    import type { CodeSymbol } from 'scn-ts-core';
+
+
+    function App() {
+      const {
+        filesInput,
+        setFilesInput,
+        scnOutput,
+        setScnOutput,
+        formattingOptions,
+        setFormattingOptions,
+      } = useAppStore();
+
+      const {
+        isInitialized,
+        isLoading,
+        analysisResult,
+        progress,
+        logs,
+        analysisTime,
+        handleAnalyze: performAnalysis,
+        handleStop,
+        onLogPartial,
+      } = useAnalysis();
+
+      const outputOptionsRef = useRef<OutputOptionsHandle>(null);
+
+      const { sidebarWidth, handleMouseDown } = useResizableSidebar(480);
+      const { isCopied, handleCopy: performCopy } = useClipboard();
+      const tokenCounts = useTokenCounter(filesInput, scnOutput, onLogPartial);
+
+      useEffect(() => {
+        if (analysisResult) {
+          setScnOutput(generateScn(analysisResult, formattingOptions));
+        } else {
+          setScnOutput('');
+        }
+      }, [analysisResult, formattingOptions]);
+
+      const handleCopy = useCallback(() => {
+        performCopy(scnOutput);
+      }, [performCopy, scnOutput]);
+
+      const handleAnalyze = useCallback(async () => {
+        performAnalysis(filesInput);
+      }, [performAnalysis, filesInput]);
+
+      const handleExpandOptions = (e: React.MouseEvent) => {
+        e.stopPropagation();
+        outputOptionsRef.current?.expandAll();
+      };
+
+      const handleCollapseOptions = (e: React.MouseEvent) => {
+        e.stopPropagation();
+        outputOptionsRef.current?.collapseAll();
+      };
+
+      const { totalSymbols, visibleSymbols } = useMemo(() => {
+        if (!analysisResult) {
+          return { totalSymbols: 0, visibleSymbols: 0 };
+        }
+        const allSymbols: CodeSymbol[] = analysisResult.flatMap(file => file.symbols);
+        const total = allSymbols.length;
+        const visible = allSymbols.filter(symbol => {
+          return formattingOptions.displayFilters?.[symbol.kind] !== false;
+        }).length;
+        return { totalSymbols: total, visibleSymbols: visible };
+      }, [analysisResult, formattingOptions.displayFilters]);
+
+      return (
+        <div className="h-screen w-screen flex bg-background text-foreground overflow-hidden">
+          {/* Sidebar */}
+          <aside style={{ width: `${sidebarWidth}px` }} className="max-w-[80%] min-w-[320px] flex-shrink-0 flex flex-col border-r">
+            <div className="flex-shrink-0 flex items-center justify-between p-4 border-b bg-background relative z-20">
+              <h1 className="text-xl font-bold tracking-tight">SCN-TS Web Demo</h1>
+              <div className="flex items-center space-x-2">
+                {isLoading ? (
+                  <>
+                    <Button disabled className="w-32 justify-center">
+                      <Loader className="mr-2 h-4 w-4 animate-spin" />
+                      <span>{progress ? `${Math.round(progress.percentage)}%` : 'Analyzing...'}</span>
+                    </Button>
+                    <Button onClick={handleStop} variant="outline" size="icon" title="Stop analysis">
+                      <StopCircle className="h-4 w-4" />
+                    </Button>
+                  </>
+                ) : (
+                  <Button onClick={handleAnalyze} disabled={!isInitialized} className="w-32 justify-center">
+                    <Play className="mr-2 h-4 w-4" />
+                    <span>Analyze</span>
+                  </Button>
+                )}
+              </div>
+            </div>
+
+            <div className="flex-grow overflow-y-auto">
+              <Accordion type="multiple" defaultValue={['input', 'options', 'logs']} className="w-full">
+                <AccordionItem value="input">
+                  <AccordionTrigger className="px-4 text-sm font-semibold hover:no-underline">
+                    <div className="flex w-full justify-between items-center">
+                      <span>Input Files (JSON)</span>
+                      <span className="text-xs font-normal text-muted-foreground tabular-nums">
+                        {tokenCounts.input.toLocaleString()} tokens
+                      </span>
+                    </div>
+                  </AccordionTrigger>
+                  <AccordionContent>
+                    <div className="px-4 pb-4 h-96">
+                      <Textarea
+                        value={filesInput}
+                        onChange={(e) => setFilesInput(e.currentTarget.value)}
+                        className="h-full w-full font-mono text-xs resize-none"
+                        placeholder="Paste an array of FileContent objects here..."
+                      />
+                    </div>
+                  </AccordionContent>
+                </AccordionItem>
+
+                <AccordionItem value="options">
+                  <AccordionTrigger className="px-4 text-sm font-semibold hover:no-underline">
+                    <div className="flex w-full justify-between items-center">
+                      <span>Formatting Options</span>
+                      <div className="flex items-center gap-2">
+                        {analysisResult && (
+                          <span className="text-xs font-normal text-muted-foreground tabular-nums">
+                            {visibleSymbols} / {totalSymbols} symbols
+                          </span>
+                        )}
+                        <Button variant="ghost" size="icon" onClick={handleExpandOptions} title="Expand all" className="h-7 w-7 text-muted-foreground hover:text-foreground">
+                          <ChevronsDown className="h-4 w-4" />
+                        </Button>
+                        <Button variant="ghost" size="icon" onClick={handleCollapseOptions} title="Collapse all" className="h-7 w-7 text-muted-foreground hover:text-foreground">
+                          <ChevronsUp className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </div>
+                  </AccordionTrigger>
+                  <AccordionContent className="px-4">
+                    <OutputOptions ref={outputOptionsRef} options={formattingOptions} setOptions={setFormattingOptions} />
+                  </AccordionContent>
+                </AccordionItem>
+
+                <AccordionItem value="logs">
+                  <AccordionTrigger className="px-4 text-sm font-semibold hover:no-underline">Logs</AccordionTrigger>
+                  <AccordionContent className="px-4">
+                    <LogViewer logs={logs} />
+                  </AccordionContent>
+                </AccordionItem>
+              </Accordion>
+            </div>
+          </aside>
+
+          {/* Resizer */}
+          <div
+            role="separator"
+            onMouseDown={handleMouseDown}
+            className="w-1.5 flex-shrink-0 cursor-col-resize hover:bg-primary/20 transition-colors duration-200"
+          />
+
+          {/* Main Content Area */}
+          <main className="flex-grow flex flex-col overflow-hidden relative">
+            <div className="flex justify-between items-center p-4 border-b flex-shrink-0">
+              <h2 className="text-lg font-semibold leading-none tracking-tight">Output (SCN)</h2>
+              <div className="flex items-center gap-4">
+                {analysisTime !== null && (
+                  <span className="text-sm text-muted-foreground">
+                    Analyzed in {(analysisTime / 1000).toFixed(2)}s
+                  </span>
+                )}
+                <span className="text-sm font-normal text-muted-foreground tabular-nums">{tokenCounts.output.toLocaleString()} tokens</span>
+                <Button variant="ghost" size="icon" onClick={handleCopy} disabled={!scnOutput} title="Copy to clipboard">
+                  {isCopied ? <Check className="h-4 w-4 text-green-500" /> : <Copy className="h-4 w-4" />}
+                </Button>
+              </div>
+            </div>
+            <div className="p-4 flex-grow overflow-auto font-mono text-xs relative">
+              <Legend />
+              <pre className="whitespace-pre-wrap">
+                {scnOutput || (isLoading ? "Generating..." : "Output will appear here.")}
+              </pre>
+            </div>
+          </main>
+        </div>
+      );
+    }
+
+
+    export default App;
+approved: true

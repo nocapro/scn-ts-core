@@ -4,6 +4,8 @@ export {
     generateScnFromConfig,
     analyzeProject,
     logger,
+    initializeTokenizer,
+    countTokens,
 } from './main';
 
 export { ICONS, SCN_SYMBOLS } from './constants';

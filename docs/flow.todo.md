@@ -1,10 +1,12 @@
+=== DONE
+
 add copy button for output
 
-===
+=== DONE
 
 sidebar: make the input, format options, and log to be as accordion. just like in vscode
 
-===
+=== DONE
 
 this § and file index should also configurable in formatting options
 

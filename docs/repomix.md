@@ -275,12 +275,6 @@ const LogViewer: React.FC<{ logs: readonly LogEntry[] }> = ({ logs }) => {
     new Set(LOG_LEVELS),
   );
 
-  useEffect(() => {
-    if (scrollContainerRef.current) {
-      scrollContainerRef.current.scrollTop = scrollContainerRef.current.scrollHeight;
-    }
-  }, [logs]);
-
   const handleCopy = useCallback(() => {
     const logsToCopy = logs.filter(log => visibleLevels.has(log.level));
     if (logsToCopy.length > 0) {
@@ -370,7 +364,8 @@ export default LogViewer;
 ```typescript
 import * as React from 'react';
 import type { FormattingOptions } from '../types';
-import { ChevronDown, ChevronRight } from 'lucide-react';
+import { ChevronDown, ChevronRight, Expand, Collapse } from 'lucide-react';
+import { Button } from './ui/button';
 
 interface OutputOptionsProps {
   options: FormattingOptions;
@@ -509,6 +504,15 @@ function getAllKeys(item: OptionItem): string[] {
   return item.children.flatMap(getAllKeys);
 }
 
+const getAllGroupNames = (items: OptionItem[]): string[] => {
+  return items.flatMap(item => {
+    if (typeof item === 'object' && 'name' in item) {
+      return [item.name, ...getAllGroupNames(item.children)];
+    }
+    return [];
+  });
+}
+
 const OutputOptions: React.FC<OutputOptionsProps> = ({ options, setOptions }) => {
   const [expandedGroups, setExpandedGroups] = React.useState<Set<string>>(
     () =>
@@ -518,6 +522,16 @@ const OutputOptions: React.FC<OutputOptionsProps> = ({ options, setOptions }) =>
         'React', 'Identifiers',
       ])
   );
+
+  const allGroupNames = React.useMemo(() => getAllGroupNames(optionTree), []);
+
+  const expandAll = () => {
+    setExpandedGroups(new Set(allGroupNames));
+  };
+
+  const collapseAll = () => {
+    setExpandedGroups(new Set());
+  };
 
   const toggleGroup = (groupName: string) => {
     setExpandedGroups(prev => {
@@ -621,8 +635,20 @@ const OutputOptions: React.FC<OutputOptionsProps> = ({ options, setOptions }) =>
   };
 
   return (
-    <div className="space-y-1">
-      {optionTree.map(item => renderItem(item, 0))}
+    <div className="space-y-2">
+      <div className="flex items-center space-x-2 -mx-2">
+        <Button variant="ghost" size="sm" onClick={expandAll} className="text-muted-foreground hover:text-foreground h-auto px-2 py-1 text-xs">
+          <Expand className="mr-1.5 h-3.5 w-3.5" />
+          Expand all
+        </Button>
+        <Button variant="ghost" size="sm" onClick={collapseAll} className="text-muted-foreground hover:text-foreground h-auto px-2 py-1 text-xs">
+          <Collapse className="mr-1.5 h-3.5 w-3.5" />
+          Collapse all
+        </Button>
+      </div>
+      <div className="space-y-1">
+        {optionTree.map(item => renderItem(item, 0))}
+      </div>
     </div>
   );
 };
@@ -682,6 +708,7 @@ function App() {
   const [progress, setProgress] = useState<ProgressData | null>(null);
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [encoder, setEncoder] = useState<Tiktoken | null>(null);
+  const [analysisTime, setAnalysisTime] = useState<number | null>(null);
   const [tokenCounts, setTokenCounts] = useState({ input: 0, output: 0 });
   
   const workerRef = useRef<Remote<WorkerApi> | null>(null);
@@ -769,6 +796,7 @@ function App() {
     setIsLoading(true);
     setScnOutput('');
     setAnalysisResult(null);
+    setAnalysisTime(null);
     setProgress(null);
     setLogs([]);
 
@@ -777,12 +805,13 @@ function App() {
     };
 
     try {
-      const result = await workerRef.current.analyze(
+      const { result, analysisTime } = await workerRef.current.analyze(
         { filesInput, logLevel: 'debug' },
         Comlink.proxy(setProgress),
         Comlink.proxy(onLog)
       );
       setAnalysisResult(result);
+      setAnalysisTime(analysisTime);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       if ((error as Error).name === 'AbortError') {
@@ -869,6 +898,11 @@ function App() {
         <div className="flex justify-between items-center p-4 border-b flex-shrink-0">
           <h2 className="text-lg font-semibold leading-none tracking-tight">Output (SCN)</h2>
           <div className="flex items-center gap-4">
+            {analysisTime !== null && (
+              <span className="text-sm text-muted-foreground">
+                Analyzed in {(analysisTime / 1000).toFixed(2)}s
+              </span>
+            )}
             <span className="text-sm font-normal text-muted-foreground tabular-nums">{tokenCounts.output.toLocaleString()} tokens</span>
             <Button variant="ghost" size="icon" onClick={handleCopy} disabled={!scnOutput} title="Copy to clipboard">
               {isCopied ? <Check className="h-4 w-4 text-green-500" /> : <Copy className="h-4 w-4" />}
@@ -1344,13 +1378,14 @@ const workerApi = {
     { filesInput, logLevel }: { filesInput: string; logLevel: LogLevel },
     onProgress: (progress: ProgressData) => void,
     onLog: (log: LogEntry) => void
-  ): Promise<SourceFile[]> {
+  ): Promise<{ result: SourceFile[], analysisTime: number }> {
     if (!this.isInitialized) {
       throw new Error('Worker not initialized.');
     }
 
     this.abortController = new AbortController();
 
+    const startTime = performance.now();
     logger.setLogHandler((level, ...args) => {
       const message = args.map(arg => typeof arg === 'object' ? JSON.stringify(arg, null, 2) : String(arg)).join(' ');
       onLog({ level, message, timestamp: Date.now() });
@@ -1373,6 +1408,8 @@ const workerApi = {
         signal: this.abortController.signal,
       });
 
+      const analysisTime = performance.now() - startTime;
+
       // Sanitize the result to make it structured-clonable.
       analysisResult.forEach(file => {
         delete file.ast;
@@ -1387,7 +1424,7 @@ const workerApi = {
         }
       });
       
-      return analysisResult;
+      return { result: analysisResult, analysisTime };
     } finally {
       logger.setLogHandler(null);
       this.abortController = null;

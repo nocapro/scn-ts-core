@@ -1,5 +1,12 @@
 === DONE
 
+update prepare-wasm.cjs
+1. to make it parallel,
+2. add progress indicator
+3. also should check for existing so no need to redownload
+
+=== DONE
+
 1. add timetook stat. from core api level to ui
 2. disable scrollable to log
 3. add de/expand iconbutton formatting options to de/collapse all tree

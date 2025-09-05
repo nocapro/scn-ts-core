@@ -2319,6 +2319,136 @@ class Logger {
 export const logger = new Logger();
 ```
 
+## File: src/queries/go.ts
+```typescript
+export const goQueries = `
+(package_clause
+  (package_identifier) @symbol.go_package.def) @scope.go_package.def
+
+(function_declaration
+ name: (identifier) @symbol.function.def) @scope.function.def
+
+(go_statement
+  (call_expression
+    function: (_) @rel.goroutine))
+
+(call_expression
+  function: (_) @rel.call)
+
+(import_spec
+  path: (interpreted_string_literal) @rel.import.source)
+`;
+```
+
+## File: src/queries/rust.ts
+```typescript
+export const rustQueries = `
+(struct_item
+  name: (type_identifier) @symbol.rust_struct.def) @scope.rust_struct.def
+
+(trait_item
+  name: (type_identifier) @symbol.rust_trait.def) @scope.rust_trait.def
+  
+(impl_item) @symbol.rust_impl.def @scope.rust_impl.def
+
+(impl_item
+  trait: (type_identifier) @rel.implements
+  type: (type_identifier) @rel.references
+)
+
+(attribute_item
+  (attribute . (token_tree (identifier) @rel.macro)))
+
+(function_item
+  name: (identifier) @symbol.function.def) @scope.function.def
+
+(impl_item
+  body: (declaration_list
+    (function_item
+      name: (identifier) @symbol.method.def) @scope.method.def))
+
+; For parameters like '&impl Trait'
+(parameter type: (reference_type (_ (type_identifier) @rel.references)))
+; For simple trait parameters
+(parameter type: (type_identifier) @rel.references)
+
+(call_expression
+  function: (field_expression
+    field: (field_identifier) @rel.call))
+
+((struct_item (visibility_modifier) @mod.export))
+((trait_item (visibility_modifier) @mod.export))
+((function_item (visibility_modifier) @mod.export))
+`;
+```
+
+## File: src/index.ts
+```typescript
+export {
+    initializeParser,
+    generateScn,
+    generateScnFromConfig,
+    analyzeProject,
+    logger,
+    initializeTokenizer,
+    countTokens,
+} from './main';
+
+export { ICONS, SCN_SYMBOLS } from './constants';
+
+export type {
+    ParserInitOptions,
+    SourceFile,
+    LogLevel,
+    InputFile,
+    TsConfig,
+    ScnTsConfig,
+    AnalyzeProjectOptions,
+    LogHandler,
+    FormattingOptions,
+    FileContent,
+    CodeSymbol,
+    SymbolKind
+} from './main';
+```
+
+## File: tsconfig.json
+```json
+{
+  "compilerOptions": {
+    "composite": true,
+    // Environment setup & latest features
+    "lib": ["ESNext", "DOM"],
+    "target": "ESNext",
+    "module": "Preserve",
+    "moduleDetection": "force",
+    "jsx": "react-jsx",
+    "allowJs": true,
+
+    // Bundler mode
+    "moduleResolution": "bundler",
+    "allowImportingTsExtensions": true,
+    "verbatimModuleSyntax": true,
+    "declaration": true,
+    "emitDeclarationOnly": true,
+    "outDir": "dist",
+
+    // Best practices
+    "strict": true,
+    "skipLibCheck": true,
+    "noFallthroughCasesInSwitch": true,
+    "noUncheckedIndexedAccess": true,
+    "noImplicitOverride": true,
+
+    // Some stricter flags (disabled by default)
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noPropertyAccessFromIndexSignature": false
+  },
+  "include": ["src"]
+}
+```
+
 ## File: packages/scn-ts-web-demo/src/App.tsx
 ```typescript
 import { useEffect, useCallback, useMemo, useRef } from 'react';
@@ -2334,6 +2464,7 @@ import { useAnalysis } from './hooks/useAnalysis.hook';
 import { useClipboard } from './hooks/useClipboard.hook';
 import { useResizableSidebar } from './hooks/useResizableSidebar.hook';
 import { useAppStore } from './stores/app.store';
+import { cn } from './lib/utils';
 import type { CodeSymbol } from 'scn-ts-core';
 
 function App() {
@@ -2377,10 +2508,18 @@ function App() {
     }
   }, [analysisResult, formattingOptions]);
 
-  const tokenCounts = useMemo(() => ({
-    input: countTokens(filesInput),
-    output: countTokens(scnOutput)
-  }), [filesInput, scnOutput]);
+  const { tokenCounts, tokenReductionPercent } = useMemo(() => {
+    const input = countTokens(filesInput);
+    const output = countTokens(scnOutput);
+    let reductionPercent: number | null = null;
+    if (input > 0) {
+      reductionPercent = ((input - output) / input) * 100;
+    }
+    return {
+      tokenCounts: { input, output },
+      tokenReductionPercent: reductionPercent,
+    };
+  }, [filesInput, scnOutput]);
 
   const handleCopy = useCallback(() => {
     performCopy(scnOutput);
@@ -2513,6 +2652,18 @@ function App() {
               </span>
             )}
             <span className="text-sm font-normal text-muted-foreground tabular-nums">{tokenCounts.output.toLocaleString()} tokens</span>
+            {tokenReductionPercent !== null && analysisResult && (
+              <span
+                className={cn(
+                  "text-sm font-medium tabular-nums",
+                  tokenReductionPercent >= 0 ? "text-green-500" : "text-red-500"
+                )}
+                title="Token count change from input to output"
+              >
+                {tokenReductionPercent >= 0 ? '▼' : '▲'}{' '}
+                {Math.abs(tokenReductionPercent).toFixed(0)}%
+              </span>
+            )}
             <Button variant="ghost" size="icon" onClick={handleCopy} disabled={!scnOutput} title="Copy to clipboard">
               {isCopied ? <Check className="h-4 w-4 text-green-500" /> : <Copy className="h-4 w-4" />}
             </Button>
@@ -2530,136 +2681,6 @@ function App() {
 }
 
 export default App;
-```
-
-## File: src/queries/go.ts
-```typescript
-export const goQueries = `
-(package_clause
-  (package_identifier) @symbol.go_package.def) @scope.go_package.def
-
-(function_declaration
- name: (identifier) @symbol.function.def) @scope.function.def
-
-(go_statement
-  (call_expression
-    function: (_) @rel.goroutine))
-
-(call_expression
-  function: (_) @rel.call)
-
-(import_spec
-  path: (interpreted_string_literal) @rel.import.source)
-`;
-```
-
-## File: src/queries/rust.ts
-```typescript
-export const rustQueries = `
-(struct_item
-  name: (type_identifier) @symbol.rust_struct.def) @scope.rust_struct.def
-
-(trait_item
-  name: (type_identifier) @symbol.rust_trait.def) @scope.rust_trait.def
-  
-(impl_item) @symbol.rust_impl.def @scope.rust_impl.def
-
-(impl_item
-  trait: (type_identifier) @rel.implements
-  type: (type_identifier) @rel.references
-)
-
-(attribute_item
-  (attribute . (token_tree (identifier) @rel.macro)))
-
-(function_item
-  name: (identifier) @symbol.function.def) @scope.function.def
-
-(impl_item
-  body: (declaration_list
-    (function_item
-      name: (identifier) @symbol.method.def) @scope.method.def))
-
-; For parameters like '&impl Trait'
-(parameter type: (reference_type (_ (type_identifier) @rel.references)))
-; For simple trait parameters
-(parameter type: (type_identifier) @rel.references)
-
-(call_expression
-  function: (field_expression
-    field: (field_identifier) @rel.call))
-
-((struct_item (visibility_modifier) @mod.export))
-((trait_item (visibility_modifier) @mod.export))
-((function_item (visibility_modifier) @mod.export))
-`;
-```
-
-## File: src/index.ts
-```typescript
-export {
-    initializeParser,
-    generateScn,
-    generateScnFromConfig,
-    analyzeProject,
-    logger,
-    initializeTokenizer,
-    countTokens,
-} from './main';
-
-export { ICONS, SCN_SYMBOLS } from './constants';
-
-export type {
-    ParserInitOptions,
-    SourceFile,
-    LogLevel,
-    InputFile,
-    TsConfig,
-    ScnTsConfig,
-    AnalyzeProjectOptions,
-    LogHandler,
-    FormattingOptions,
-    FileContent,
-    CodeSymbol,
-    SymbolKind
-} from './main';
-```
-
-## File: tsconfig.json
-```json
-{
-  "compilerOptions": {
-    "composite": true,
-    // Environment setup & latest features
-    "lib": ["ESNext", "DOM"],
-    "target": "ESNext",
-    "module": "Preserve",
-    "moduleDetection": "force",
-    "jsx": "react-jsx",
-    "allowJs": true,
-
-    // Bundler mode
-    "moduleResolution": "bundler",
-    "allowImportingTsExtensions": true,
-    "verbatimModuleSyntax": true,
-    "declaration": true,
-    "emitDeclarationOnly": true,
-    "outDir": "dist",
-
-    // Best practices
-    "strict": true,
-    "skipLibCheck": true,
-    "noFallthroughCasesInSwitch": true,
-    "noUncheckedIndexedAccess": true,
-    "noImplicitOverride": true,
-
-    // Some stricter flags (disabled by default)
-    "noUnusedLocals": true,
-    "noUnusedParameters": true,
-    "noPropertyAccessFromIndexSignature": false
-  },
-  "include": ["src"]
-}
 ```
 
 ## File: src/parser.ts

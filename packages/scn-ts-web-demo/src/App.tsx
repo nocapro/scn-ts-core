@@ -4,9 +4,9 @@ import { Button } from './components/ui/button';
 import { Textarea } from './components/ui/textarea';
 import LogViewer from './components/LogViewer';
 import OutputOptions, { type OutputOptionsHandle } from './components/OutputOptions';
-import { Legend } from './components/Legend';
+import { Legend } from './components/Legend'; 
 import { Play, Loader, Copy, Check, StopCircle, ChevronsDown, ChevronsUp } from 'lucide-react';
-import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from './components/ui/accordion';
+import { Accordion, AccordionContent, AccordionItem, AccordionHeader, AccordionTrigger } from './components/ui/accordion';
 import { useAnalysis } from './hooks/useAnalysis.hook';
 import { useClipboard } from './hooks/useClipboard.hook';
 import { useResizableSidebar } from './hooks/useResizableSidebar.hook';
@@ -127,14 +127,16 @@ function App() {
         <div className="flex-grow overflow-y-auto">
           <Accordion type="multiple" defaultValue={['input', 'options', 'logs']} className="w-full">
             <AccordionItem value="input">
-              <AccordionTrigger className="px-4 text-sm font-semibold hover:no-underline">
-                <div className="flex w-full justify-between items-center">
-                  <span>Input Files (JSON)</span>
-                  <span className="text-xs font-normal text-muted-foreground tabular-nums">
-                    {tokenCounts.input.toLocaleString()} tokens
-                  </span>
-                </div>
-              </AccordionTrigger>
+              <AccordionHeader>
+                <AccordionTrigger className="px-4 text-sm font-semibold hover:no-underline">
+                  <div className="flex w-full justify-between items-center">
+                    <span>Input Files (JSON)</span>
+                    <span className="text-xs font-normal text-muted-foreground tabular-nums">
+                      {tokenCounts.input.toLocaleString()} tokens
+                    </span>
+                  </div>
+                </AccordionTrigger>
+              </AccordionHeader>
               <AccordionContent>
                 <div className="px-4 pb-4 h-96">
                   <Textarea
@@ -148,31 +150,35 @@ function App() {
             </AccordionItem>
 
             <AccordionItem value="options">
-              <AccordionTrigger className="px-4 text-sm font-semibold hover:no-underline">
-                <div className="flex w-full justify-between items-center">
-                  <span>Formatting Options</span>
-                  <div className="flex items-center gap-2">
-                    {analysisResult && (
-                      <span className="text-xs font-normal text-muted-foreground tabular-nums">
-                        {visibleSymbols} / {totalSymbols} symbols
-                      </span>
-                    )}
-                    <Button variant="ghost" size="icon" onClick={handleExpandOptions} title="Expand all" className="h-7 w-7 text-muted-foreground hover:text-foreground">
-                      <ChevronsDown className="h-4 w-4" />
-                    </Button>
-                    <Button variant="ghost" size="icon" onClick={handleCollapseOptions} title="Collapse all" className="h-7 w-7 text-muted-foreground hover:text-foreground">
-                      <ChevronsUp className="h-4 w-4" />
-                    </Button>
+              <AccordionHeader className="items-center">
+                <AccordionTrigger className="px-4 text-sm font-semibold hover:no-underline">
+                  <div className="flex w-full items-center justify-between">
+                    <span>Formatting Options</span>
+                      {analysisResult && (
+                        <span className="text-xs font-normal text-muted-foreground tabular-nums">
+                          {visibleSymbols} / {totalSymbols} symbols
+                        </span>
+                      )}
                   </div>
+                </AccordionTrigger>
+                <div className="flex items-center gap-2 pr-4">
+                  <Button variant="ghost" size="icon" onClick={handleExpandOptions} title="Expand all" className="h-7 w-7 text-muted-foreground hover:text-foreground">
+                    <ChevronsDown className="h-4 w-4" />
+                  </Button>
+                  <Button variant="ghost" size="icon" onClick={handleCollapseOptions} title="Collapse all" className="h-7 w-7 text-muted-foreground hover:text-foreground">
+                    <ChevronsUp className="h-4 w-4" />
+                  </Button>
                 </div>
-              </AccordionTrigger>
+              </AccordionHeader>
               <AccordionContent className="px-4">
                 <OutputOptions ref={outputOptionsRef} options={formattingOptions} setOptions={setFormattingOptions} />
               </AccordionContent>
             </AccordionItem>
 
             <AccordionItem value="logs">
-              <AccordionTrigger className="px-4 text-sm font-semibold hover:no-underline">Logs</AccordionTrigger>
+              <AccordionHeader>
+                <AccordionTrigger className="px-4 text-sm font-semibold hover:no-underline">Logs</AccordionTrigger>
+              </AccordionHeader>
               <AccordionContent className="px-4">
                 <LogViewer logs={logs} />
               </AccordionContent>

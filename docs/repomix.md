@@ -252,7 +252,7 @@ interface OutputOptionsProps {
 }
 
 const OptionCheckbox: React.FC<{
-  id: keyof FormattingOptions;
+  id: string;
   label: string;
   checked: boolean;
   onChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
@@ -271,8 +271,67 @@ const OptionCheckbox: React.FC<{
   </div>
 );
 
-type OptionKey = keyof FormattingOptions;
-type OptionItem = OptionKey | { name: string; children: OptionItem[] };
+type RegularOptionKey = keyof Omit<FormattingOptions, 'displayFilters'>;
+type OptionItem = RegularOptionKey | string | { name: string; children: OptionItem[] };
+
+const symbolKindLabels: Record<string, string> = {
+  // TS/JS
+  class: 'Classes',
+  interface: 'Interfaces',
+  function: 'Functions',
+  method: 'Methods',
+  constructor: 'Constructors',
+  variable: 'Variables',
+  property: 'Properties',
+  enum: 'Enums',
+  enum_member: 'Enum Members',
+  type_alias: 'Type Aliases',
+  module: 'Modules',
+  // React
+  react_component: 'React Components',
+  styled_component: 'Styled Components',
+  jsx_element: 'JSX Elements',
+  // CSS
+  css_class: 'CSS Classes',
+  css_id: 'CSS IDs',
+  css_tag: 'CSS Tags',
+  css_at_rule: 'CSS At-Rules',
+  css_variable: 'CSS Variables',
+  // Go
+  go_package: 'Go Packages',
+  // Rust
+  rust_struct: 'Rust Structs',
+  rust_trait: 'Rust Traits',
+  rust_impl: 'Rust Impls',
+};
+
+const symbolVisibilityTree: OptionItem = {
+  name: 'Symbol Visibility',
+  children: [
+    {
+      name: 'TypeScript/JavaScript',
+      children: [
+        {
+          name: 'Declarations',
+          children: [
+            'filter:class', 'filter:interface', 'filter:function', 'filter:variable',
+            'filter:enum', 'filter:type_alias', 'filter:module',
+          ],
+        },
+        { name: 'Members', children: ['filter:method', 'filter:constructor', 'filter:property', 'filter:enum_member'] },
+      ],
+    },
+    { name: 'React', children: ['filter:react_component', 'filter:styled_component', 'filter:jsx_element'] },
+    { name: 'CSS', children: ['filter:css_class', 'filter:css_id', 'filter:css_tag', 'filter:css_at_rule', 'filter:css_variable'] },
+    {
+      name: 'Other Languages',
+      children: [
+        { name: 'Go', children: ['filter:go_package'] },
+        { name: 'Rust', children: ['filter:rust_struct', 'filter:rust_trait', 'filter:rust_impl'] },
+      ],
+    },
+  ],
+};
 
 const optionTree: OptionItem[] = [
   {
@@ -296,9 +355,11 @@ const optionTree: OptionItem[] = [
     name: 'Structure',
     children: ['groupMembers'],
   },
+  symbolVisibilityTree,
 ];
 
 const optionLabels: Record<keyof FormattingOptions, string> = {
+  ...symbolKindLabels,
   showIcons: 'Icons',
   showExportedIndicator: 'Exported (+)',
   showPrivateIndicator: 'Private (-)',
@@ -310,7 +371,7 @@ const optionLabels: Record<keyof FormattingOptions, string> = {
   groupMembers: 'Group Members',
 };
 
-function getAllKeys(item: OptionItem): OptionKey[] {
+function getAllKeys(item: OptionItem): string[] {
   if (typeof item === 'string') {
     return [item];
   }
@@ -319,7 +380,12 @@ function getAllKeys(item: OptionItem): OptionKey[] {
 
 const OutputOptions: React.FC<OutputOptionsProps> = ({ options, setOptions }) => {
   const [expandedGroups, setExpandedGroups] = React.useState<Set<string>>(
-    () => new Set(['Display Elements', 'Indicators', 'Relationships', 'Structure'])
+    () =>
+      new Set([
+        'Display Elements', 'Indicators', 'Relationships', 'Structure',
+        'TypeScript/JavaScript',
+        'React',
+      ])
   );
 
   const toggleGroup = (groupName: string) => {
@@ -334,30 +400,51 @@ const OutputOptions: React.FC<OutputOptionsProps> = ({ options, setOptions }) =>
     });
   };
 
-  const handleChange = (option: keyof FormattingOptions) => (e: React.ChangeEvent<HTMLInputElement>) => {
-    setOptions(prev => ({ ...prev, [option]: e.target.checked }));
+  const handleChange = (optionKey: string) => (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (optionKey.startsWith('filter:')) {
+      const kind = optionKey.substring('filter:'.length);
+      setOptions(prev => ({
+        ...prev,
+        displayFilters: { ...(prev.displayFilters ?? {}), [kind]: e.target.checked },
+      }));
+    } else {
+      setOptions(prev => ({ ...prev, [optionKey]: e.target.checked }));
+    }
   };
 
-  const handleGroupChange = (keys: ReadonlyArray<keyof FormattingOptions>) => (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleGroupChange = (keys: ReadonlyArray<string>) => (e: React.ChangeEvent<HTMLInputElement>) => {
     const isChecked = e.target.checked;
     setOptions(prev => {
-      const newOptions = { ...prev };
+      const newOptions: FormattingOptions = { ...prev };
+      const newDisplayFilters = { ...(prev.displayFilters ?? {}) };
+
       for (const key of keys) {
-        newOptions[key] = isChecked;
+        if (key.startsWith('filter:')) {
+          newDisplayFilters[key.substring('filter:'.length)] = isChecked;
+        } else {
+          newOptions[key as RegularOptionKey] = isChecked;
+        }
       }
+      newOptions.displayFilters = newDisplayFilters;
       return newOptions;
     });
   };
 
   const renderItem = (item: OptionItem, level: number): React.ReactNode => {
     if (typeof item === 'string') {
-      const key = item;
+      const key = item as string;
+      const isFilter = key.startsWith('filter:');
+      const filterKind = isFilter ? key.substring('filter:'.length) : null;
+      const labelKey = filterKind ?? key;
+
       return (
         <div key={key} style={{ paddingLeft: `${level * 1.5}rem` }}>
           <OptionCheckbox
             id={key}
-            label={optionLabels[key]}
-            checked={options[key] ?? true}
+            label={optionLabels[labelKey as keyof typeof optionLabels]}
+            checked={
+              isFilter ? options.displayFilters?.[filterKind!] ?? true : options[key as RegularOptionKey] ?? true
+            }
             onChange={handleChange(key)}
           />
         </div>
@@ -367,7 +454,12 @@ const OutputOptions: React.FC<OutputOptionsProps> = ({ options, setOptions }) =>
     const { name, children } = item;
     const isExpanded = expandedGroups.has(name);
     const allKeys = getAllKeys(item);
-    const allChecked = allKeys.every(key => options[key] ?? true);
+    const allChecked = allKeys.every(key => {
+      if (key.startsWith('filter:')) {
+        return options.displayFilters?.[key.substring('filter:'.length)] ?? true;
+      }
+      return options[key as RegularOptionKey] ?? true;
+    });
 
     return (
       <div key={name}>
@@ -451,12 +543,14 @@ function App() {
   const [formattingOptions, setFormattingOptions] = useState<FormattingOptions>({
     showOutgoing: true,
     showIncoming: true,
-    showIcons: true,    showExportedIndicator: true,
+    showIcons: true,
+    showExportedIndicator: true,
     showPrivateIndicator: true,
     showModifiers: true,
     showTags: true,
     showSymbolIds: true,
     groupMembers: true,
+    displayFilters: {},
   });
   const [progress, setProgress] = useState<ProgressData | null>(null);
   const [logs, setLogs] = useState<LogEntry[]>([]);
@@ -1036,6 +1130,7 @@ export interface FormattingOptions {
   showTags?: boolean;
   showSymbolIds?: boolean;
   groupMembers?: boolean;
+  displayFilters?: Partial<Record<string, boolean>>;
 }
 ```
 
@@ -2060,187 +2155,6 @@ export const resolveGraph = (sourceFiles: SourceFile[], pathResolver: PathResolv
 };
 ```
 
-## File: src/types.ts
-```typescript
-import type { Parser, Tree, Language } from 'web-tree-sitter';
-import type { PathResolver } from './utils/tsconfig';
-export type { PathResolver };
-
-export type LogLevel = 'error' | 'warn' | 'info' | 'debug' | 'silent';
-
-export type LogHandler = (level: Exclude<LogLevel, 'silent'>, ...args: any[]) => void;
-
-export interface TsConfig {
-    compilerOptions?: {
-        baseUrl?: string;
-        paths?: Record<string, string[]>;
-    };
-}
-
-export interface AnalyzeProjectOptions {
-    files: InputFile[];
-    tsconfig?: TsConfig;
-    root?: string;
-    onProgress?: (progress: { percentage: number; message: string }) => void;
-    logLevel?: LogLevel;
-}
-
-/**
- * Options to control the SCN output format.
- */
-export interface FormattingOptions {
-    showOutgoing?: boolean;
-    showIncoming?: boolean;
-    showIcons?: boolean;
-    showExportedIndicator?: boolean; // + prefix
-    showPrivateIndicator?: boolean; // - prefix
-    showModifiers?: boolean; // ..., !, o
-    showTags?: boolean;      // [generated], [styled], etc.
-    showSymbolIds?: boolean; // (1.2) identifiers
-    groupMembers?: boolean;  // group class/interface members under parent
-}
-
-/**
- * Represents a file to be processed.
- */
-export interface InputFile {
-  path: string; // relative path from root
-  content: string;
-}
-
-/**
- * Configuration for the SCN generation process.
- */
-export interface ScnTsConfig {
-  files: InputFile[];
-  tsconfig?: TsConfig;
-  formattingOptions?: FormattingOptions;
-  root?: string; // Optional: A virtual root path for resolution. Defaults to '/'.
-  _test_id?: string; // Special property for test runner to identify fixtures
-}
-
-/**
- * Options for initializing the Tree-sitter parser.
- */
-export interface ParserInitOptions {
-    wasmBaseUrl: string;
-}
-
-/**
- * Represents a supported programming language and its configuration.
- */
-export type SymbolKind =
-  // TS/JS
-  | 'class' | 'interface' | 'function' | 'method' | 'constructor'
-  | 'variable' | 'property' | 'enum' | 'enum_member' | 'type_alias' | 'module'
-  | 'decorator' | 'parameter' | 'type_parameter' | 'import_specifier' | 're_export'
-  // React
-  | 'react_component' | 'react_hook' | 'react_hoc' | 'jsx_attribute' | 'jsx_element' | 'styled_component'
-  // CSS
-  | 'css_class' | 'css_id' | 'css_tag' | 'css_at_rule' | 'css_property' | 'css_variable'
-  // Generic / Meta
-  | 'file' | 'reference' | 'comment' | 'error' | 'unresolved'
-  // Other Languages
-  | 'go_package' | 'go_struct' | 'go_goroutine' | 'rust_struct' | 'rust_trait' | 'rust_impl' | 'rust_macro'
-  | 'java_package' | 'python_class'
-  | 'unknown';
-
-export interface Position {
-  line: number;
-  column: number;
-}
-
-export interface Range {
-  start: Position;
-  end: Position;
-}
-
-export interface CodeSymbol {
-  id: string;
-  fileId: number;
-  name: string;
-  kind: SymbolKind;
-  range: Range;
-  // Modifiers and metadata
-  isExported: boolean;
-  isAbstract?: boolean;
-  isStatic?: boolean;
-  isReadonly?: boolean;
-  isAsync?: boolean;
-  isPure?: boolean; // for 'o'
-  throws?: boolean; // for '!'
-  labels?: string[]; // extra display labels like [symbol], [proxy]
-  isGenerated?: boolean;
-  languageDirectives?: string[]; // e.g. 'use server'
-  superClass?: string;
-  implementedInterfaces?: string[];
-  scopeRange: Range; // The range of the entire scope (e.g., function body) for relationship association
-  accessibility?: 'public' | 'private' | 'protected';
-  // Type information and signatures
-  signature?: string; // e.g., (a: #number, b: #number): #number
-  typeAnnotation?: string; // e.g., #string for properties/variables
-  typeAliasValue?: string; // e.g., #number|string for type aliases
-  // Relationships
-  dependencies: Relationship[];
-}
-
-export type RelationshipKind =
-  | 'import'
-  | 'dynamic_import'
-  | 'reference'
-  | 'tagged'
-  | 'export'
-  | 'call'
-  | 'extends'
-  | 'implements'
-  | 'references'
-  | 'aliased'
-  | 'goroutine'
-  | 'macro';
-
-export interface Relationship {
-  targetName: string; // The raw name of the target (e.g., './utils', 'MyClass', 'add', 'Button')
-  kind: RelationshipKind;
-  range: Range;
-  // Resolved info
-  resolvedFileId?: number;
-  resolvedSymbolId?: string;
-}
-
-export interface SourceFile {
-  id: number;
-  relativePath: string;
-  absolutePath: string;
-  language: LanguageConfig;
-  sourceCode: string;
-  ast?: Tree;
-  symbols: CodeSymbol[];
-  parseError: boolean;
-  isGenerated?: boolean;
-  languageDirectives?: string[];
-  // File-level relationships (e.g., imports not tied to a specific symbol)
-  fileRelationships?: Relationship[];
-}
-
-/**
- * Represents a supported programming language and its configuration.
- */
-export interface LanguageConfig {
-    id: string;
-    name: string;
-    extensions: string[];
-    wasmPath: string;
-    parser?: Parser;
-    loadedLanguage?: Language;
-    queries?: Record<string, string>;
-}
-
-export interface AnalysisContext {
-    sourceFiles: SourceFile[];
-    pathResolver: PathResolver;
-}
-```
-
 ## File: src/analyzer.ts
 ```typescript
 import type { SourceFile, CodeSymbol, Relationship, SymbolKind, RelationshipKind, Range } from './types';
@@ -2745,6 +2659,188 @@ const findParentSymbol = (range: Range, symbols: CodeSymbol[]): CodeSymbol | nul
 };
 ```
 
+## File: src/types.ts
+```typescript
+import type { Parser, Tree, Language } from 'web-tree-sitter';
+import type { PathResolver } from './utils/tsconfig';
+export type { PathResolver };
+
+export type LogLevel = 'error' | 'warn' | 'info' | 'debug' | 'silent';
+
+export type LogHandler = (level: Exclude<LogLevel, 'silent'>, ...args: any[]) => void;
+
+export interface TsConfig {
+    compilerOptions?: {
+        baseUrl?: string;
+        paths?: Record<string, string[]>;
+    };
+}
+
+export interface AnalyzeProjectOptions {
+    files: InputFile[];
+    tsconfig?: TsConfig;
+    root?: string;
+    onProgress?: (progress: { percentage: number; message: string }) => void;
+    logLevel?: LogLevel;
+}
+
+/**
+ * Options to control the SCN output format.
+ */
+export interface FormattingOptions {
+    showOutgoing?: boolean;
+    showIncoming?: boolean;
+    showIcons?: boolean;
+    showExportedIndicator?: boolean; // + prefix
+    showPrivateIndicator?: boolean; // - prefix
+    showModifiers?: boolean; // ..., !, o
+    showTags?: boolean;      // [generated], [styled], etc.
+    showSymbolIds?: boolean; // (1.2) identifiers
+    groupMembers?: boolean;  // group class/interface members under parent
+    displayFilters?: Partial<Record<SymbolKind, boolean>>;
+}
+
+/**
+ * Represents a file to be processed.
+ */
+export interface InputFile {
+  path: string; // relative path from root
+  content: string;
+}
+
+/**
+ * Configuration for the SCN generation process.
+ */
+export interface ScnTsConfig {
+  files: InputFile[];
+  tsconfig?: TsConfig;
+  formattingOptions?: FormattingOptions;
+  root?: string; // Optional: A virtual root path for resolution. Defaults to '/'.
+  _test_id?: string; // Special property for test runner to identify fixtures
+}
+
+/**
+ * Options for initializing the Tree-sitter parser.
+ */
+export interface ParserInitOptions {
+    wasmBaseUrl: string;
+}
+
+/**
+ * Represents a supported programming language and its configuration.
+ */
+export type SymbolKind =
+  // TS/JS
+  | 'class' | 'interface' | 'function' | 'method' | 'constructor'
+  | 'variable' | 'property' | 'enum' | 'enum_member' | 'type_alias' | 'module'
+  | 'decorator' | 'parameter' | 'type_parameter' | 'import_specifier' | 're_export'
+  // React
+  | 'react_component' | 'react_hook' | 'react_hoc' | 'jsx_attribute' | 'jsx_element' | 'styled_component'
+  // CSS
+  | 'css_class' | 'css_id' | 'css_tag' | 'css_at_rule' | 'css_property' | 'css_variable'
+  // Generic / Meta
+  | 'file' | 'reference' | 'comment' | 'error' | 'unresolved'
+  // Other Languages
+  | 'go_package' | 'go_struct' | 'go_goroutine' | 'rust_struct' | 'rust_trait' | 'rust_impl' | 'rust_macro'
+  | 'java_package' | 'python_class'
+  | 'unknown';
+
+export interface Position {
+  line: number;
+  column: number;
+}
+
+export interface Range {
+  start: Position;
+  end: Position;
+}
+
+export interface CodeSymbol {
+  id: string;
+  fileId: number;
+  name: string;
+  kind: SymbolKind;
+  range: Range;
+  // Modifiers and metadata
+  isExported: boolean;
+  isAbstract?: boolean;
+  isStatic?: boolean;
+  isReadonly?: boolean;
+  isAsync?: boolean;
+  isPure?: boolean; // for 'o'
+  throws?: boolean; // for '!'
+  labels?: string[]; // extra display labels like [symbol], [proxy]
+  isGenerated?: boolean;
+  languageDirectives?: string[]; // e.g. 'use server'
+  superClass?: string;
+  implementedInterfaces?: string[];
+  scopeRange: Range; // The range of the entire scope (e.g., function body) for relationship association
+  accessibility?: 'public' | 'private' | 'protected';
+  // Type information and signatures
+  signature?: string; // e.g., (a: #number, b: #number): #number
+  typeAnnotation?: string; // e.g., #string for properties/variables
+  typeAliasValue?: string; // e.g., #number|string for type aliases
+  // Relationships
+  dependencies: Relationship[];
+}
+
+export type RelationshipKind =
+  | 'import'
+  | 'dynamic_import'
+  | 'reference'
+  | 'tagged'
+  | 'export'
+  | 'call'
+  | 'extends'
+  | 'implements'
+  | 'references'
+  | 'aliased'
+  | 'goroutine'
+  | 'macro';
+
+export interface Relationship {
+  targetName: string; // The raw name of the target (e.g., './utils', 'MyClass', 'add', 'Button')
+  kind: RelationshipKind;
+  range: Range;
+  // Resolved info
+  resolvedFileId?: number;
+  resolvedSymbolId?: string;
+}
+
+export interface SourceFile {
+  id: number;
+  relativePath: string;
+  absolutePath: string;
+  language: LanguageConfig;
+  sourceCode: string;
+  ast?: Tree;
+  symbols: CodeSymbol[];
+  parseError: boolean;
+  isGenerated?: boolean;
+  languageDirectives?: string[];
+  // File-level relationships (e.g., imports not tied to a specific symbol)
+  fileRelationships?: Relationship[];
+}
+
+/**
+ * Represents a supported programming language and its configuration.
+ */
+export interface LanguageConfig {
+    id: string;
+    name: string;
+    extensions: string[];
+    wasmPath: string;
+    parser?: Parser;
+    loadedLanguage?: Language;
+    queries?: Record<string, string>;
+}
+
+export interface AnalysisContext {
+    sourceFiles: SourceFile[];
+    pathResolver: PathResolver;
+}
+```
+
 ## File: src/queries/typescript.ts
 ```typescript
 export const typescriptQueries = `
@@ -3231,6 +3327,11 @@ const formatFile = (file: SourceFile, allFiles: SourceFile[], options: Formattin
     let symbolsToPrint = hasExports
         ? file.symbols.slice()
         : file.symbols.filter(s => s.dependencies.length > 0);
+
+    // Apply AST-based display filters
+    if (options.displayFilters) {
+        symbolsToPrint = symbolsToPrint.filter(s => options.displayFilters![s.kind] !== false);
+    }
 
     // Group properties/methods under their class/interface parent if option is enabled
     const groupMembers = options.groupMembers ?? true;

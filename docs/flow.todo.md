@@ -1,3 +1,15 @@
+add copy button for output
+
+===
+
+sidebar: make the input, format options, and log to be as accordion. just like in vscode
+
+===
+
+this § and file index should also configurable in formatting options
+
+=== DONE
+
 expand the formatting control to AST based granularity control
 
 we need super nested formatting options.

@@ -1,36 +1,27 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useEffect, useCallback } from 'react';
 import { generateScn } from 'scn-ts-core';
-import { defaultFilesJSON } from './default-files';
 import { Button } from './components/ui/button';
 import { Textarea } from './components/ui/textarea';
 import LogViewer from './components/LogViewer';
 import OutputOptions from './components/OutputOptions';
 import { Legend } from './components/Legend';
 import { Play, Loader, Copy, Check, StopCircle } from 'lucide-react';
-import type { FormattingOptions } from './types';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from './components/ui/accordion';
 import { useAnalysis } from './hooks/useAnalysis.hook';
 import { useClipboard } from './hooks/useClipboard.hook';
 import { useResizableSidebar } from './hooks/useResizableSidebar.hook';
 import { useTokenCounter } from './hooks/useTokenCounter.hook';
+import { useAppStore } from './stores/app.store';
 
 function App() {
-  const [filesInput, setFilesInput] = useState(defaultFilesJSON);
-  const [scnOutput, setScnOutput] = useState('');
-  const [formattingOptions, setFormattingOptions] = useState<FormattingOptions>({
-    showOutgoing: true,
-    showIncoming: true,
-    showIcons: true,
-    showExportedIndicator: true,
-    showPrivateIndicator: true,
-    showModifiers: true,
-    showTags: true,
-    showSymbolIds: true,
-    groupMembers: true,
-    displayFilters: {},
-    showFilePrefix: true,
-    showFileIds: true,
-  });
+  const {
+    filesInput,
+    setFilesInput,
+    scnOutput,
+    setScnOutput,
+    formattingOptions,
+    setFormattingOptions,
+  } = useAppStore();
 
   const {
     isInitialized,

@@ -1,9 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import * as Comlink from 'comlink';
-import type { Remote } from 'comlink';
 import type { SourceFile } from 'scn-ts-core';
 import type { LogEntry, ProgressData } from '../types';
-import type { WorkerApi } from '../worker';
+import { AnalysisService } from '../services/analysis.service';
 
 export function useAnalysis() {
   const [isInitialized, setIsInitialized] = useState(false);
@@ -12,7 +10,7 @@ export function useAnalysis() {
   const [progress, setProgress] = useState<ProgressData | null>(null);
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [analysisTime, setAnalysisTime] = useState<number | null>(null);
-  const workerRef = useRef<Remote<WorkerApi> | null>(null);
+  const serviceRef = useRef<AnalysisService | null>(null);
 
   const onLog = useCallback((log: LogEntry) => {
     setLogs(prev => [...prev, log]);
@@ -23,13 +21,12 @@ export function useAnalysis() {
   }, [onLog]);
 
   useEffect(() => {
-    const worker = new Worker(new URL('../worker.ts', import.meta.url), { type: 'module' });
-    const wrappedWorker = Comlink.wrap<WorkerApi>(worker);
-    workerRef.current = wrappedWorker;
+    const service = new AnalysisService();
+    serviceRef.current = service;
 
     const initializeWorker = async () => {
       try {
-        await wrappedWorker.init();
+        await service.init();
         setIsInitialized(true);
         onLogPartial({ level: 'info', message: 'Analysis worker ready.' });
       } catch (error) {
@@ -41,8 +38,8 @@ export function useAnalysis() {
     initializeWorker();
 
     return () => {
-      wrappedWorker[Comlink.releaseProxy]();
-      worker.terminate();
+      service.cleanup();
+      serviceRef.current = null;
     };
   }, [onLogPartial]);
 
@@ -54,7 +51,7 @@ export function useAnalysis() {
   }, []);
 
   const handleAnalyze = useCallback(async (filesInput: string) => {
-    if (!isInitialized || !workerRef.current) {
+    if (!isInitialized || !serviceRef.current) {
       onLogPartial({ level: 'warn', message: 'Analysis worker not ready.' });
       return;
     }
@@ -67,10 +64,11 @@ export function useAnalysis() {
     resetAnalysisState();
     
     try {
-      const { result, analysisTime } = await workerRef.current.analyze(
-        { filesInput, logLevel: 'debug' },
-        Comlink.proxy(setProgress),
-        Comlink.proxy(onLog)
+      const { result, analysisTime } = await serviceRef.current.analyze(
+        filesInput,
+        'debug',
+        setProgress,
+        onLog
       );
       setAnalysisResult(result);
       setAnalysisTime(analysisTime);
@@ -88,8 +86,8 @@ export function useAnalysis() {
   }, [isInitialized, isLoading, resetAnalysisState, onLog, onLogPartial]);
 
   const handleStop = useCallback(() => {
-    if (isLoading && workerRef.current) {
-      workerRef.current.cancel();
+    if (isLoading && serviceRef.current) {
+      serviceRef.current.cancel();
     }
   }, [isLoading]);
 

@@ -1,0 +1,132 @@
+uuid: 4400e93a-bbfa-499a-8c7c-0e27c17dd254
+projectId: scn-ts-core
+createdAt: '2025-09-05T02:15:36.007Z'
+linesAdded: 7
+linesRemoved: 2
+gitCommitMsg: 'fix(web-demo): prevent worker state corruption on subsequent analyses'
+promptSummary: >-
+  User reports that re-analyzing a project fails with parse errors for all
+  files. This is due to worker state corruption.
+reasoning:
+  - You've found a classic state corruption bug. Excellent catch.
+  - >-
+    The issue is exactly what you described: the process of preparing the
+    analysis result for transport back to the main thread (stripping out
+    non-serializable data like the WASM parser instances) was mutating the
+    original, shared language configuration objects within the worker. On the
+    first run, everything works. On the second run, the parsers are gone,
+    leading to catastrophic failure.
+  - >-
+    The fix is simple: we must clone the language configuration object before
+    sanitizing it, ensuring the original state within the worker remains
+    pristine for future analysis requests.
+  - Here is the patch to fix the worker's sanitization logic.
+  - >-
+    This prevents the destructive mutation and ensures the worker can handle
+    multiple analysis runs correctly. Thanks for spotting this, it was a subtle
+    but critical bug.
+operations:
+  - type: write
+    path: packages/scn-ts-web-demo/src/worker.ts
+    content: |-
+      <<<<<<< SEARCH
+            // Sanitize the result to make it structured-clonable.
+            analysisResult.forEach(file => {
+              delete file.ast;
+              if (file.language) {
+                delete file.language.parser;
+                delete file.language.loadedLanguage;
+              }
+            });
+      =======
+            // Sanitize the result to make it structured-clonable.
+            analysisResult.forEach(file => {
+              delete file.ast;
+              if (file.language) {
+                // The language object on the source file is a reference to a global
+                // singleton. We must clone it before deleting non-serializable properties,
+                // otherwise the parser state is destroyed for subsequent analysis runs.
+                const sanitizedLanguage = { ...file.language };
+                delete sanitizedLanguage.parser;
+                delete sanitizedLanguage.loadedLanguage;
+                file.language = sanitizedLanguage;
+              }
+            });
+      >>>>>>> REPLACE
+    patchStrategy: multi-search-replace
+snapshot:
+  packages/scn-ts-web-demo/src/worker.ts: |-
+    import * as Comlink from 'comlink';
+    import { initializeParser, analyzeProject, logger } from '../../../index';
+    import type { FileContent, LogLevel, SourceFile } from '../../../index';
+    import type { LogEntry, ProgressData } from './types';
+
+    // Define the API the worker will expose
+    const workerApi = {
+      isInitialized: false,
+      abortController: null as AbortController | null,
+
+      async init() {
+        if (this.isInitialized) return;
+        await initializeParser({ wasmBaseUrl: '/wasm/' });
+        this.isInitialized = true;
+      },
+
+      async analyze(
+        { filesInput, logLevel }: { filesInput: string; logLevel: LogLevel },
+        onProgress: (progress: ProgressData) => void,
+        onLog: (log: LogEntry) => void
+      ): Promise<SourceFile[]> {
+        if (!this.isInitialized) {
+          throw new Error('Worker not initialized.');
+        }
+
+        this.abortController = new AbortController();
+
+        logger.setLogHandler((level, ...args) => {
+          const message = args.map(arg => typeof arg === 'object' ? JSON.stringify(arg, null, 2) : String(arg)).join(' ');
+          onLog({ level, message, timestamp: Date.now() });
+        });
+        logger.setLevel(logLevel);
+
+        try {
+          let files: FileContent[] = [];
+          try {
+            files = JSON.parse(filesInput);
+            if (!Array.isArray(files)) throw new Error("Input is not an array.");
+          } catch (error) {
+            throw new Error(`Invalid JSON input: ${error instanceof Error ? error.message : String(error)}`);
+          }
+
+          const analysisResult = await analyzeProject({
+            files,
+            onProgress,
+            logLevel,
+            signal: this.abortController.signal,
+          });
+
+          // Sanitize the result to make it structured-clonable.
+          analysisResult.forEach(file => {
+            delete file.ast;
+            if (file.language) {
+              delete file.language.parser;
+              delete file.language.loadedLanguage;
+            }
+          });
+          
+          return analysisResult;
+        } finally {
+          logger.setLogHandler(null);
+          this.abortController = null;
+        }
+      },
+
+      cancel() {
+        this.abortController?.abort();
+      },
+    };
+
+    Comlink.expose(workerApi);
+
+    export type WorkerApi = typeof workerApi;
+approved: true

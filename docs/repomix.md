@@ -19,6 +19,7 @@ packages/
       index.css
       main.tsx
       types.ts
+      worker.ts
     index.html
     package.json
     postcss.config.js
@@ -643,20 +644,16 @@ export function cn(...inputs: ClassValue[]) {
 ```typescript
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { get_encoding, type Tiktoken } from 'tiktoken';
-import {
-  initializeParser,
-  logger,
-  analyzeProject,
-  generateScn,
-} from '../../../index';
-import type { FileContent, LogHandler, SourceFile } from '../../../index';
+import { generateScn } from '../../../index';
+import type { SourceFile } from '../../../index';
 import { defaultFilesJSON } from './default-files';
 import { Button } from './components/ui/button';
 import { Textarea } from './components/ui/textarea';
 import LogViewer from './components/LogViewer';
 import OutputOptions from './components/OutputOptions';
-import { Play, Loader, Copy, Check } from 'lucide-react';
+import { Play, Loader, Copy, Check, StopCircle } from 'lucide-react';
 import type { LogEntry, ProgressData, FormattingOptions } from './types';
+import type { WorkerRequest, WorkerResponse } from './worker';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from './components/ui/accordion';
 
 function App() {
@@ -684,28 +681,69 @@ function App() {
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [encoder, setEncoder] = useState<Tiktoken | null>(null);
   const [tokenCounts, setTokenCounts] = useState({ input: 0, output: 0 });
-  const initCalled = useRef(false);
+  
+  const workerRef = useRef<Worker | null>(null);
+  const [workerKey, setWorkerKey] = useState(0);
+  const logQueue = useRef<LogEntry[]>([]);
 
   useEffect(() => {
-    if (initCalled.current) {
-      return;
+    // Initialize Tokenizer on main thread
+    try {
+      const enc = get_encoding("cl100k_base");
+      setEncoder(enc);
+    } catch (e) {
+      console.error("Failed to initialize tokenizer:", e);
+      setLogs(prev => [...prev, { level: 'error', message: 'Failed to initialize tokenizer.', timestamp: Date.now() }]);
     }
-    initCalled.current = true;
 
-    const init = async () => {
-      try {
-        await initializeParser({ wasmBaseUrl: '/wasm/' });
-        const enc = get_encoding("cl100k_base");
-        setEncoder(enc);
-        setIsInitialized(true);
-        setLogs(prev => [...prev, { level: 'info', message: 'Parser and tokenizer initialized.', timestamp: Date.now() }]);
-      } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
-        setLogs(prev => [...prev, { level: 'error', message: `Failed to initialize: ${message}`, timestamp: Date.now() }]);
+    // Initialize Web Worker
+    workerRef.current = new Worker(new URL('./worker.ts', import.meta.url), { type: 'module' });
+
+    const flushLogQueue = () => {
+      if (logQueue.current.length > 0) {
+        setLogs(prev => [...prev, ...logQueue.current]);
+        logQueue.current = [];
       }
     };
-    init();
-  }, []);
+
+    const handleWorkerMessage = (event: MessageEvent<WorkerResponse>) => {
+      const { type, payload } = event.data;
+      switch(type) {
+        case 'init_success':
+          setIsInitialized(true);
+          // Don't use log queue here, as it might not be flushed if no other logs arrive.
+          setLogs(prev => [...prev, { level: 'info', message: 'Analysis worker ready.', timestamp: Date.now() }]);
+          break;
+        case 'init_error':
+          setLogs(prev => [...prev, { level: 'error', message: `Worker failed to initialize: ${payload.message}`, timestamp: Date.now() }]);
+          break;
+        case 'log':
+          logQueue.current.push(payload);
+          // Batch log updates to avoid excessive re-renders
+          setTimeout(flushLogQueue, 50);
+          break;
+        case 'progress':
+          setProgress(payload);
+          break;
+        case 'result':
+          setAnalysisResult(payload.analysisResult);
+          setIsLoading(false);
+          flushLogQueue(); // Flush any remaining logs
+          break;
+        case 'error':
+          setLogs(prev => [...prev, { level: 'error', message: `Analysis error: ${payload.message}`, timestamp: Date.now() }]);
+          setIsLoading(false);
+          flushLogQueue(); // Flush any remaining logs
+          break;
+      }
+    };
+
+    workerRef.current.onmessage = handleWorkerMessage;
+
+    return () => {
+      workerRef.current?.terminate();
+    };
+  }, [workerKey]);
 
   useEffect(() => {
     if (!encoder) return;
@@ -721,8 +759,7 @@ function App() {
 
   useEffect(() => {
     if (analysisResult) {
-      const scn = generateScn(analysisResult, formattingOptions);
-      setScnOutput(scn);
+      setScnOutput(generateScn(analysisResult, formattingOptions));
     }
   }, [analysisResult, formattingOptions]);
 
@@ -737,50 +774,42 @@ function App() {
     }
   }, [scnOutput]);
 
-  const handleAnalyze = useCallback(async () => {
+  const handleStop = useCallback(() => {
+    if (!isLoading) return;
+    // This triggers the useEffect cleanup to terminate the old worker
+    // and create a new one, ensuring a clean state.
+    setWorkerKey(k => k + 1);
+    setIsLoading(false);
+    setProgress(null);
+    setAnalysisResult(null);
+    setScnOutput('');
+    setLogs(prev => [...prev, { level: 'warn', message: 'Analysis canceled by user.', timestamp: Date.now() }]);
+    logQueue.current = [];
+  }, [isLoading]);
+
+  const handleAnalyze = useCallback(() => {
     if (!isInitialized) {
-      setLogs(prev => [...prev, { level: 'warn', message: 'Parser not ready.', timestamp: Date.now() }]);
+      setLogs(prev => [...prev, { level: 'warn', message: 'Analysis worker not ready.', timestamp: Date.now() }]);
       return;
     }
 
+    if (isLoading) {
+      // Effectively a "cancel and restart" if clicked while running
+      handleStop();
+    }
+
     setIsLoading(true);
-    setLogs([]);
     setScnOutput('');
     setAnalysisResult(null);
     setProgress(null);
+    setLogs([]);
+    logQueue.current = [];
 
-    const logHandler: LogHandler = (level, ...args) => {
-      const message = args.map(arg => typeof arg === 'object' ? JSON.stringify(arg) : String(arg)).join(' ');
-      setLogs(prev => [...prev, { level, message, timestamp: Date.now() }]);
-    };
-    logger.setLogHandler(logHandler);
-    logger.setLevel('debug');
-
-    const onProgress = (progressData: ProgressData) => {
-      setProgress(progressData);
-      logger.info(`[${Math.round(progressData.percentage)}%] ${progressData.message}`);
-    };
-
-    try {
-      let files: FileContent[] = [];
-      try {
-        files = JSON.parse(filesInput);
-        if (!Array.isArray(files)) throw new Error("Input is not an array.");
-      } catch (error) {
-        throw new Error(`Invalid JSON input: ${error instanceof Error ? error.message : String(error)}`);
-      }
-
-      const rankedGraph = await analyzeProject({ files, onProgress, logLevel: 'debug' });
-      setAnalysisResult(rankedGraph);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      logger.error('Analysis failed:', message);
-    } finally {
-      setIsLoading(false);
-      setProgress(null);
-      logger.setLogHandler(null);
-    }
-  }, [filesInput, isInitialized]);
+    workerRef.current?.postMessage({
+      type: 'analyze',
+      payload: { filesInput, logLevel: 'debug' },
+    } as WorkerRequest);
+  }, [filesInput, isInitialized, isLoading, handleStop]);
 
   return (
     <div className="h-screen w-screen flex bg-background text-foreground">
@@ -788,19 +817,24 @@ function App() {
       <aside className="w-[30rem] max-w-[40%] flex-shrink-0 flex flex-col border-r">
         <div className="flex-shrink-0 flex items-center justify-between p-4 border-b">
           <h1 className="text-xl font-bold tracking-tight">SCN-TS Web Demo</h1>
-          <Button onClick={handleAnalyze} disabled={isLoading || !isInitialized} className="w-32 justify-center">
+          <div className="flex items-center space-x-2">
             {isLoading ? (
               <>
-                <Loader className="mr-2 h-4 w-4 animate-spin" />
-                <span>{progress ? `${Math.round(progress.percentage)}%` : 'Analyzing...'}</span>
+                <Button disabled className="w-32 justify-center">
+                  <Loader className="mr-2 h-4 w-4 animate-spin" />
+                  <span>{progress ? `${Math.round(progress.percentage)}%` : 'Analyzing...'}</span>
+                </Button>
+                <Button onClick={handleStop} variant="outline" size="icon" title="Stop analysis">
+                  <StopCircle className="h-4 w-4" />
+                </Button>
               </>
             ) : (
-              <>
+              <Button onClick={handleAnalyze} disabled={!isInitialized} className="w-32 justify-center">
                 <Play className="mr-2 h-4 w-4" />
                 <span>Analyze</span>
-              </>
+              </Button>
             )}
-          </Button>
+          </div>
         </div>
 
         <div className="flex-grow overflow-y-auto">
@@ -1303,6 +1337,113 @@ export interface FormattingOptions {
 }
 ```
 
+## File: packages/scn-ts-web-demo/src/worker.ts
+```typescript
+import {
+  initializeParser,
+  analyzeProject,
+  logger,
+} from '../../../index';
+import type {
+  FileContent,
+  LogHandler,
+  LogLevel,
+  SourceFile,
+} from '../../../index';
+import type { ProgressData } from './types';
+
+// Define message types for communication
+export type WorkerRequest = {
+  type: 'analyze';
+  payload: {
+    filesInput: string;
+    logLevel: LogLevel;
+  };
+};
+
+export type WorkerResponse =
+  | { type: 'log'; payload: { level: Exclude<LogLevel, 'silent'>; message: string; timestamp: number } }
+  | { type: 'progress'; payload: ProgressData }
+  | { type: 'result'; payload: { analysisResult: SourceFile[] } }
+  | { type: 'error'; payload: { message: string } }
+  | { type: 'init_success' }
+  | { type: 'init_error'; payload: { message: string } };
+
+let isInitialized = false;
+
+// Initialize parser once when the worker starts
+async function initialize() {
+  try {
+    // The path is relative to the worker script's location
+    await initializeParser({ wasmBaseUrl: '/wasm/' });
+    isInitialized = true;
+    self.postMessage({ type: 'init_success' } as WorkerResponse);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    self.postMessage({ type: 'init_error', payload: { message } } as WorkerResponse);
+  }
+}
+
+initialize();
+
+self.onmessage = async (event: MessageEvent<WorkerRequest>) => {
+  if (event.data.type !== 'analyze') return;
+  if (!isInitialized) {
+    self.postMessage({
+      type: 'error',
+      payload: { message: 'Worker not initialized yet.' },
+    } as WorkerResponse);
+    return;
+  }
+
+  const { filesInput, logLevel } = event.data.payload;
+
+  const logHandler: LogHandler = (level, ...args) => {
+    const message = args.map(arg => typeof arg === 'object' ? JSON.stringify(arg, null, 2) : String(arg)).join(' ');
+    self.postMessage({ type: 'log', payload: { level, message, timestamp: Date.now() } } as WorkerResponse);
+  };
+  logger.setLogHandler(logHandler);
+  logger.setLevel(logLevel);
+
+  const onProgress = (progressData: ProgressData) => {
+    self.postMessage({ type: 'progress', payload: progressData } as WorkerResponse);
+  };
+
+  try {
+    let files: FileContent[] = [];
+    try {
+      files = JSON.parse(filesInput);
+      if (!Array.isArray(files)) throw new Error("Input is not an array.");
+    } catch (error) {
+      throw new Error(`Invalid JSON input: ${error instanceof Error ? error.message : String(error)}`);
+    }
+
+    const analysisResult = await analyzeProject({
+      files,
+      onProgress,
+      logLevel,
+    });
+
+    // Sanitize the result to make it structured-clonable for postMessage.
+    // The `ast` and tree-sitter language/parser instances are not clonable.
+    analysisResult.forEach(file => {
+      delete file.ast;
+      if (file.language) {
+        delete file.language.parser;
+        delete file.language.loadedLanguage;
+      }
+    });
+
+    self.postMessage({ type: 'result', payload: { analysisResult } } as WorkerResponse);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    self.postMessage({ type: 'error', payload: { message } } as WorkerResponse);
+  } finally {
+    logger.setLogHandler(null);
+  }
+};
+```
+
 ## File: packages/scn-ts-web-demo/index.html
 ```html
 <!doctype html>
@@ -1709,63 +1850,6 @@ export const SCN_SYMBOLS = {
 export const RESOLVE_EXTENSIONS = ['.ts', '.tsx', '.js', '.jsx', '.css', '.go', '.rs', '.py', '.java', '.graphql', ''];
 ```
 
-## File: src/logger.ts
-```typescript
-import type { LogLevel, LogHandler } from './types';
-
-class Logger {
-  private handler: LogHandler | null = null;
-  private level: LogLevel = 'info';
-
-  private logLevels: Record<LogLevel, number> = {
-    error: 0,
-    warn: 1,
-    info: 2,
-    debug: 3,
-    silent: -1,
-  };
-
-  setLogHandler(handler: LogHandler | null) {
-    this.handler = handler;
-  }
-
-  setLevel(level: LogLevel) {
-    this.level = level;
-  }
-
-  private shouldLog(level: Exclude<LogLevel, 'silent'>): boolean {
-    if (this.level === 'silent' || !this.handler) return false;
-    return this.logLevels[level] <= this.logLevels[this.level];
-  }
-
-  error(...args: any[]) {
-    if (this.shouldLog('error')) {
-      this.handler!('error', ...args);
-    }
-  }
-
-  warn(...args: any[]) {
-    if (this.shouldLog('warn')) {
-      this.handler!('warn', ...args);
-    }
-  }
-
-  info(...args: any[]) {
-    if (this.shouldLog('info')) {
-      this.handler!('info', ...args);
-    }
-  }
-
-  debug(...args: any[]) {
-    if (this.shouldLog('debug')) {
-      this.handler!('debug', ...args);
-    }
-  }
-}
-
-export const logger = new Logger();
-```
-
 ## File: tsconfig.json
 ```json
 {
@@ -1973,6 +2057,66 @@ export const getLanguageForFile = (filePath: string): LanguageConfig | undefined
 };
 ```
 
+## File: src/logger.ts
+```typescript
+import type { LogLevel, LogHandler } from './types';
+
+class Logger {
+  private handler: LogHandler | null = null;
+  private level: LogLevel = 'info';
+
+  private logLevels: Record<LogLevel, number> = {
+    error: 0,
+    warn: 1,
+    info: 2,
+    debug: 3,
+    silent: -1,
+  };
+
+  setLogHandler(handler: LogHandler | null) {
+    this.handler = handler;
+  }
+
+  setLevel(level: LogLevel) {
+    this.level = level;
+  }
+
+  private shouldLog(level: Exclude<LogLevel, 'silent'>): boolean {
+    if (this.level === 'silent') return false;
+    return this.logLevels[level] <= this.logLevels[this.level];
+  }
+
+  private log(level: Exclude<LogLevel, 'silent'>, ...args: any[]) {
+    if (this.shouldLog(level)) {
+      if (this.handler) {
+        this.handler(level, ...args);
+      } else {
+        const consoleMethod = console[level] || console.log;
+        consoleMethod(`[scn-ts-core:${level}]`, ...args);
+      }
+    }
+  }
+
+  error(...args: any[]) {
+    this.log('error', ...args);
+  }
+
+  warn(...args: any[]) {
+    this.log('warn', ...args);
+  }
+
+  info(...args: any[]) {
+    this.log('info', ...args);
+  }
+
+  debug(...args: any[]) {
+    this.log('debug', ...args);
+  }
+}
+
+export const logger = new Logger();
+```
+
 ## File: src/queries/go.ts
 ```typescript
 export const goQueries = `
@@ -2042,6 +2186,7 @@ import type { ParserInitOptions, LanguageConfig } from './types';
 import { Parser, Language, type Tree } from 'web-tree-sitter';
 import path from './utils/path';
 import { languages } from './languages';
+import { logger } from './logger';
 
 let initializePromise: Promise<void> | null = null;
 let isInitialized = false;
@@ -2064,7 +2209,7 @@ const doInitialize = async (options: ParserInitOptions): Promise<void> => {
                 lang.parser = parser;
                 lang.loadedLanguage = loadedLang;
             } catch (error) {
-                console.error(`Failed to load parser for ${lang.name} from ${wasmPath}`, error);
+                logger.error(`Failed to load parser for ${lang.name} from ${wasmPath}`, error);
                 throw error;
             }
         });
@@ -2263,7 +2408,7 @@ export const analyzeProject = async ({
     tsconfig,
     root = '/',
     onProgress,
-    logLevel
+    logLevel,
 }: AnalyzeProjectOptions): Promise<SourceFile[]> => {
     if (logLevel) {
         logger.setLevel(logLevel);
@@ -2276,14 +2421,13 @@ export const analyzeProject = async ({
 
     // Step 1: Create SourceFile objects for all files
     const sourceFiles = files.map((file) => {
-        const lang = getLanguageForFile(file.path);
         const absolutePath = path.join(root, file.path);
         const sourceFile: SourceFile = {
             id: fileIdCounter++,
             relativePath: file.path,
             absolutePath,
             sourceCode: file.content,
-            language: lang!,
+            language: getLanguageForFile(file.path)!,
             symbols: [],
             parseError: false,
         };

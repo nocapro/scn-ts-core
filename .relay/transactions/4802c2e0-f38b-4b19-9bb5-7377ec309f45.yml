@@ -1,0 +1,840 @@
+uuid: 4802c2e0-f38b-4b19-9bb5-7377ec309f45
+projectId: scn-ts-core
+createdAt: '2025-09-05T01:02:26.630Z'
+linesAdded: 37
+linesRemoved: 10
+gitCommitMsg: 'feat(web-demo): add cancellable analysis with stop button'
+promptSummary: >-
+  Add a stop button and progress indicator to the analysis process in the web
+  demo.
+reasoning:
+  - >-
+    y combinator programmer here. i've got this. gonna add a stop button and
+    progress indicator to the analysis process. this requires plumbing an
+    abortsignal through the analysis pipeline. LFG.
+  - >-
+    First, I'll update the `AnalyzeProjectOptions` type to include an optional
+    `AbortSignal`. This is the contract for cancellable operations.
+  - >-
+    Next, I'll update `analyzeProject` to accept the signal and check it at key
+    points during the analysis. If the signal is aborted, it'll throw an
+    `AbortError` to stop execution.
+  - >-
+    Finally, I'll update the React component (`App.tsx`) to manage the
+    `AbortController`, pass the signal, and render the new UI state: a disabled
+    progress button and an active stop button during analysis.
+  - '---'
+operations:
+  - type: write
+    path: src/types.ts
+    content: |-
+      --- src/types.ts
+      +++ src/types.ts
+      @@ -10,6 +10,7 @@
+           root?: string;
+           onProgress?: (progress: { percentage: number; message: string }) => void;
+           logLevel?: LogLevel;
+      +    signal?: AbortSignal;
+       }
+       
+       /**
+    patchStrategy: new-unified
+  - type: write
+    path: src/main.ts
+    content: >-
+      --- src/main.ts
+
+      +++ src/main.ts
+
+      @@ -35,13 +35,15 @@
+           tsconfig,
+           root = '/',
+           onProgress,
+      -    logLevel
+
+      +    logLevel,
+
+      +    signal,
+       }: AnalyzeProjectOptions): Promise<SourceFile[]> => {
+           if (logLevel) {
+               logger.setLevel(logLevel);
+           }
+           const pathResolver = getPathResolver(tsconfig);
+       
+      +    const checkAborted = () => { if (signal?.aborted) throw new
+      DOMException('Aborted', 'AbortError'); };
+           let fileIdCounter = 1;
+       
+           onProgress?.({ percentage: 0, message: 'Creating source files...' });
+      @@ -49,6 +51,7 @@
+           // Step 1: Create SourceFile objects for all files
+           const sourceFiles = files.map((file) => {
+               const lang = getLanguageForFile(file.path);
+      +        checkAborted();
+               const absolutePath = path.join(root, file.path);
+               const sourceFile: SourceFile = {
+                   id: fileIdCounter++,
+      @@ -66,6 +69,7 @@
+       
+           // Step 2: Parse all files
+           const parsedFiles = sourceFiles.map((file, i) => {
+      +        checkAborted();
+               if (!file.language || !file.language.wasmPath || file.sourceCode.trim() === '') {
+                   return file;
+               }
+      @@ -84,6 +88,7 @@
+       
+           // Step 3: Analyze all parsed files
+           const analyzedFiles = parsedFiles.map((file, i) => {
+      +        checkAborted();
+               if (file.ast) {
+                   const analyzed = analyze(file);
+                   const percentage = 50 + (40 * (i + 1) / sourceFiles.length);
+      @@ -96,6 +101,7 @@
+           onProgress?.({ percentage: 90, message: 'Resolving dependency graph...' });
+       
+           // Step 4: Resolve the dependency graph across all files
+      +    checkAborted();
+           const resolvedGraph = resolveGraph(analyzedFiles, pathResolver, root);
+           
+           onProgress?.({ percentage: 100, message: 'Analysis complete.' });
+    patchStrategy: new-unified
+  - type: write
+    path: packages/scn-ts-web-demo/src/App.tsx
+    content: >-
+      --- packages/scn-ts-web-demo/src/App.tsx
+
+      +++ packages/scn-ts-web-demo/src/App.tsx
+
+      @@ -9,7 +9,7 @@
+       import LogViewer from './components/LogViewer';
+       import OutputOptions from './components/OutputOptions';
+      -import { Play, Loader, Copy, Check } from 'lucide-react';
+
+      +import { Play, Loader, Copy, Check, StopCircle } from 'lucide-react';
+       import type { LogEntry, ProgressData, FormattingOptions } from './types';
+       import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from './components/ui/accordion';
+       
+      @@ -33,6 +33,7 @@
+         const [encoder, setEncoder] = useState<Tiktoken | null>(null);
+         const [tokenCounts, setTokenCounts] = useState({ input: 0, output: 0 });
+         const initCalled = useRef(false);
+      +  const abortControllerRef = useRef<AbortController | null>(null);
+       
+         useEffect(() => {
+           if (initCalled.current) {
+      @@ -90,6 +91,12 @@
+           }
+         }, [scnOutput]);
+       
+      +  const handleStop = useCallback(() => {
+
+      +    if (abortControllerRef.current) {
+
+      +      abortControllerRef.current.abort();
+
+      +    }
+
+      +  }, []);
+
+      +
+         const handleAnalyze = useCallback(async () => {
+           if (!isInitialized) {
+             setLogs(prev => [...prev, { level: 'warn', message: 'Parser not ready.', timestamp: Date.now() }]);
+      @@ -101,6 +108,9 @@
+           setScnOutput('');
+           setAnalysisResult(null);
+           setProgress(null);
+      +
+
+      +    abortControllerRef.current = new AbortController();
+
+      +    const signal = abortControllerRef.current.signal;
+       
+           const logHandler: LogHandler = (level, ...args) => {
+             const message = args.map(arg => typeof arg === 'object' ? JSON.stringify(arg) : String(arg)).join(' ');
+      @@ -121,13 +131,18 @@
+               throw new Error(`Invalid JSON input: ${error instanceof Error ? error.message : String(error)}`);
+             }
+       
+      -      const rankedGraph = await analyzeProject({ files, onProgress,
+      logLevel: 'debug' });
+
+      +      const rankedGraph = await analyzeProject({ files, onProgress,
+      logLevel: 'debug', signal });
+             setAnalysisResult(rankedGraph);
+           } catch (error) {
+             const message = error instanceof Error ? error.message : String(error);
+      -      logger.error('Analysis failed:', message);
+
+      +      if ((error as Error).name === 'AbortError') {
+
+      +        logger.warn('Analysis canceled by user.');
+
+      +      } else {
+
+      +        logger.error('Analysis failed:', message);
+
+      +      }
+           } finally {
+             setIsLoading(false);
+      +      abortControllerRef.current = null;
+             setProgress(null);
+             logger.setLogHandler(null);
+           }
+      @@ -139,22 +154,26 @@
+             <aside className="w-[30rem] max-w-[40%] flex-shrink-0 flex flex-col border-r">
+               <div className="flex-shrink-0 flex items-center justify-between p-4 border-b">
+                 <h1 className="text-xl font-bold tracking-tight">SCN-TS Web Demo</h1>
+      -          <Button onClick={handleAnalyze} disabled={isLoading ||
+      !isInitialized} className="w-32 justify-center">
+
+      -            {isLoading ? (
+
+      -              <>
+
+      -                <Loader className="mr-2 h-4 w-4 animate-spin" />
+
+      -                <span>{progress ? `${Math.round(progress.percentage)}%` :
+      'Analyzing...'}</span>
+
+      -              </>
+
+      -            ) : (
+
+      -              <>
+
+      -                <Play className="mr-2 h-4 w-4" />
+
+      -                <span>Analyze</span>
+
+      -              </>
+
+      -            )}
+
+      -          </Button>
+
+      +          <div className="flex items-center space-x-2">
+
+      +            {isLoading ? (
+
+      +              <>
+
+      +                <Button disabled className="w-32 justify-center">
+
+      +                  <Loader className="mr-2 h-4 w-4 animate-spin" />
+
+      +                  <span>{progress ? `${Math.round(progress.percentage)}%`
+      : 'Analyzing...'}</span>
+
+      +                </Button>
+
+      +                <Button onClick={handleStop} variant="outline"
+      size="icon" title="Stop analysis">
+
+      +                  <StopCircle className="h-4 w-4" />
+
+      +                </Button>
+
+      +              </>
+
+      +            ) : (
+
+      +              <Button onClick={handleAnalyze} disabled={!isInitialized}
+      className="w-32 justify-center">
+
+      +                <Play className="mr-2 h-4 w-4" />
+
+      +                <span>Analyze</span>
+
+      +              </Button>
+
+      +            )}
+
+      +          </div>
+               </div>
+       
+               <div className="flex-grow overflow-y-auto">
+    patchStrategy: new-unified
+snapshot:
+  src/types.ts: >-
+    import type { Parser, Tree, Language } from 'web-tree-sitter';
+
+    import type { PathResolver } from './utils/tsconfig';
+
+    export type { PathResolver };
+
+
+    export type LogLevel = 'error' | 'warn' | 'info' | 'debug' | 'silent';
+
+
+    export type LogHandler = (level: Exclude<LogLevel, 'silent'>, ...args:
+    any[]) => void;
+
+
+    export interface TsConfig {
+        compilerOptions?: {
+            baseUrl?: string;
+            paths?: Record<string, string[]>;
+        };
+    }
+
+
+    export interface AnalyzeProjectOptions {
+        files: InputFile[];
+        tsconfig?: TsConfig;
+        root?: string;
+        onProgress?: (progress: { percentage: number; message: string }) => void;
+        logLevel?: LogLevel;
+    }
+
+
+    /**
+     * Options to control the SCN output format.
+     */
+    export interface FormattingOptions {
+        showOutgoing?: boolean;
+        showIncoming?: boolean;
+        showIcons?: boolean;
+        showExportedIndicator?: boolean; // + prefix
+        showPrivateIndicator?: boolean; // - prefix
+        showModifiers?: boolean; // ..., !, o
+        showTags?: boolean;      // [generated], [styled], etc.
+        showSymbolIds?: boolean; // (1.2) identifiers
+        groupMembers?: boolean;  // group class/interface members under parent
+        displayFilters?: Partial<Record<SymbolKind, boolean>>;
+        showFilePrefix?: boolean; // § prefix, defaults to true
+        showFileIds?: boolean;    // (1) file identifiers in headers and references, defaults to true
+    }
+
+
+    /**
+     * Represents a file to be processed.
+     */
+    export interface InputFile {
+      path: string; // relative path from root
+      content: string;
+    }
+
+
+    /**
+     * Configuration for the SCN generation process.
+     */
+    export interface ScnTsConfig {
+      files: InputFile[];
+      tsconfig?: TsConfig;
+      formattingOptions?: FormattingOptions;
+      root?: string; // Optional: A virtual root path for resolution. Defaults to '/'.
+      _test_id?: string; // Special property for test runner to identify fixtures
+    }
+
+
+    /**
+     * Options for initializing the Tree-sitter parser.
+     */
+    export interface ParserInitOptions {
+        wasmBaseUrl: string;
+    }
+
+
+    /**
+     * Represents a supported programming language and its configuration.
+     */
+    export type SymbolKind =
+      // TS/JS
+      | 'class' | 'interface' | 'function' | 'method' | 'constructor'
+      | 'variable' | 'property' | 'enum' | 'enum_member' | 'type_alias' | 'module'
+      | 'decorator' | 'parameter' | 'type_parameter' | 'import_specifier' | 're_export'
+      // React
+      | 'react_component' | 'react_hook' | 'react_hoc' | 'jsx_attribute' | 'jsx_element' | 'styled_component'
+      // CSS
+      | 'css_class' | 'css_id' | 'css_tag' | 'css_at_rule' | 'css_property' | 'css_variable'
+      // Generic / Meta
+      | 'file' | 'reference' | 'comment' | 'error' | 'unresolved'
+      // Other Languages
+      | 'go_package' | 'go_struct' | 'go_goroutine' | 'rust_struct' | 'rust_trait' | 'rust_impl' | 'rust_macro'
+      | 'java_package' | 'python_class'
+      | 'unknown';
+
+    export interface Position {
+      line: number;
+      column: number;
+    }
+
+
+    export interface Range {
+      start: Position;
+      end: Position;
+    }
+
+
+    export interface CodeSymbol {
+      id: string;
+      fileId: number;
+      name: string;
+      kind: SymbolKind;
+      range: Range;
+      // Modifiers and metadata
+      isExported: boolean;
+      isAbstract?: boolean;
+      isStatic?: boolean;
+      isReadonly?: boolean;
+      isAsync?: boolean;
+      isPure?: boolean; // for 'o'
+      throws?: boolean; // for '!'
+      labels?: string[]; // extra display labels like [symbol], [proxy]
+      isGenerated?: boolean;
+      languageDirectives?: string[]; // e.g. 'use server'
+      superClass?: string;
+      implementedInterfaces?: string[];
+      scopeRange: Range; // The range of the entire scope (e.g., function body) for relationship association
+      accessibility?: 'public' | 'private' | 'protected';
+      // Type information and signatures
+      signature?: string; // e.g., (a: #number, b: #number): #number
+      typeAnnotation?: string; // e.g., #string for properties/variables
+      typeAliasValue?: string; // e.g., #number|string for type aliases
+      // Relationships
+      dependencies: Relationship[];
+    }
+
+
+    export type RelationshipKind =
+      | 'import'
+      | 'dynamic_import'
+      | 'reference'
+      | 'tagged'
+      | 'export'
+      | 'call'
+      | 'extends'
+      | 'implements'
+      | 'references'
+      | 'aliased'
+      | 'goroutine'
+      | 'macro';
+
+    export interface Relationship {
+      targetName: string; // The raw name of the target (e.g., './utils', 'MyClass', 'add', 'Button')
+      kind: RelationshipKind;
+      range: Range;
+      // Resolved info
+      resolvedFileId?: number;
+      resolvedSymbolId?: string;
+    }
+
+
+    export interface SourceFile {
+      id: number;
+      relativePath: string;
+      absolutePath: string;
+      language: LanguageConfig;
+      sourceCode: string;
+      ast?: Tree;
+      symbols: CodeSymbol[];
+      parseError: boolean;
+      isGenerated?: boolean;
+      languageDirectives?: string[];
+      // File-level relationships (e.g., imports not tied to a specific symbol)
+      fileRelationships?: Relationship[];
+    }
+
+
+    /**
+     * Represents a supported programming language and its configuration.
+     */
+    export interface LanguageConfig {
+        id: string;
+        name: string;
+        extensions: string[];
+        wasmPath: string;
+        parser?: Parser;
+        loadedLanguage?: Language;
+        queries?: Record<string, string>;
+    }
+
+
+    export interface AnalysisContext {
+        sourceFiles: SourceFile[];
+        pathResolver: PathResolver;
+    }
+  src/main.ts: >-
+    import { getLanguageForFile } from './languages';
+
+    import { initializeParser as init, parse } from './parser';
+
+    import type { ParserInitOptions, SourceFile, InputFile, ScnTsConfig,
+    AnalyzeProjectOptions, FormattingOptions } from './types';
+
+    import { analyze } from './analyzer';
+
+    import { formatScn } from './formatter';
+
+    import path from './utils/path';
+
+    import { getPathResolver } from './utils/tsconfig';
+
+    import { resolveGraph } from './graph-resolver';
+
+    import { logger } from './logger';
+
+
+    /**
+     * Public API to initialize the parser. Must be called before any other APIs.
+     */
+    export const initializeParser = (options: ParserInitOptions): Promise<void>
+    => init(options);
+
+
+    // Types for web demo
+
+    export type { ParserInitOptions, SourceFile, LogLevel, InputFile, TsConfig,
+    ScnTsConfig, AnalyzeProjectOptions, LogHandler, FormattingOptions } from
+    './types';
+
+    export type FileContent = InputFile;
+
+
+    // Exports for web demo
+
+    export { logger };
+
+
+    /**
+     * Generate SCN from analyzed source files
+     */
+    export const generateScn = (analyzedFiles: SourceFile[], options?:
+    FormattingOptions): string => {
+        return formatScn(analyzedFiles, options);
+    };
+
+
+    /**
+     * Legacy API: Generate SCN from config (for backward compatibility)
+     */
+    export const generateScnFromConfig = async (config: ScnTsConfig):
+    Promise<string> => {
+        const analyzedFiles = await analyzeProject({
+            files: config.files,
+            tsconfig: config.tsconfig,
+            root: config.root,
+        });
+        return formatScn(analyzedFiles, config.formattingOptions);
+    };
+
+
+    /**
+     * Parses and analyzes a project's files to build a dependency graph.
+     */
+    export const analyzeProject = async ({
+        files,
+        tsconfig,
+        root = '/',
+        onProgress,
+        logLevel
+    }: AnalyzeProjectOptions): Promise<SourceFile[]> => {
+        if (logLevel) {
+            logger.setLevel(logLevel);
+        }
+        const pathResolver = getPathResolver(tsconfig);
+
+        let fileIdCounter = 1;
+
+        onProgress?.({ percentage: 0, message: 'Creating source files...' });
+
+        // Step 1: Create SourceFile objects for all files
+        const sourceFiles = files.map((file) => {
+            const lang = getLanguageForFile(file.path);
+            const absolutePath = path.join(root, file.path);
+            const sourceFile: SourceFile = {
+                id: fileIdCounter++,
+                relativePath: file.path,
+                absolutePath,
+                sourceCode: file.content,
+                language: lang!,
+                symbols: [],
+                parseError: false,
+            };
+            return sourceFile;
+        });
+
+        onProgress?.({ percentage: 10, message: `Parsing ${sourceFiles.length} files...` });
+
+        // Step 2: Parse all files
+        const parsedFiles = sourceFiles.map((file, i) => {
+            if (!file.language || !file.language.wasmPath || file.sourceCode.trim() === '') {
+                return file;
+            }
+            const tree = parse(file.sourceCode, file.language);
+            if (!tree) {
+                file.parseError = true;
+                logger.warn(`Failed to parse ${file.relativePath}`);
+            } else {
+                file.ast = tree;
+            }
+            const percentage = 10 + (40 * (i + 1) / sourceFiles.length);
+            onProgress?.({ percentage, message: `Parsing ${file.relativePath}` });
+            return file;
+        });
+
+        onProgress?.({ percentage: 50, message: 'Analyzing files...' });
+
+        // Step 3: Analyze all parsed files
+        const analyzedFiles = parsedFiles.map((file, i) => {
+            if (file.ast) {
+                const analyzed = analyze(file);
+                const percentage = 50 + (40 * (i + 1) / sourceFiles.length);
+                onProgress?.({ percentage, message: `Analyzing ${file.relativePath}` });
+                return analyzed;
+            }
+            return file;
+        });
+        
+        onProgress?.({ percentage: 90, message: 'Resolving dependency graph...' });
+
+        // Step 4: Resolve the dependency graph across all files
+        const resolvedGraph = resolveGraph(analyzedFiles, pathResolver, root);
+        
+        onProgress?.({ percentage: 100, message: 'Analysis complete.' });
+        return resolvedGraph;
+    };
+  packages/scn-ts-web-demo/src/App.tsx: >
+    import { useState, useEffect, useCallback, useRef } from 'react';
+
+    import { get_encoding, type Tiktoken } from 'tiktoken';
+
+    import {
+      initializeParser,
+      logger,
+      analyzeProject,
+      generateScn,
+    } from '../../../index';
+
+    import type { FileContent, LogHandler, SourceFile } from '../../../index';
+
+    import { defaultFilesJSON } from './default-files';
+
+    import { Button } from './components/ui/button';
+
+    import { Textarea } from './components/ui/textarea';
+
+    import LogViewer from './components/LogViewer';
+
+    import OutputOptions from './components/OutputOptions';
+
+    import { Play, Loader, Copy, Check } from 'lucide-react';
+
+    import type { LogEntry, ProgressData, FormattingOptions } from './types';
+
+    import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from
+    './components/ui/accordion';
+
+
+    function App() {
+      const [isInitialized, setIsInitialized] = useState(false);
+      const [isLoading, setIsLoading] = useState(false);
+      const [filesInput, setFilesInput] = useState(defaultFilesJSON);
+      const [scnOutput, setScnOutput] = useState('');
+      const [analysisResult, setAnalysisResult] = useState<SourceFile[] | null>(null);
+      const [isCopied, setIsCopied] = useState(false);
+      const [formattingOptions, setFormattingOptions] = useState<FormattingOptions>({
+        showOutgoing: true,
+        showIncoming: true,
+        showIcons: true,
+        showExportedIndicator: true,
+        showPrivateIndicator: true,
+        showModifiers: true,
+        showTags: true,
+        showSymbolIds: true,
+        groupMembers: true,
+        displayFilters: {},
+        showFilePrefix: true,
+        showFileIds: true,
+      });
+      const [progress, setProgress] = useState<ProgressData | null>(null);
+      const [logs, setLogs] = useState<LogEntry[]>([]);
+      const [encoder, setEncoder] = useState<Tiktoken | null>(null);
+      const [tokenCounts, setTokenCounts] = useState({ input: 0, output: 0 });
+      const initCalled = useRef(false);
+
+      useEffect(() => {
+        if (initCalled.current) {
+          return;
+        }
+        initCalled.current = true;
+
+        const init = async () => {
+          try {
+            await initializeParser({ wasmBaseUrl: '/wasm/' });
+            const enc = get_encoding("cl100k_base");
+            setEncoder(enc);
+            setIsInitialized(true);
+            setLogs(prev => [...prev, { level: 'info', message: 'Parser and tokenizer initialized.', timestamp: Date.now() }]);
+          } catch (error) {
+            const message = error instanceof Error ? error.message : String(error);
+            setLogs(prev => [...prev, { level: 'error', message: `Failed to initialize: ${message}`, timestamp: Date.now() }]);
+          }
+        };
+        init();
+      }, []);
+
+      useEffect(() => {
+        if (!encoder) return;
+        try {
+          const inputTokens = encoder.encode(filesInput).length;
+          const outputTokens = encoder.encode(scnOutput).length;
+          setTokenCounts({ input: inputTokens, output: outputTokens });
+        } catch (e) {
+          console.error("Tokenization error:", e);
+          setTokenCounts({ input: 0, output: 0 });
+        }
+      }, [filesInput, scnOutput, encoder]);
+
+      useEffect(() => {
+        if (analysisResult) {
+          const scn = generateScn(analysisResult, formattingOptions);
+          setScnOutput(scn);
+        }
+      }, [analysisResult, formattingOptions]);
+
+      const handleCopy = useCallback(() => {
+        if (scnOutput) {
+          navigator.clipboard.writeText(scnOutput).then(
+            () => {
+              setIsCopied(true);
+              setTimeout(() => setIsCopied(false), 2000);
+            }
+          );
+        }
+      }, [scnOutput]);
+
+      const handleAnalyze = useCallback(async () => {
+        if (!isInitialized) {
+          setLogs(prev => [...prev, { level: 'warn', message: 'Parser not ready.', timestamp: Date.now() }]);
+          return;
+        }
+
+        setIsLoading(true);
+        setLogs([]);
+        setScnOutput('');
+        setAnalysisResult(null);
+        setProgress(null);
+
+        const logHandler: LogHandler = (level, ...args) => {
+          const message = args.map(arg => typeof arg === 'object' ? JSON.stringify(arg) : String(arg)).join(' ');
+          setLogs(prev => [...prev, { level, message, timestamp: Date.now() }]);
+        };
+        logger.setLogHandler(logHandler);
+        logger.setLevel('debug');
+
+        const onProgress = (progressData: ProgressData) => {
+          setProgress(progressData);
+          logger.info(`[${Math.round(progressData.percentage)}%] ${progressData.message}`);
+        };
+
+        try {
+          let files: FileContent[] = [];
+          try {
+            files = JSON.parse(filesInput);
+            if (!Array.isArray(files)) throw new Error("Input is not an array.");
+          } catch (error) {
+            throw new Error(`Invalid JSON input: ${error instanceof Error ? error.message : String(error)}`);
+          }
+
+          const rankedGraph = await analyzeProject({ files, onProgress, logLevel: 'debug' });
+          setAnalysisResult(rankedGraph);
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          logger.error('Analysis failed:', message);
+        } finally {
+          setIsLoading(false);
+          setProgress(null);
+          logger.setLogHandler(null);
+        }
+      }, [filesInput, isInitialized]);
+
+      return (
+        <div className="h-screen w-screen flex bg-background text-foreground">
+          {/* Sidebar */}
+          <aside className="w-[30rem] max-w-[40%] flex-shrink-0 flex flex-col border-r">
+            <div className="flex-shrink-0 flex items-center justify-between p-4 border-b">
+              <h1 className="text-xl font-bold tracking-tight">SCN-TS Web Demo</h1>
+              <Button onClick={handleAnalyze} disabled={isLoading || !isInitialized} className="w-32 justify-center">
+                {isLoading ? (
+                  <>
+                    <Loader className="mr-2 h-4 w-4 animate-spin" />
+                    <span>{progress ? `${Math.round(progress.percentage)}%` : 'Analyzing...'}</span>
+                  </>
+                ) : (
+                  <>
+                    <Play className="mr-2 h-4 w-4" />
+                    <span>Analyze</span>
+                  </>
+                )}
+              </Button>
+            </div>
+
+            <div className="flex-grow overflow-y-auto">
+              <Accordion type="multiple" defaultValue={['input', 'options', 'logs']} className="w-full">
+                <AccordionItem value="input">
+                  <AccordionTrigger className="px-4 text-sm font-semibold hover:no-underline">
+                    <div className="flex w-full justify-between items-center">
+                      <span>Input Files (JSON)</span>
+                      <span className="text-xs font-normal text-muted-foreground tabular-nums">
+                        {tokenCounts.input.toLocaleString()} tokens
+                      </span>
+                    </div>
+                  </AccordionTrigger>
+                  <AccordionContent>
+                    <div className="px-4 pb-4 h-96">
+                      <Textarea
+                        value={filesInput}
+                        onChange={(e) => setFilesInput(e.currentTarget.value)}
+                        className="h-full w-full font-mono text-xs resize-none"
+                        placeholder="Paste an array of FileContent objects here..."
+                      />
+                    </div>
+                  </AccordionContent>
+                </AccordionItem>
+
+                <AccordionItem value="options">
+                  <AccordionTrigger className="px-4 text-sm font-semibold hover:no-underline">Formatting Options</AccordionTrigger>
+                  <AccordionContent className="px-4">
+                    <OutputOptions options={formattingOptions} setOptions={setFormattingOptions} />
+                  </AccordionContent>
+                </AccordionItem>
+
+                <AccordionItem value="logs" className="border-b-0">
+                  <AccordionTrigger className="px-4 text-sm font-semibold hover:no-underline">Logs</AccordionTrigger>
+                  <AccordionContent className="px-4">
+                    <div className="h-96">
+                      <LogViewer logs={logs} />
+                    </div>
+                  </AccordionContent>
+                </AccordionItem>
+              </Accordion>
+            </div>
+          </aside>
+
+          {/* Main Content Area */}
+          <main className="flex-grow flex flex-col overflow-hidden">
+            <div className="flex justify-between items-center p-4 border-b flex-shrink-0">
+              <h2 className="text-lg font-semibold leading-none tracking-tight">Output (SCN)</h2>
+              <div className="flex items-center gap-4">
+                <span className="text-sm font-normal text-muted-foreground tabular-nums">{tokenCounts.output.toLocaleString()} tokens</span>
+                <Button variant="ghost" size="icon" onClick={handleCopy} disabled={!scnOutput} title="Copy to clipboard">
+                  {isCopied ? <Check className="h-4 w-4 text-green-500" /> : <Copy className="h-4 w-4" />}
+                </Button>
+              </div>
+            </div>
+            <div className="p-4 flex-grow overflow-auto font-mono text-xs">
+              <pre className="whitespace-pre-wrap">
+                {scnOutput || (isLoading ? "Generating..." : "Output will appear here.")}
+              </pre>
+            </div>
+          </main>
+        </div>
+      );
+    }
+
+
+    export default App;
+approved: true

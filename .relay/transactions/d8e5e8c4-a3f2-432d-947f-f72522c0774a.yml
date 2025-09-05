@@ -1,0 +1,165 @@
+uuid: d8e5e8c4-a3f2-432d-947f-f72522c0774a
+projectId: scn-ts-core
+createdAt: '2025-09-05T01:17:25.606Z'
+linesAdded: 10
+linesRemoved: 0
+gitCommitMsg: 'fix(web-demo): sanitize worker result to prevent DataCloneError'
+promptSummary: >-
+  User is reporting a DataCloneError when the web worker tries to postMessage
+  the analysis result back to the main thread.
+reasoning:
+  - >-
+    ah, the classic `DataCloneError`. my bad. `postMessage` can't clone complex
+    objects with methods or internal state, and the tree-sitter `AST` object is
+    exactly that. it's basically a live view into WASM memory, not something you
+    can just pass between threads.
+  - >-
+    the fix is simple: before i send the analysis result from the worker back to
+    the main thread, i need to strip out all the non-clonable stuff. the main
+    thread only needs the final data (symbols, relationships) to format the SCN
+    string anyway, not the full AST.
+  - i'll patch the worker to sanitize the payload.
+  - >-
+    this should get things running smoothly. the worker does the hard work, then
+    sends a clean, serializable result back to the UI thread. no more cloning
+    errors.
+  - '---'
+operations:
+  - type: write
+    path: packages/scn-ts-web-demo/src/worker.ts
+    content: >-
+      --- packages/scn-ts-web-demo/src/worker.ts
+
+      +++ packages/scn-ts-web-demo/src/worker.ts
+
+      @@ -79,7 +79,16 @@
+             logLevel,
+           });
+       
+      -    self.postMessage({ type: 'result', payload: { analysisResult } } as
+      WorkerResponse);
+
+      +    // Sanitize the result to make it structured-clonable for
+      postMessage.
+
+      +    // The `ast` and tree-sitter language/parser instances are not
+      clonable.
+
+      +    analysisResult.forEach(file => {
+
+      +      delete file.ast;
+
+      +      if (file.language) {
+
+      +        delete file.language.parser;
+
+      +        delete file.language.loadedLanguage;
+
+      +      }
+
+      +    });
+
+      +
+
+      +    self.postMessage({ type: 'result', payload: { analysisResult } } as
+      WorkerResponse);
+         } catch (error) {
+           const message = error instanceof Error ? error.message : String(error);
+           self.postMessage({ type: 'error', payload: { message } } as WorkerResponse);
+    patchStrategy: new-unified
+snapshot:
+  packages/scn-ts-web-demo/src/worker.ts: |-
+    import {
+      initializeParser,
+      analyzeProject,
+      logger,
+    } from '../../../index';
+    import type {
+      FileContent,
+      LogHandler,
+      LogLevel,
+      SourceFile,
+    } from '../../../index';
+    import type { ProgressData } from './types';
+
+    // Define message types for communication
+    export type WorkerRequest = {
+      type: 'analyze';
+      payload: {
+        filesInput: string;
+        logLevel: LogLevel;
+      };
+    };
+
+    export type WorkerResponse =
+      | { type: 'log'; payload: { level: Exclude<LogLevel, 'silent'>; message: string; timestamp: number } }
+      | { type: 'progress'; payload: ProgressData }
+      | { type: 'result'; payload: { analysisResult: SourceFile[] } }
+      | { type: 'error'; payload: { message: string } }
+      | { type: 'init_success' }
+      | { type: 'init_error'; payload: { message: string } };
+
+    let isInitialized = false;
+
+    // Initialize parser once when the worker starts
+    async function initialize() {
+      try {
+        // The path is relative to the worker script's location
+        await initializeParser({ wasmBaseUrl: '/wasm/' });
+        isInitialized = true;
+        self.postMessage({ type: 'init_success' } as WorkerResponse);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        self.postMessage({ type: 'init_error', payload: { message } } as WorkerResponse);
+      }
+    }
+
+    initialize();
+
+    self.onmessage = async (event: MessageEvent<WorkerRequest>) => {
+      if (event.data.type !== 'analyze') return;
+      if (!isInitialized) {
+        self.postMessage({
+          type: 'error',
+          payload: { message: 'Worker not initialized yet.' },
+        } as WorkerResponse);
+        return;
+      }
+
+      const { filesInput, logLevel } = event.data.payload;
+
+      const logHandler: LogHandler = (level, ...args) => {
+        const message = args.map(arg => typeof arg === 'object' ? JSON.stringify(arg, null, 2) : String(arg)).join(' ');
+        self.postMessage({ type: 'log', payload: { level, message, timestamp: Date.now() } } as WorkerResponse);
+      };
+      logger.setLogHandler(logHandler);
+      logger.setLevel(logLevel);
+
+      const onProgress = (progressData: ProgressData) => {
+        self.postMessage({ type: 'progress', payload: progressData } as WorkerResponse);
+      };
+
+      try {
+        let files: FileContent[] = [];
+        try {
+          files = JSON.parse(filesInput);
+          if (!Array.isArray(files)) throw new Error("Input is not an array.");
+        } catch (error) {
+          throw new Error(`Invalid JSON input: ${error instanceof Error ? error.message : String(error)}`);
+        }
+
+        const analysisResult = await analyzeProject({
+          files,
+          onProgress,
+          logLevel,
+        });
+
+        self.postMessage({ type: 'result', payload: { analysisResult } } as WorkerResponse);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        self.postMessage({ type: 'error', payload: { message } } as WorkerResponse);
+      } finally {
+        logger.setLogHandler(null);
+      }
+    };
+approved: true

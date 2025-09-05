@@ -19,6 +19,7 @@ export interface AnalyzeProjectOptions {
     root?: string;
     onProgress?: (progress: { percentage: number; message: string }) => void;
     logLevel?: LogLevel;
+    signal?: AbortSignal;
 }
 
 /**

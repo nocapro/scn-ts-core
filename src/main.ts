@@ -47,27 +47,29 @@ export const analyzeProject = async ({
     tsconfig,
     root = '/',
     onProgress,
-    logLevel
+    logLevel,
+    signal,
 }: AnalyzeProjectOptions): Promise<SourceFile[]> => {
     if (logLevel) {
         logger.setLevel(logLevel);
     }
     const pathResolver = getPathResolver(tsconfig);
 
+    const checkAborted = () => { if (signal?.aborted) throw new DOMException('Aborted', 'AbortError'); };
     let fileIdCounter = 1;
 
     onProgress?.({ percentage: 0, message: 'Creating source files...' });
 
     // Step 1: Create SourceFile objects for all files
     const sourceFiles = files.map((file) => {
-        const lang = getLanguageForFile(file.path);
+        checkAborted();
         const absolutePath = path.join(root, file.path);
         const sourceFile: SourceFile = {
             id: fileIdCounter++,
             relativePath: file.path,
             absolutePath,
             sourceCode: file.content,
-            language: lang!,
+            language: getLanguageForFile(file.path)!,
             symbols: [],
             parseError: false,
         };
@@ -78,6 +80,7 @@ export const analyzeProject = async ({
 
     // Step 2: Parse all files
     const parsedFiles = sourceFiles.map((file, i) => {
+        checkAborted();
         if (!file.language || !file.language.wasmPath || file.sourceCode.trim() === '') {
             return file;
         }
@@ -97,6 +100,7 @@ export const analyzeProject = async ({
 
     // Step 3: Analyze all parsed files
     const analyzedFiles = parsedFiles.map((file, i) => {
+        checkAborted();
         if (file.ast) {
             const analyzed = analyze(file);
             const percentage = 50 + (40 * (i + 1) / sourceFiles.length);
@@ -109,6 +113,7 @@ export const analyzeProject = async ({
     onProgress?.({ percentage: 90, message: 'Resolving dependency graph...' });
 
     // Step 4: Resolve the dependency graph across all files
+    checkAborted();
     const resolvedGraph = resolveGraph(analyzedFiles, pathResolver, root);
     
     onProgress?.({ percentage: 100, message: 'Analysis complete.' });

@@ -4,9 +4,9 @@ export {
     generateScnFromConfig,
     analyzeProject,
     logger,
-    ICONS,
-    SCN_SYMBOLS
 } from './main';
+
+export { ICONS, SCN_SYMBOLS } from './constants';
 
 export type {
     ParserInitOptions,

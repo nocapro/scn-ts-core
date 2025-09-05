@@ -7,7 +7,6 @@ import path from './utils/path';
 import { getPathResolver } from './utils/tsconfig';
 import { resolveGraph } from './graph-resolver';
 import { logger } from './logger';
-import { ICONS, SCN_SYMBOLS } from './constants';
 
 /**
  * Public API to initialize the parser. Must be called before any other APIs.
@@ -18,8 +17,8 @@ export const initializeParser = (options: ParserInitOptions): Promise<void> => i
 export type { ParserInitOptions, SourceFile, LogLevel, InputFile, TsConfig, ScnTsConfig, AnalyzeProjectOptions, LogHandler, FormattingOptions } from './types';
 export type FileContent = InputFile;
 
-// Exports for web demo
-export { logger, ICONS, SCN_SYMBOLS };
+// Exports for web demo. The constants are exported from index.ts directly.
+export { logger };
 
 /**
  * Generate SCN from analyzed source files

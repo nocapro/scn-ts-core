@@ -1,0 +1,246 @@
+uuid: 4a3a6963-718d-4f11-9a4f-0ab5ff6f0c6b
+projectId: scn-ts-core
+createdAt: '2025-09-05T01:01:46.587Z'
+linesAdded: 18
+linesRemoved: 14
+gitCommitMsg: 'refactor(core): make logger more robust with console fallback'
+promptSummary: >-
+  User asked to review the web demo's log viewer and ensure the core logging
+  functionality is working correctly. Identified that logs during initialization
+  were being missed.
+reasoning:
+  - >-
+    Yo, what up. anton here. Peeped the logging setup. The web demo's log viewer
+    is slick with the level filtering, but the core logger was dropping messages
+    to the void if a handler wasn't attached. Not ideal, especially for init
+    errors that happen before the UI is fully wired up.
+  - 'I''m pushing two changes to make this more robust:'
+  - >-
+    1.  **`logger.ts`**: Refactored the logger to be more resilient. It now
+    checks the log level independently of whether a UI handler is attached. If
+    there's no handler, it falls back to `console.log` with a prefix, so you
+    don't lose critical debug info in the dev tools. This makes the core logger
+    "just work" in any context.
+  - >-
+    2.  **`parser.ts`**: Swapped out a raw `console.error` for `logger.error`.
+    This ensures that wasm loading failures are properly piped through the
+    logging system, respecting log levels and handlers.
+  - >-
+    This way, the core is more self-contained and predictable, and the web demo
+    gets all the juicy logs it's supposed to. Solid upgrade.
+  - '---'
+  - >-
+    I'll start by updating the core logger to be more robust. It will now fall
+    back to the console if no UI log handler is attached, ensuring logs from
+    early initialization aren't lost. This also cleans up the internal logic.
+  - >-
+    Next, I'll update the parser to use our new robust logger instead of a raw
+    `console.error`. This ensures parser initialization errors are captured
+    correctly.
+  - '---'
+operations:
+  - type: write
+    path: src/logger.ts
+    content: |-
+      import type { LogLevel, LogHandler } from './types';
+
+      class Logger {
+        private handler: LogHandler | null = null;
+        private level: LogLevel = 'info';
+
+        private logLevels: Record<LogLevel, number> = {
+          error: 0,
+          warn: 1,
+          info: 2,
+          debug: 3,
+          silent: -1,
+        };
+
+        setLogHandler(handler: LogHandler | null) {
+          this.handler = handler;
+        }
+
+        setLevel(level: LogLevel) {
+          this.level = level;
+        }
+
+        private shouldLog(level: Exclude<LogLevel, 'silent'>): boolean {
+          if (this.level === 'silent') return false;
+          return this.logLevels[level] <= this.logLevels[this.level];
+        }
+
+        private log(level: Exclude<LogLevel, 'silent'>, ...args: any[]) {
+          if (this.shouldLog(level)) {
+            if (this.handler) {
+              this.handler(level, ...args);
+            } else {
+              const consoleMethod = console[level] || console.log;
+              consoleMethod(`[scn-ts-core:${level}]`, ...args);
+            }
+          }
+        }
+
+        error(...args: any[]) {
+          this.log('error', ...args);
+        }
+
+        warn(...args: any[]) {
+          this.log('warn', ...args);
+        }
+
+        info(...args: any[]) {
+          this.log('info', ...args);
+        }
+
+        debug(...args: any[]) {
+          this.log('debug', ...args);
+        }
+      }
+
+      export const logger = new Logger();
+    patchStrategy: replace
+  - type: write
+    path: src/parser.ts
+    content: >-
+      --- src/parser.ts
+
+      +++ src/parser.ts
+
+      @@ -1,7 +1,8 @@
+       import type { ParserInitOptions, LanguageConfig } from './types';
+       import { Parser, Language, type Tree } from 'web-tree-sitter';
+       import path from './utils/path';
+       import { languages } from './languages';
+      +import { logger } from './logger';
+       
+       let initializePromise: Promise<void> | null = null;
+       let isInitialized = false;
+      @@ -23,7 +24,7 @@
+                       lang.parser = parser;
+                       lang.loadedLanguage = loadedLang;
+                   } catch (error) {
+      -                console.error(`Failed to load parser for ${lang.name}
+      from ${wasmPath}`, error);
+
+      +                logger.error(`Failed to load parser for ${lang.name} from
+      ${wasmPath}`, error);
+                       throw error;
+                   }
+               });
+    patchStrategy: new-unified
+snapshot:
+  src/logger.ts: |-
+    import type { LogLevel, LogHandler } from './types';
+
+    class Logger {
+      private handler: LogHandler | null = null;
+      private level: LogLevel = 'info';
+
+      private logLevels: Record<LogLevel, number> = {
+        error: 0,
+        warn: 1,
+        info: 2,
+        debug: 3,
+        silent: -1,
+      };
+
+      setLogHandler(handler: LogHandler | null) {
+        this.handler = handler;
+      }
+
+      setLevel(level: LogLevel) {
+        this.level = level;
+      }
+
+      private shouldLog(level: Exclude<LogLevel, 'silent'>): boolean {
+        if (this.level === 'silent' || !this.handler) return false;
+        return this.logLevels[level] <= this.logLevels[this.level];
+      }
+
+      error(...args: any[]) {
+        if (this.shouldLog('error')) {
+          this.handler!('error', ...args);
+        }
+      }
+
+      warn(...args: any[]) {
+        if (this.shouldLog('warn')) {
+          this.handler!('warn', ...args);
+        }
+      }
+
+      info(...args: any[]) {
+        if (this.shouldLog('info')) {
+          this.handler!('info', ...args);
+        }
+      }
+
+      debug(...args: any[]) {
+        if (this.shouldLog('debug')) {
+          this.handler!('debug', ...args);
+        }
+      }
+    }
+
+    export const logger = new Logger();
+  src/parser.ts: >-
+    import type { ParserInitOptions, LanguageConfig } from './types';
+
+    import { Parser, Language, type Tree } from 'web-tree-sitter';
+
+    import path from './utils/path';
+
+    import { languages } from './languages';
+
+
+    let initializePromise: Promise<void> | null = null;
+
+    let isInitialized = false;
+
+
+    const doInitialize = async (options: ParserInitOptions): Promise<void> => {
+        await Parser.init({
+            locateFile: (scriptName: string, _scriptDirectory: string) => {
+                return path.join(options.wasmBaseUrl, scriptName);
+            }
+        });
+
+        const languageLoaders = languages
+            .filter(lang => lang.wasmPath)
+            .map(async (lang: LanguageConfig) => {
+                const wasmPath = path.join(options.wasmBaseUrl, lang.wasmPath);
+                try {
+                    const loadedLang = await Language.load(wasmPath);
+                    const parser = new Parser();
+                    parser.setLanguage(loadedLang);
+                    lang.parser = parser;
+                    lang.loadedLanguage = loadedLang;
+                } catch (error) {
+                    console.error(`Failed to load parser for ${lang.name} from ${wasmPath}`, error);
+                    throw error;
+                }
+            });
+        
+        await Promise.all(languageLoaders);
+        isInitialized = true;
+    };
+
+
+    export const initializeParser = (options: ParserInitOptions): Promise<void>
+    => {
+        if (initializePromise) {
+            return initializePromise;
+        }
+        initializePromise = doInitialize(options);
+        return initializePromise;
+    };
+
+
+    export const parse = (sourceCode: string, lang: LanguageConfig): Tree | null
+    => {
+        if (!isInitialized || !lang.parser) {
+            return null;
+        }
+        return lang.parser.parse(sourceCode);
+    };
+approved: true

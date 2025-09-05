@@ -2,6 +2,7 @@ import type { ParserInitOptions, LanguageConfig } from './types';
 import { Parser, Language, type Tree } from 'web-tree-sitter';
 import path from './utils/path';
 import { languages } from './languages';
+import { logger } from './logger';
 
 let initializePromise: Promise<void> | null = null;
 let isInitialized = false;
@@ -24,7 +25,7 @@ const doInitialize = async (options: ParserInitOptions): Promise<void> => {
                 lang.parser = parser;
                 lang.loadedLanguage = loadedLang;
             } catch (error) {
-                console.error(`Failed to load parser for ${lang.name} from ${wasmPath}`, error);
+                logger.error(`Failed to load parser for ${lang.name} from ${wasmPath}`, error);
                 throw error;
             }
         });

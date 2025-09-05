@@ -21,32 +21,35 @@ class Logger {
   }
 
   private shouldLog(level: Exclude<LogLevel, 'silent'>): boolean {
-    if (this.level === 'silent' || !this.handler) return false;
+    if (this.level === 'silent') return false;
     return this.logLevels[level] <= this.logLevels[this.level];
   }
 
-  error(...args: any[]) {
-    if (this.shouldLog('error')) {
-      this.handler!('error', ...args);
+  private log(level: Exclude<LogLevel, 'silent'>, ...args: any[]) {
+    if (this.shouldLog(level)) {
+      if (this.handler) {
+        this.handler(level, ...args);
+      } else {
+        const consoleMethod = console[level] || console.log;
+        consoleMethod(`[scn-ts-core:${level}]`, ...args);
+      }
     }
+  }
+
+  error(...args: any[]) {
+    this.log('error', ...args);
   }
 
   warn(...args: any[]) {
-    if (this.shouldLog('warn')) {
-      this.handler!('warn', ...args);
-    }
+    this.log('warn', ...args);
   }
 
   info(...args: any[]) {
-    if (this.shouldLog('info')) {
-      this.handler!('info', ...args);
-    }
+    this.log('info', ...args);
   }
 
   debug(...args: any[]) {
-    if (this.shouldLog('debug')) {
-      this.handler!('debug', ...args);
-    }
+    this.log('debug', ...args);
   }
 }
 

@@ -1,3 +1,9 @@
+expand the formatting control to AST based granularity control
+
+we need super nested formatting options.
+
+===
+
 web; input , format options, log should be as sidebar... so the output is the main dominant area. also remove header
 
 ===

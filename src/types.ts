@@ -34,6 +34,7 @@ export interface FormattingOptions {
     showTags?: boolean;      // [generated], [styled], etc.
     showSymbolIds?: boolean; // (1.2) identifiers
     groupMembers?: boolean;  // group class/interface members under parent
+    displayFilters?: Partial<Record<SymbolKind, boolean>>;
 }
 
 /**

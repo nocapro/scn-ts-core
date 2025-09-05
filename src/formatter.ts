@@ -254,6 +254,11 @@ const formatFile = (file: SourceFile, allFiles: SourceFile[], options: Formattin
         ? file.symbols.slice()
         : file.symbols.filter(s => s.dependencies.length > 0);
 
+    // Apply AST-based display filters
+    if (options.displayFilters) {
+        symbolsToPrint = symbolsToPrint.filter(s => options.displayFilters![s.kind] !== false);
+    }
+
     // Group properties/methods under their class/interface parent if option is enabled
     const groupMembers = options.groupMembers ?? true;
     const childrenMap = groupMembers ? buildChildrenMap(symbolsToPrint) : new Map();

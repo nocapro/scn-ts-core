@@ -35,6 +35,8 @@ export interface FormattingOptions {
     showSymbolIds?: boolean; // (1.2) identifiers
     groupMembers?: boolean;  // group class/interface members under parent
     displayFilters?: Partial<Record<SymbolKind, boolean>>;
+    showFilePrefix?: boolean; // § prefix, defaults to true
+    showFileIds?: boolean;    // (1) file identifiers in headers and references, defaults to true
 }
 
 /**

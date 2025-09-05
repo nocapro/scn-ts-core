@@ -18,10 +18,18 @@ const getDisplayIndex = (file: SourceFile, symbol: CodeSymbol): number | null =>
     return index === -1 ? null : index + 1;
 };
 
-const formatSymbolIdDisplay = (file: SourceFile, symbol: CodeSymbol): string | null => {
+const formatFileIdDisplay = (fileId: number, options: FormattingOptions): string => {
+    const { showFileIds = true } = options;
+    const fileIdPart = showFileIds ? fileId : '';
+    return `(${fileIdPart}.0)`;
+};
+
+const formatSymbolIdDisplay = (file: SourceFile, symbol: CodeSymbol, options: FormattingOptions): string | null => {
+    const { showFileIds = true } = options;
     const idx = getDisplayIndex(file, symbol);
     if (idx == null) return null;
-    return `(${file.id}.${idx})`;
+    const fileIdPart = showFileIds ? file.id : '';
+    return `(${fileIdPart}.${idx})`;
 };
 
 const formatSymbol = (symbol: CodeSymbol, allFiles: SourceFile[], options: FormattingOptions): string[] => {
@@ -75,7 +83,7 @@ const formatSymbol = (symbol: CodeSymbol, allFiles: SourceFile[], options: Forma
 
     // Build ID portion conditionally
     const file = allFiles.find(f => f.id === symbol.fileId)!;
-    const idPart = showSymbolIds ? formatSymbolIdDisplay(file, symbol) : null;
+    const idPart = showSymbolIds ? formatSymbolIdDisplay(file, symbol, options) : null;
     const idText = (symbol.kind === 'property' || symbol.kind === 'constructor') ? null : (idPart ?? null);
     const segments: string[] = [prefix, icon];
     if (idText) segments.push(idText);
@@ -94,15 +102,15 @@ const formatSymbol = (symbol: CodeSymbol, allFiles: SourceFile[], options: Forma
                 const targetFile = allFiles.find(f => f.id === dep.resolvedFileId);
                 const targetSymbol = targetFile?.symbols.find(s => s.id === dep.resolvedSymbolId);
                 if (targetSymbol) {
-                    const displayId = showSymbolIds ? formatSymbolIdDisplay(targetFile!, targetSymbol) : null;
-                    let text = displayId ?? `(${targetFile!.id}.0)`;
+                    const displayId = showSymbolIds ? formatSymbolIdDisplay(targetFile!, targetSymbol, options) : null;
+                    let text = displayId ?? formatFileIdDisplay(targetFile!.id, options);
                     if (dep.kind === 'goroutine') {
                         text += ` ${SCN_SYMBOLS.TAG_GOROUTINE}`;
                     }
                     outgoing.get(dep.resolvedFileId)!.add(text);
                 }
             } else {
-                let text = `(${dep.resolvedFileId}.0)`;
+                let text = formatFileIdDisplay(dep.resolvedFileId, options);
                 if (dep.kind === 'dynamic_import') text += ` ${SCN_SYMBOLS.TAG_DYNAMIC}`;
                 outgoing.get(dep.resolvedFileId)!.add(text);
             }
@@ -119,7 +127,7 @@ const formatSymbol = (symbol: CodeSymbol, allFiles: SourceFile[], options: Forma
             .sort((a, b) => a[0] - b[0])
             .map(([fileId, symbolIds]) => {
                 const items = Array.from(symbolIds).sort();
-                return items.length > 0 ? `${items.join(', ')}` : `(${fileId}.0)`;
+                return items.length > 0 ? `${items.join(', ')}` : formatFileIdDisplay(fileId, options);
             });
         outgoingParts.push(...resolvedParts);
     }
@@ -141,7 +149,7 @@ const formatSymbol = (symbol: CodeSymbol, allFiles: SourceFile[], options: Forma
                     if(!incoming.has(file.id)) incoming.set(file.id, new Set());
                     // Suppress same-file incoming for properties
                     if (file.id === symbol.fileId && symbol.kind === 'property') return;
-                    const disp = showSymbolIds ? (formatSymbolIdDisplay(file, s) ?? `(${file.id}.0)`) : `(${file.id}.0)`;
+                    const disp = showSymbolIds ? (formatSymbolIdDisplay(file, s, options) ?? formatFileIdDisplay(file.id, options)) : formatFileIdDisplay(file.id, options);
                     incoming.get(file.id)!.add(disp);
                 }
             });
@@ -154,7 +162,7 @@ const formatSymbol = (symbol: CodeSymbol, allFiles: SourceFile[], options: Forma
                     const already = incoming.get(file.id);
                     if (!already || already.size === 0) {
                         if(!incoming.has(file.id)) incoming.set(file.id, new Set());
-                        incoming.get(file.id)!.add(`(${file.id}.0)`);
+                        incoming.get(file.id)!.add(formatFileIdDisplay(file.id, options));
                     }
                 }
             });
@@ -200,22 +208,28 @@ const buildChildrenMap = (symbols: CodeSymbol[]): Map<string, CodeSymbol[]> => {
 };
 
 const formatFile = (file: SourceFile, allFiles: SourceFile[], options: FormattingOptions): string => {
-    if (file.parseError) return `${SCN_SYMBOLS.FILE_PREFIX} (${file.id}) ${file.relativePath} [error]`;
-    if (!file.sourceCode.trim()) return `${SCN_SYMBOLS.FILE_PREFIX} (${file.id}) ${file.relativePath}`;
-
     const {
         showOutgoing = true,
         showIncoming = true,
         showTags = true,
+        showFilePrefix = true,
+        showFileIds = true,
     } = options;
+
+    const headerParts: string[] = [];
+    if (showFilePrefix) headerParts.push(SCN_SYMBOLS.FILE_PREFIX);
+    if (showFileIds) headerParts.push(`(${file.id})`);
+    headerParts.push(file.relativePath);
+
+    if (file.parseError) return `${headerParts.join(' ')} [error]`;
+    if (!file.sourceCode.trim()) return headerParts.join(' ');
 
     const directives = showTags ? [
         file.isGenerated && SCN_SYMBOLS.TAG_GENERATED.slice(1, -1),
         ...(file.languageDirectives || [])
     ].filter(Boolean) : [];
     const directiveStr = directives.length > 0 ? ` [${directives.join(' ')}]` : '';
-    const header = `${SCN_SYMBOLS.FILE_PREFIX} (${file.id}) ${file.relativePath}${directiveStr}`;
-
+    const header = `${headerParts.join(' ')}${directiveStr}`;
     const headerLines: string[] = [header];
 
     // File-level outgoing/incoming dependencies
@@ -225,7 +239,7 @@ const formatFile = (file: SourceFile, allFiles: SourceFile[], options: Formattin
         file.fileRelationships.forEach(rel => {
             // Only show true file-level imports on the header
             if ((rel.kind === 'import' || rel.kind === 'dynamic_import') && rel.resolvedFileId && rel.resolvedFileId !== file.id) {
-                let text = `(${rel.resolvedFileId}.0)`;
+                let text = formatFileIdDisplay(rel.resolvedFileId, options);
                 if (rel.kind === 'dynamic_import') text += ` ${SCN_SYMBOLS.TAG_DYNAMIC}`;
                 outgoingFiles.add(rel.resolvedFileId);
                 outgoing.push(text);
@@ -242,7 +256,7 @@ const formatFile = (file: SourceFile, allFiles: SourceFile[], options: Formattin
         allFiles.forEach(other => {
             if (other.id === file.id) return;
             other.fileRelationships?.forEach(rel => {
-                if (rel.resolvedFileId === file.id) incoming.push(`(${other.id}.0)`);
+                if (rel.resolvedFileId === file.id) incoming.push(formatFileIdDisplay(other.id, options));
             });
         });
         if (incoming.length > 0) headerLines.push(`  ${SCN_SYMBOLS.INCOMING_ARROW} ${Array.from(new Set(incoming)).sort().join(', ')}`);
@@ -287,12 +301,12 @@ const formatFile = (file: SourceFile, allFiles: SourceFile[], options: Formattin
         const processDep = (dep: import('./types').Relationship) => {
             if (dep.resolvedFileId && dep.resolvedFileId !== file.id) {
                 if (!aggOutgoing.has(dep.resolvedFileId)) aggOutgoing.set(dep.resolvedFileId, new Set());
-                let text = `(${dep.resolvedFileId}.0)`; // Default to file-level
+                let text = formatFileIdDisplay(dep.resolvedFileId, options); // Default to file-level
                 if (dep.resolvedSymbolId) {
                     const targetFile = allFiles.find(f => f.id === dep.resolvedFileId)!;
                     const targetSymbol = targetFile.symbols.find(ts => ts.id === dep.resolvedSymbolId);
                     if (targetSymbol) {
-                        text = options.showSymbolIds ? (formatSymbolIdDisplay(targetFile, targetSymbol) ?? `(${dep.resolvedFileId}.0)`) : `(${dep.resolvedFileId}.0)`;
+                        text = options.showSymbolIds ? (formatSymbolIdDisplay(targetFile, targetSymbol, options) ?? formatFileIdDisplay(dep.resolvedFileId, options)) : formatFileIdDisplay(dep.resolvedFileId, options);
                     }
                 }
                 if (dep.kind === 'dynamic_import') text += ` ${SCN_SYMBOLS.TAG_DYNAMIC}`;

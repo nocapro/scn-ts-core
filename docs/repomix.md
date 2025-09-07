@@ -35,24 +35,12 @@ tsconfig.json
 import { useState } from 'react';
 import { defaultFilesJSON } from '../default-files';
 import type { FormattingOptions } from '../types';
+import { getFormattingOptionsForPreset } from 'scn-ts-core';
 
 export function useAppStore() {
   const [filesInput, setFilesInput] = useState(defaultFilesJSON);
   const [scnOutput, setScnOutput] = useState('');
-  const [formattingOptions, setFormattingOptions] = useState<FormattingOptions>({
-    showOutgoing: true,
-    showIncoming: true,
-    showIcons: true,
-    showExportedIndicator: true,
-    showPrivateIndicator: true,
-    showModifiers: true,
-    showTags: true,
-    showSymbolIds: true,
-    groupMembers: true,
-    displayFilters: {},
-    showFilePrefix: true,
-    showFileIds: true,
-  });
+  const [formattingOptions, setFormattingOptions] = useState<FormattingOptions>(getFormattingOptionsForPreset('default'));
 
   return {
     filesInput,
@@ -67,7 +55,9 @@ export function useAppStore() {
 
 ## File: packages/scn-ts-web-demo/src/types.ts
 ```typescript
-import type { LogLevel } from 'scn-ts-core';
+import type { LogLevel, FormattingPreset as CoreFormattingPreset } from 'scn-ts-core';
+
+export type FormattingPreset = CoreFormattingPreset;
 
 export interface LogEntry {
   level: Exclude<LogLevel, 'silent'>;
@@ -81,6 +71,7 @@ export interface ProgressData {
 }
 
 export interface FormattingOptions {
+  preset?: FormattingPreset;
   showOutgoing?: boolean;
   showIncoming?: boolean;
   showIcons?: boolean;
@@ -93,6 +84,7 @@ export interface FormattingOptions {
   displayFilters?: Partial<Record<string, boolean>>;
   showFilePrefix?: boolean;
   showFileIds?: boolean;
+  showOnlyExports?: boolean;
 }
 ```
 
@@ -581,6 +573,7 @@ export {
     logger,
     initializeTokenizer,
     countTokens,
+    getFormattingOptionsForPreset,
 } from './main';
 
 export { ICONS, SCN_SYMBOLS } from './constants';
@@ -595,6 +588,7 @@ export type {
     AnalyzeProjectOptions,
     LogHandler,
     FormattingOptions,
+    FormattingPreset,
     FormattingOptionsTokenImpact,
     FileContent,
     CodeSymbol,
@@ -605,9 +599,10 @@ export type {
 ## File: packages/scn-ts-web-demo/src/components/OutputOptions.tsx
 ```typescript
 import * as React from 'react';
-import type { FormattingOptions } from '../types';
+import type { FormattingOptions, FormattingPreset } from '../types';
 import { ChevronDown, ChevronRight, ListChecks, ListX, ChevronsDown, ChevronsUp, X } from 'lucide-react';
-import type { FormattingOptionsTokenImpact } from 'scn-ts-core';
+import { getFormattingOptionsForPreset, type FormattingOptionsTokenImpact } from 'scn-ts-core';
+import { cn } from '../lib/utils';
 
 import { Checkbox } from './ui/checkbox';
 import { Label } from './ui/label';
@@ -620,7 +615,7 @@ interface OutputOptionsProps {
   tokenImpact: FormattingOptionsTokenImpact | null;
 }
 
-type RegularOptionKey = keyof Omit<FormattingOptions, 'displayFilters'>;
+type RegularOptionKey = keyof Omit<FormattingOptions, 'displayFilters' | 'preset'>;
 type OptionItem = RegularOptionKey | string | { name: string; children: OptionItem[] };
 
 const symbolKindLabels: Record<string, string> = {
@@ -708,7 +703,7 @@ const optionTree: OptionItem[] = [
   },
   {
     name: 'Structure',
-    children: ['groupMembers'],
+    children: ['groupMembers', 'showOnlyExports'],
   },
   symbolVisibilityTree,
 ];
@@ -726,6 +721,7 @@ const optionLabels: Record<RegularOptionKey, string> & Record<string, string> = 
   showOutgoing: 'Outgoing',
   showIncoming: 'Incoming',
   groupMembers: 'Group Members',
+  showOnlyExports: 'Show Only Exports',
 };
 
 function getAllKeys(item: OptionItem): string[] {
@@ -758,6 +754,20 @@ export const OutputOptions: React.FC<OutputOptionsProps> = ({ options, setOption
 
   const allOptionKeys = React.useMemo(() => optionTree.flatMap(getAllKeys), []);
 
+  const areAllSelected = React.useMemo(() => {
+    if (allOptionKeys.length === 0) return false;
+    return allOptionKeys.every(key => {
+      if (key.startsWith('filter:')) {
+        const kind = key.substring('filter:'.length);
+        if (options.displayFilters && Object.hasOwn(options.displayFilters, kind)) {
+          return options.displayFilters[kind] as boolean;
+        }
+        return true; // Default is selected
+      }
+      return options[key as RegularOptionKey] ?? true;
+    });
+  }, [allOptionKeys, options]);
+
   const filteredOptionTree = React.useMemo(() => {
     if (!searchTerm.trim()) return optionTree;
     const lowerCaseSearchTerm = searchTerm.toLowerCase();
@@ -781,19 +791,24 @@ export const OutputOptions: React.FC<OutputOptionsProps> = ({ options, setOption
     return optionTree.map(filter).filter((i): i is OptionItem => i !== null);
   }, [searchTerm]);
 
+  const allFilteredGroupNames = React.useMemo(() => getAllGroupNames(filteredOptionTree), [filteredOptionTree]);
+  const areAllExpanded = React.useMemo(() => 
+    allFilteredGroupNames.length > 0 && allFilteredGroupNames.every(g => expandedGroups.has(g)), 
+    [allFilteredGroupNames, expandedGroups]);
+
   React.useEffect(() => {
     if (searchTerm.trim()) {
-      setExpandedGroups(new Set(getAllGroupNames(filteredOptionTree)));
+      setExpandedGroups(new Set(allFilteredGroupNames));
     }
-  }, [searchTerm, filteredOptionTree]);
+  }, [searchTerm, allFilteredGroupNames]);
 
-  const expandAll = React.useCallback(() => setExpandedGroups(new Set(getAllGroupNames(filteredOptionTree))), [filteredOptionTree]);
+  const expandAll = React.useCallback(() => setExpandedGroups(new Set(allFilteredGroupNames)), [allFilteredGroupNames]);
   const collapseAll = React.useCallback(() => {
     setExpandedGroups(new Set());
   }, []);
   const selectAll = React.useCallback(() => {
     setOptions(prev => {
-      const newOptions: FormattingOptions = { ...prev };
+      const newOptions: FormattingOptions = { ...prev, preset: undefined };
       const newDisplayFilters = { ...(prev.displayFilters ?? {}) };
 
       for (const key of allOptionKeys) {
@@ -809,7 +824,7 @@ export const OutputOptions: React.FC<OutputOptionsProps> = ({ options, setOption
   }, [allOptionKeys]);
   const deselectAll = React.useCallback(() => {
     setOptions(prev => {
-      const newOptions: FormattingOptions = { ...prev };
+      const newOptions: FormattingOptions = { ...prev, preset: undefined };
       const newDisplayFilters = { ...(prev.displayFilters ?? {}) };
 
       for (const key of allOptionKeys) {
@@ -842,17 +857,18 @@ export const OutputOptions: React.FC<OutputOptionsProps> = ({ options, setOption
       const kind = optionKey.substring('filter:'.length);
       setOptions(prev => ({
         ...prev,
+        preset: undefined,
         displayFilters: { ...(prev.displayFilters ?? {}), [kind]: isChecked },
       }));
     } else {
-      setOptions(prev => ({ ...prev, [optionKey]: isChecked }));
+      setOptions(prev => ({ ...prev, preset: undefined, [optionKey]: isChecked }));
     }
   };
 
   const handleGroupChange = (keys: ReadonlyArray<string>) => (checked: boolean | 'indeterminate') => {
     const isChecked = checked === true;
     setOptions(prev => {
-      const newOptions: FormattingOptions = { ...prev };
+      const newOptions: FormattingOptions = { ...prev, preset: undefined };
       const newDisplayFilters = { ...(prev.displayFilters ?? {}) };
 
       for (const key of keys) {
@@ -977,8 +993,23 @@ export const OutputOptions: React.FC<OutputOptionsProps> = ({ options, setOption
     );
   };
 
+  const presets: FormattingPreset[] = ['minimal', 'compact', 'default', 'detailed', 'verbose'];
+
   return (
     <div className="space-y-1">
+      <div className="flex justify-between gap-1 mb-3">
+        {presets.map(p => (
+          <Button
+            key={p}
+            variant={options.preset === p ? 'default' : 'outline'}
+            size="sm"
+            onClick={() => setOptions(getFormattingOptionsForPreset(p))}
+            className={cn("capitalize flex-1 text-xs h-7", options.preset !== p && "text-muted-foreground")}
+          >
+            {p}
+          </Button>
+        ))}
+      </div>
       <div className="flex gap-2 mb-3">
         <div className="relative flex-grow">
           <Input
@@ -994,17 +1025,11 @@ export const OutputOptions: React.FC<OutputOptionsProps> = ({ options, setOption
           )}
         </div>
         <div className="flex items-center">
-          <Button variant="ghost" size="icon" onClick={selectAll} title="Select all" className="h-8 w-8 text-muted-foreground hover:text-foreground">
-            <ListChecks className="h-4 w-4" />
+          <Button variant="ghost" size="icon" onClick={areAllSelected ? deselectAll : selectAll} title={areAllSelected ? "Deselect all" : "Select all"} className="h-8 w-8 text-muted-foreground hover:text-foreground">
+            {areAllSelected ? <ListX className="h-4 w-4" /> : <ListChecks className="h-4 w-4" />}
           </Button>
-          <Button variant="ghost" size="icon" onClick={deselectAll} title="Deselect all" className="h-8 w-8 text-muted-foreground hover:text-foreground">
-            <ListX className="h-4 w-4" />
-          </Button>
-          <Button variant="ghost" size="icon" onClick={expandAll} title="Expand all" className="h-8 w-8 text-muted-foreground hover:text-foreground">
-            <ChevronsDown className="h-4 w-4" />
-          </Button>
-          <Button variant="ghost" size="icon" onClick={collapseAll} title="Collapse all" className="h-8 w-8 text-muted-foreground hover:text-foreground">
-            <ChevronsUp className="h-4 w-4" />
+          <Button variant="ghost" size="icon" onClick={areAllExpanded ? collapseAll : expandAll} title={areAllExpanded ? "Collapse all" : "Expand all"} className="h-8 w-8 text-muted-foreground hover:text-foreground">
+            {areAllExpanded ? <ChevronsUp className="h-4 w-4" /> : <ChevronsDown className="h-4 w-4" />}
           </Button>
         </div>
       </div>
@@ -1131,11 +1156,18 @@ function App() {
     }
     const allSymbols: CodeSymbol[] = analysisResult.flatMap(file => file.symbols);
     const total = allSymbols.length;
-    const visible = allSymbols.filter(symbol => {
-      return formattingOptions.displayFilters?.[symbol.kind] !== false;
-    }).length;
-    return { totalSymbols: total, visibleSymbols: visible };
-  }, [analysisResult, formattingOptions.displayFilters]);
+    let visibleSymbolsArr = allSymbols;
+    if (formattingOptions.showOnlyExports) {
+      visibleSymbolsArr = visibleSymbolsArr.filter(symbol => symbol.isExported);
+    }
+    if (formattingOptions.displayFilters) {
+      const filters = formattingOptions.displayFilters;
+      visibleSymbolsArr = visibleSymbolsArr.filter(symbol => {
+        return (filters[symbol.kind] ?? filters['*'] ?? true);
+      });
+    }
+    return { totalSymbols: total, visibleSymbols: visibleSymbolsArr.length };
+  }, [analysisResult, formattingOptions.displayFilters, formattingOptions.showOnlyExports]);
 
   return (
     <div className="h-screen w-screen flex bg-background text-foreground overflow-hidden">
@@ -1176,8 +1208,8 @@ function App() {
                   </div>
                 </AccordionTrigger>
               </AccordionHeader>
-              <AccordionContent>
-                <div className="px-4 pb-4 h-96">
+              <AccordionContent className="p-4">
+                <div className="h-96">
                   <Textarea
                     value={filesInput}
                     onChange={(e) => setFilesInput(e.currentTarget.value)}
@@ -1201,7 +1233,7 @@ function App() {
                   </div>
                 </AccordionTrigger>
               </AccordionHeader>
-              <AccordionContent className="px-4">
+              <AccordionContent className="px-4 pt-4">
                 <OutputOptions options={formattingOptions} setOptions={setFormattingOptions} tokenImpact={tokenImpact} />
               </AccordionContent>
             </AccordionItem>
@@ -1210,7 +1242,7 @@ function App() {
               <AccordionHeader>
                 <AccordionTrigger className="px-4 text-sm font-semibold hover:no-underline">Logs</AccordionTrigger>
               </AccordionHeader>
-              <AccordionContent className="px-4">
+              <AccordionContent className="px-4 pt-4">
                 <LogViewer logs={logs} />
               </AccordionContent>
             </AccordionItem>
@@ -1297,6 +1329,8 @@ import { resolveGraph } from './graph-resolver';
 import { logger } from './logger';
 import { initializeTokenizer as initTokenizer, countTokens as countTokensInternal } from './tokenizer';
 
+import type { FormattingPreset } from './types';
+
 /**
  * Public API to initialize the parser. Must be called before any other APIs.
  */
@@ -1309,11 +1343,81 @@ export const initializeParser = (options: ParserInitOptions): Promise<void> => i
 export const initializeTokenizer = (): boolean => initTokenizer();
 
 // Types for web demo
-export type { ParserInitOptions, SourceFile, LogLevel, InputFile, TsConfig, ScnTsConfig, AnalyzeProjectOptions, LogHandler, FormattingOptions, FormattingOptionsTokenImpact, CodeSymbol, SymbolKind } from './types';
+export type { ParserInitOptions, SourceFile, LogLevel, InputFile, TsConfig, ScnTsConfig, AnalyzeProjectOptions, LogHandler, FormattingOptions, FormattingPreset, FormattingOptionsTokenImpact, CodeSymbol, SymbolKind } from './types';
 export type FileContent = InputFile;
 
 // Exports for web demo. The constants are exported from index.ts directly.
 export { logger };
+
+const defaultFormattingOptions: Omit<FormattingOptions, 'preset'> = {
+  showOutgoing: true,
+  showIncoming: true,
+  showIcons: true,
+  showExportedIndicator: true,
+  showPrivateIndicator: true,
+  showModifiers: true,
+  showTags: true,
+  showSymbolIds: true,
+  groupMembers: true,
+  displayFilters: {},
+  showFilePrefix: true,
+  showFileIds: true,
+  showOnlyExports: false,
+};
+
+export function getFormattingOptionsForPreset(preset: FormattingPreset): FormattingOptions {
+  switch (preset) {
+    case 'minimal':
+      return {
+        preset: 'minimal',
+        ...defaultFormattingOptions,
+        showIcons: false,
+        showExportedIndicator: false,
+        showPrivateIndicator: false,
+        showModifiers: false,
+        showTags: false,
+        showSymbolIds: false,
+        groupMembers: false,
+        displayFilters: { '*': false },
+      };
+    case 'compact':
+      return {
+        preset: 'compact',
+        ...defaultFormattingOptions,
+        showPrivateIndicator: false,
+        showModifiers: false,
+        showTags: false,
+        showSymbolIds: false,
+        displayFilters: {
+          'property': false,
+          'method': false,
+          'constructor': false,
+          'enum_member': false,
+          'import_specifier': false,
+        },
+        showOnlyExports: true,
+      };
+    case 'detailed':
+      return {
+        preset: 'detailed',
+        ...defaultFormattingOptions,
+        groupMembers: false,
+      };
+    case 'verbose':
+      return {
+        preset: 'verbose',
+        ...defaultFormattingOptions,
+        groupMembers: false,
+        displayFilters: { '*': true },
+      };
+    case 'default':
+    default:
+      return {
+        preset: 'default',
+        ...defaultFormattingOptions,
+      };
+  }
+}
 
 /**
  * Counts tokens in a string using the cl100k_base model.
@@ -1323,8 +1427,11 @@ export const countTokens = (text: string): number => countTokensInternal(text);
 /**
  * Generate SCN from analyzed source files
  */
-export const generateScn = (analyzedFiles: SourceFile[], options?: FormattingOptions): string => {
-    return formatScn(analyzedFiles, options);
+export const generateScn = (analyzedFiles: SourceFile[], options: FormattingOptions = {}): string => {
+    const formattingOptions = options.preset
+        ? { ...getFormattingOptionsForPreset(options.preset), ...options }
+        : options;
+    return formatScn(analyzedFiles, formattingOptions);
 };
 
 /**
@@ -1341,7 +1448,11 @@ export const calculateTokenImpact = (
     logger.debug('Calculating token impact...');
     const startTime = performance.now();
 
-    const baseScn = formatScn(analyzedFiles, baseOptions);
+    const resolvedBaseOptions = baseOptions.preset
+        ? { ...getFormattingOptionsForPreset(baseOptions.preset), ...baseOptions }
+        : baseOptions;
+
+    const baseScn = formatScn(analyzedFiles, resolvedBaseOptions);
     const baseTokens = countTokensInternal(baseScn);
 
     const impact: FormattingOptionsTokenImpact = {
@@ -1357,8 +1468,8 @@ export const calculateTokenImpact = (
 
     for (const key of simpleOptionKeys) {
         // All boolean options default to true.
-        const currentValue = baseOptions[key] ?? true;
-        const newOptions = { ...baseOptions, [key]: !currentValue };
+        const currentValue = resolvedBaseOptions[key] ?? true;
+        const newOptions = { ...resolvedBaseOptions, [key]: !currentValue };
         const newScn = formatScn(analyzedFiles, newOptions);
         const newTokens = countTokensInternal(newScn);
         impact.options[key] = newTokens - baseTokens;
@@ -1367,10 +1478,10 @@ export const calculateTokenImpact = (
     const allSymbolKinds = new Set<SymbolKind>(analyzedFiles.flatMap(file => file.symbols.map(s => s.kind)));
 
     for (const kind of allSymbolKinds) {
-        const currentFilterValue = baseOptions.displayFilters?.[kind] ?? true;
+        const currentFilterValue = resolvedBaseOptions.displayFilters?.[kind] ?? true;
         const newOptions = {
-            ...baseOptions,
-            displayFilters: { ...(baseOptions.displayFilters ?? {}), [kind]: !currentFilterValue }
+            ...resolvedBaseOptions,
+            displayFilters: { ...(resolvedBaseOptions.displayFilters ?? {}), [kind]: !currentFilterValue }
         };
         const newScn = formatScn(analyzedFiles, newOptions);
         const newTokens = countTokensInternal(newScn);
@@ -1514,10 +1625,13 @@ export interface AnalyzeProjectOptions {
     signal?: AbortSignal;
 }
 
+export type FormattingPreset = 'minimal' | 'compact' | 'default' | 'detailed' | 'verbose';
+
 /**
  * Options to control the SCN output format.
  */
 export interface FormattingOptions {
+    preset?: FormattingPreset;
     showOutgoing?: boolean;
     showIncoming?: boolean;
     showIcons?: boolean;
@@ -1527,9 +1641,10 @@ export interface FormattingOptions {
     showTags?: boolean;      // [generated], [styled], etc.
     showSymbolIds?: boolean; // (1.2) identifiers
     groupMembers?: boolean;  // group class/interface members under parent
-    displayFilters?: Partial<Record<SymbolKind, boolean>>;
+    displayFilters?: Partial<Record<string, boolean>>;
     showFilePrefix?: boolean; // § prefix, defaults to true
     showFileIds?: boolean;    // (1) file identifiers in headers and references, defaults to true
+    showOnlyExports?: boolean;
 }
 
 /**
@@ -1955,9 +2070,13 @@ const formatFile = (file: SourceFile, allFiles: SourceFile[], options: Formattin
         ? file.symbols.slice()
         : file.symbols.filter(s => s.dependencies.length > 0);
 
+    if (options.showOnlyExports) {
+        symbolsToPrint = symbolsToPrint.filter(s => s.isExported);
+    }
+
     // Apply AST-based display filters
     if (options.displayFilters) {
-        symbolsToPrint = symbolsToPrint.filter(s => options.displayFilters![s.kind] !== false);
+        symbolsToPrint = symbolsToPrint.filter(s => (options.displayFilters![s.kind] ?? options.displayFilters!['*'] ?? true));
     }
 
     // Group properties/methods under their class/interface parent if option is enabled

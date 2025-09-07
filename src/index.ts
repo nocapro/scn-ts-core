@@ -7,6 +7,7 @@ export {
     logger,
     initializeTokenizer,
     countTokens,
+    getFormattingOptionsForPreset,
 } from './main';
 
 export { ICONS, SCN_SYMBOLS } from './constants';
@@ -21,6 +22,7 @@ export type {
     AnalyzeProjectOptions,
     LogHandler,
     FormattingOptions,
+    FormattingPreset,
     FormattingOptionsTokenImpact,
     FileContent,
     CodeSymbol,

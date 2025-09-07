@@ -88,11 +88,18 @@ function App() {
     }
     const allSymbols: CodeSymbol[] = analysisResult.flatMap(file => file.symbols);
     const total = allSymbols.length;
-    const visible = allSymbols.filter(symbol => {
-      return formattingOptions.displayFilters?.[symbol.kind] !== false;
-    }).length;
-    return { totalSymbols: total, visibleSymbols: visible };
-  }, [analysisResult, formattingOptions.displayFilters]);
+    let visibleSymbolsArr = allSymbols;
+    if (formattingOptions.showOnlyExports) {
+      visibleSymbolsArr = visibleSymbolsArr.filter(symbol => symbol.isExported);
+    }
+    if (formattingOptions.displayFilters) {
+      const filters = formattingOptions.displayFilters;
+      visibleSymbolsArr = visibleSymbolsArr.filter(symbol => {
+        return (filters[symbol.kind] ?? filters['*'] ?? true);
+      });
+    }
+    return { totalSymbols: total, visibleSymbols: visibleSymbolsArr.length };
+  }, [analysisResult, formattingOptions.displayFilters, formattingOptions.showOnlyExports]);
 
   return (
     <div className="h-screen w-screen flex bg-background text-foreground overflow-hidden">

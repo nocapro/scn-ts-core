@@ -1,0 +1,1232 @@
+uuid: d193d937-ab9f-4318-b21a-63d1ed18073b
+projectId: scn-ts-core
+createdAt: '2025-09-07T07:05:50.497Z'
+linesAdded: 99
+linesRemoved: 10
+gitCommitMsg: 'feat(core): add formatting presets API'
+promptSummary: >-
+  Add 5 levels of formatting presets to scn-ts-core. This is phase 1, focusing
+  on the core library changes.
+reasoning:
+  - >-
+    Alright, let's get this done. Adding presets for formatting options is a
+    solid idea for improving usability. I'll lay the groundwork in the core
+    library first, as requested. This will involve adding the necessary types, a
+    function to generate preset configurations, and updating the existing APIs
+    to be preset-aware.
+  - 'Here''s the plan for phase one:'
+  - >-
+    1.  **Update `scn-ts-core` types**: I'll introduce a `FormattingPreset` type
+    and add a `preset` and `showOnlyExports` property to the `FormattingOptions`
+    interface. I'll also tweak `displayFilters` to allow for a wildcard filter.
+  - >-
+    2.  **Enhance the formatter**: The formatter will be updated to respect the
+    new `showOnlyExports` option and the wildcard `displayFilters` for
+    hiding/showing all symbols.
+  - >-
+    3.  **Create the presets API**: I'll add a new exported function,
+    `getFormattingOptionsForPreset`, that returns a full `FormattingOptions`
+    object for a given preset name.
+  - >-
+    4.  **Integrate presets into core APIs**: I'll make `generateScn` and
+    `calculateTokenImpact` aware of the `preset` option, so they can
+    automatically apply the preset configuration. This makes the API much
+    slicker.
+  - Let's get to the code.
+  - '### Phase 1: Core Library Implementation'
+  - First, I'll modify the core types to support presets.
+  - >-
+    Next, I'll update the formatter to handle the new options. The wildcard in
+    `displayFilters` and the `showOnlyExports` flag are key here.
+  - >-
+    Now for the main event: creating the preset generation logic and wiring it
+    into the public APIs.
+  - Finally, I'll export the new function and type from the main entry point.
+  - >-
+    That's phase one wrapped up. The core library is now equipped with a
+    flexible preset system. Let me know when you're ready for phase two, where
+    I'll integrate this into the web demo UI.
+operations:
+  - type: write
+    path: src/types.ts
+    content: >-
+      --- src/types.ts
+
+      +++ src/types.ts
+
+      @@ -19,25 +19,30 @@
+           signal?: AbortSignal;
+       }
+       
+      +export type FormattingPreset = 'minimal' | 'compact' | 'default' |
+      'detailed' | 'verbose';
+
+      +
+       /**
+        * Options to control the SCN output format.
+        */
+       export interface FormattingOptions {
+      +    preset?: FormattingPreset;
+           showOutgoing?: boolean;
+           showIncoming?: boolean;
+           showIcons?: boolean;
+           showExportedIndicator?: boolean; // + prefix
+           showPrivateIndicator?: boolean; // - prefix
+           showModifiers?: boolean; // ..., !, o
+           showTags?: boolean;      // [generated], [styled], etc.
+           showSymbolIds?: boolean; // (1.2) identifiers
+           groupMembers?: boolean;  // group class/interface members under parent
+      -    displayFilters?: Partial<Record<SymbolKind, boolean>>;
+
+      +    displayFilters?: Partial<Record<string, boolean>>;
+           showFilePrefix?: boolean; // § prefix, defaults to true
+           showFileIds?: boolean;    // (1) file identifiers in headers and references, defaults to true
+      +    showOnlyExports?: boolean;
+       }
+       
+       /**
+        * Represents the token cost of toggling each formatting option.
+    patchStrategy: new-unified
+  - type: write
+    path: src/formatter.ts
+    content: >-
+      --- src/formatter.ts
+
+      +++ src/formatter.ts
+
+      @@ -201,11 +201,16 @@
+           const hasExports = file.symbols.some(s => s.isExported);
+           let symbolsToPrint = hasExports
+               ? file.symbols.slice()
+               : file.symbols.filter(s => s.dependencies.length > 0);
+       
+      +    if (options.showOnlyExports) {
+
+      +        symbolsToPrint = symbolsToPrint.filter(s => s.isExported);
+
+      +    }
+
+      +
+           // Apply AST-based display filters
+           if (options.displayFilters) {
+      -        symbolsToPrint = symbolsToPrint.filter(s =>
+      options.displayFilters![s.kind] !== false);
+
+      +        symbolsToPrint = symbolsToPrint.filter(s =>
+      (options.displayFilters![s.kind] ?? options.displayFilters!['*'] ??
+      true));
+           }
+       
+           // Group properties/methods under their class/interface parent if option is enabled
+           const groupMembers = options.groupMembers ?? true;
+    patchStrategy: new-unified
+  - type: write
+    path: src/main.ts
+    content: >-
+      --- src/main.ts
+
+      +++ src/main.ts
+
+      @@ -5,6 +5,8 @@
+       import { getPathResolver } from './utils/tsconfig';
+       import { resolveGraph } from './graph-resolver';
+       import { logger } from './logger';
+       import { initializeTokenizer as initTokenizer, countTokens as countTokensInternal } from './tokenizer';
+      +
+
+      +import type { FormattingPreset } from './types';
+       
+       /**
+        * Public API to initialize the parser. Must be called before any other APIs.
+      @@ -18,17 +20,80 @@
+       export type { ParserInitOptions, SourceFile, LogLevel, InputFile, TsConfig, ScnTsConfig, AnalyzeProjectOptions, LogHandler, FormattingOptions, FormattingOptionsTokenImpact, CodeSymbol, SymbolKind } from './types';
+       export type FileContent = InputFile;
+       
+       // Exports for web demo. The constants are exported from index.ts directly.
+       export { logger };
+       
+      +const defaultFormattingOptions: Omit<FormattingOptions, 'preset'> = {
+
+      +  showOutgoing: true,
+
+      +  showIncoming: true,
+
+      +  showIcons: true,
+
+      +  showExportedIndicator: true,
+
+      +  showPrivateIndicator: true,
+
+      +  showModifiers: true,
+
+      +  showTags: true,
+
+      +  showSymbolIds: true,
+
+      +  groupMembers: true,
+
+      +  displayFilters: {},
+
+      +  showFilePrefix: true,
+
+      +  showFileIds: true,
+
+      +  showOnlyExports: false,
+
+      +};
+
+      +
+
+      +export function getFormattingOptionsForPreset(preset: FormattingPreset):
+      FormattingOptions {
+
+      +  switch (preset) {
+
+      +    case 'minimal':
+
+      +      return {
+
+      +        preset: 'minimal',
+
+      +        ...defaultFormattingOptions,
+
+      +        showIcons: false,
+
+      +        showExportedIndicator: false,
+
+      +        showPrivateIndicator: false,
+
+      +        showModifiers: false,
+
+      +        showTags: false,
+
+      +        showSymbolIds: false,
+
+      +        groupMembers: false,
+
+      +        displayFilters: { '*': false },
+
+      +      };
+
+      +    case 'compact':
+
+      +      return {
+
+      +        preset: 'compact',
+
+      +        ...defaultFormattingOptions,
+
+      +        showPrivateIndicator: false,
+
+      +        showModifiers: false,
+
+      +        showTags: false,
+
+      +        showSymbolIds: false,
+
+      +        displayFilters: {
+
+      +          'property': false,
+
+      +          'method': false,
+
+      +          'constructor': false,
+
+      +          'enum_member': false,
+
+      +          'import_specifier': false,
+
+      +        },
+
+      +        showOnlyExports: true,
+
+      +      };
+
+      +    case 'detailed':
+
+      +      return {
+
+      +        preset: 'detailed',
+
+      +        ...defaultFormattingOptions,
+
+      +        groupMembers: false,
+
+      +      };
+
+      +    case 'verbose':
+
+      +      return {
+
+      +        preset: 'verbose',
+
+      +        ...defaultFormattingOptions,
+
+      +        groupMembers: false,
+
+      +        displayFilters: { '*': true },
+
+      +      };
+
+      +    case 'default':
+
+      +    default:
+
+      +      return {
+
+      +        preset: 'default',
+
+      +        ...defaultFormattingOptions,
+
+      +      };
+
+      +  }
+
+      +}
+
+      +
+       /**
+        * Counts tokens in a string using the cl100k_base model.
+        */
+      @@ -37,8 +102,11 @@
+       /**
+        * Generate SCN from analyzed source files
+        */
+      -export const generateScn = (analyzedFiles: SourceFile[], options?:
+      FormattingOptions): string => {
+
+      -    return formatScn(analyzedFiles, options);
+
+      +export const generateScn = (analyzedFiles: SourceFile[], options:
+      FormattingOptions = {}): string => {
+
+      +    const formattingOptions = options.preset
+
+      +        ? { ...getFormattingOptionsForPreset(options.preset), ...options
+      }
+
+      +        : options;
+
+      +    return formatScn(analyzedFiles, formattingOptions);
+       };
+       
+       /**
+      @@ -52,7 +120,11 @@
+       ): FormattingOptionsTokenImpact => {
+           logger.debug('Calculating token impact...');
+           const startTime = performance.now();
+       
+      -    const baseScn = formatScn(analyzedFiles, baseOptions);
+
+      +    const resolvedBaseOptions = baseOptions.preset
+
+      +        ? { ...getFormattingOptionsForPreset(baseOptions.preset),
+      ...baseOptions }
+
+      +        : baseOptions;
+
+      +
+
+      +    const baseScn = formatScn(analyzedFiles, resolvedBaseOptions);
+           const baseTokens = countTokensInternal(baseScn);
+       
+           const impact: FormattingOptionsTokenImpact = {
+      @@ -66,8 +138,8 @@
+       
+           for (const key of simpleOptionKeys) {
+               // All boolean options default to true.
+      -        const currentValue = baseOptions[key] ?? true;
+
+      -        const newOptions = { ...baseOptions, [key]: !currentValue };
+
+      +        const currentValue = resolvedBaseOptions[key] ?? true;
+
+      +        const newOptions = { ...resolvedBaseOptions, [key]: !currentValue
+      };
+               const newScn = formatScn(analyzedFiles, newOptions);
+               const newTokens = countTokensInternal(newScn);
+               impact.options[key] = newTokens - baseTokens;
+      @@ -76,10 +148,10 @@
+           const allSymbolKinds = new Set<SymbolKind>(analyzedFiles.flatMap(file => file.symbols.map(s => s.kind)));
+       
+           for (const kind of allSymbolKinds) {
+      -        const currentFilterValue = baseOptions.displayFilters?.[kind] ??
+      true;
+
+      +        const currentFilterValue =
+      resolvedBaseOptions.displayFilters?.[kind] ?? true;
+               const newOptions = {
+      -            ...baseOptions,
+
+      -            displayFilters: { ...(baseOptions.displayFilters ?? {}),
+      [kind]: !currentValue }
+
+      +            ...resolvedBaseOptions,
+
+      +            displayFilters: { ...(resolvedBaseOptions.displayFilters ??
+      {}), [kind]: !currentFilterValue }
+               };
+               const newScn = formatScn(analyzedFiles, newOptions);
+               const newTokens = countTokensInternal(newScn);
+    patchStrategy: new-unified
+  - type: write
+    path: src/index.ts
+    content: |-
+      --- src/index.ts
+      +++ src/index.ts
+      @@ -5,6 +5,7 @@
+           logger,
+           initializeTokenizer,
+           countTokens,
+      +    getFormattingOptionsForPreset,
+       } from './main';
+       
+       export { ICONS, SCN_SYMBOLS } from './constants';
+      @@ -16,6 +17,7 @@
+           AnalyzeProjectOptions,
+           LogHandler,
+           FormattingOptions,
+      +    FormattingPreset,
+           FormattingOptionsTokenImpact,
+           FileContent,
+           CodeSymbol,
+    patchStrategy: new-unified
+snapshot:
+  src/types.ts: >-
+    import type { Parser, Tree, Language } from 'web-tree-sitter';
+
+    import type { PathResolver } from './utils/tsconfig';
+
+    export type { PathResolver };
+
+
+    export type LogLevel = 'error' | 'warn' | 'info' | 'debug' | 'silent';
+
+
+    export type LogHandler = (level: Exclude<LogLevel, 'silent'>, ...args:
+    any[]) => void;
+
+
+    export interface TsConfig {
+        compilerOptions?: {
+            baseUrl?: string;
+            paths?: Record<string, string[]>;
+        };
+    }
+
+
+    export interface AnalyzeProjectOptions {
+        files: InputFile[];
+        tsconfig?: TsConfig;
+        root?: string;
+        onProgress?: (progress: { percentage: number; message: string }) => void;
+        logLevel?: LogLevel;
+        signal?: AbortSignal;
+    }
+
+
+    /**
+     * Options to control the SCN output format.
+     */
+    export interface FormattingOptions {
+        showOutgoing?: boolean;
+        showIncoming?: boolean;
+        showIcons?: boolean;
+        showExportedIndicator?: boolean; // + prefix
+        showPrivateIndicator?: boolean; // - prefix
+        showModifiers?: boolean; // ..., !, o
+        showTags?: boolean;      // [generated], [styled], etc.
+        showSymbolIds?: boolean; // (1.2) identifiers
+        groupMembers?: boolean;  // group class/interface members under parent
+        displayFilters?: Partial<Record<SymbolKind, boolean>>;
+        showFilePrefix?: boolean; // § prefix, defaults to true
+        showFileIds?: boolean;    // (1) file identifiers in headers and references, defaults to true
+    }
+
+
+    /**
+     * Represents the token cost of toggling each formatting option.
+     * The value is the delta when an option is toggled from its state in the `baseOptions`.
+     * e.g. `new_token_count - base_token_count`.
+     */
+    export interface FormattingOptionsTokenImpact {
+        options: Partial<{ [K in keyof Omit<FormattingOptions, 'displayFilters'>]: number }>;
+        displayFilters: Partial<Record<string, number>>;
+    }
+
+
+    /**
+     * Represents a file to be processed.
+     */
+    export interface InputFile {
+      path: string; // relative path from root
+      content: string;
+    }
+
+
+    /**
+     * Configuration for the SCN generation process.
+     */
+    export interface ScnTsConfig {
+      files: InputFile[];
+      tsconfig?: TsConfig;
+      formattingOptions?: FormattingOptions;
+      root?: string; // Optional: A virtual root path for resolution. Defaults to '/'.
+      _test_id?: string; // Special property for test runner to identify fixtures
+    }
+
+
+    /**
+     * Options for initializing the Tree-sitter parser.
+     */
+    export interface ParserInitOptions {
+        wasmBaseUrl: string;
+    }
+
+
+    /**
+     * Represents a supported programming language and its configuration.
+     */
+    export type SymbolKind =
+      // TS/JS
+      | 'class' | 'interface' | 'function' | 'method' | 'constructor'
+      | 'variable' | 'property' | 'enum' | 'enum_member' | 'type_alias' | 'module'
+      | 'decorator' | 'parameter' | 'type_parameter' | 'import_specifier' | 're_export'
+      // React
+      | 'react_component' | 'react_hook' | 'react_hoc' | 'jsx_attribute' | 'jsx_element' | 'styled_component'
+      // CSS
+      | 'css_class' | 'css_id' | 'css_tag' | 'css_at_rule' | 'css_property' | 'css_variable'
+      // Generic / Meta
+      | 'file' | 'reference' | 'comment' | 'error' | 'unresolved'
+      // Other Languages
+      | 'go_package' | 'go_struct' | 'go_goroutine' | 'rust_struct' | 'rust_trait' | 'rust_impl' | 'rust_macro'
+      | 'java_package' | 'python_class'
+      | 'unknown';
+
+    export interface Position {
+      line: number;
+      column: number;
+    }
+
+
+    export interface Range {
+      start: Position;
+      end: Position;
+    }
+
+
+    export interface CodeSymbol {
+      id: string;
+      fileId: number;
+      name: string;
+      kind: SymbolKind;
+      range: Range;
+      // Modifiers and metadata
+      isExported: boolean;
+      isAbstract?: boolean;
+      isStatic?: boolean;
+      isReadonly?: boolean;
+      isAsync?: boolean;
+      isPure?: boolean; // for 'o'
+      throws?: boolean; // for '!'
+      labels?: string[]; // extra display labels like [symbol], [proxy]
+      isGenerated?: boolean;
+      languageDirectives?: string[]; // e.g. 'use server'
+      superClass?: string;
+      implementedInterfaces?: string[];
+      scopeRange: Range; // The range of the entire scope (e.g., function body) for relationship association
+      accessibility?: 'public' | 'private' | 'protected';
+      // Type information and signatures
+      signature?: string; // e.g., (a: #number, b: #number): #number
+      typeAnnotation?: string; // e.g., #string for properties/variables
+      typeAliasValue?: string; // e.g., #number|string for type aliases
+      // Relationships
+      dependencies: Relationship[];
+    }
+
+
+    export type RelationshipKind =
+      | 'import'
+      | 'dynamic_import'
+      | 'reference'
+      | 'tagged'
+      | 'export'
+      | 'call'
+      | 'extends'
+      | 'implements'
+      | 'references'
+      | 'aliased'
+      | 'goroutine'
+      | 'macro';
+
+    export interface Relationship {
+      targetName: string; // The raw name of the target (e.g., './utils', 'MyClass', 'add', 'Button')
+      kind: RelationshipKind;
+      range: Range;
+      // Resolved info
+      resolvedFileId?: number;
+      resolvedSymbolId?: string;
+    }
+
+
+    export interface SourceFile {
+      id: number;
+      relativePath: string;
+      absolutePath: string;
+      language: LanguageConfig;
+      sourceCode: string;
+      ast?: Tree;
+      symbols: CodeSymbol[];
+      parseError: boolean;
+      isGenerated?: boolean;
+      languageDirectives?: string[];
+      // File-level relationships (e.g., imports not tied to a specific symbol)
+      fileRelationships?: Relationship[];
+    }
+
+
+    /**
+     * Represents a supported programming language and its configuration.
+     */
+    export interface LanguageConfig {
+        id: string;
+        name: string;
+        extensions: string[];
+        wasmPath: string;
+        parser?: Parser;
+        loadedLanguage?: Language;
+        queries?: Record<string, string>;
+    }
+
+
+    export interface AnalysisContext {
+        sourceFiles: SourceFile[];
+        pathResolver: PathResolver;
+    }
+  src/formatter.ts: >-
+    import type { CodeSymbol, SourceFile, FormattingOptions } from './types';
+
+    import { topologicalSort } from './utils/graph';
+
+    import { ICONS, SCN_SYMBOLS } from './constants';
+
+
+    // Compute display index per file based on eligible symbols (exclude
+    properties and constructors)
+
+    const isIdEligible = (symbol: CodeSymbol): boolean => {
+        if (symbol.kind === 'property' || symbol.kind === 'constructor') return false;
+        if (symbol.kind === 'variable') return symbol.isExported || symbol.name === 'module.exports' || symbol.name === 'default';
+        if (symbol.kind === 'method') return !!symbol.isExported;
+        return true;
+    };
+
+
+    const getDisplayIndex = (file: SourceFile, symbol: CodeSymbol): number |
+    null => {
+        const ordered = file.symbols
+            .filter(isIdEligible)
+            .sort((a, b) => a.range.start.line - b.range.start.line || a.range.start.column - b.range.start.column);
+        const index = ordered.findIndex(s => s === symbol);
+        return index === -1 ? null : index + 1;
+    };
+
+
+    const formatFileIdDisplay = (fileId: number, options: FormattingOptions):
+    string => {
+        const { showFileIds = true } = options;
+        const fileIdPart = showFileIds ? fileId : '';
+        return `(${fileIdPart}.0)`;
+    };
+
+
+    const formatSymbolIdDisplay = (file: SourceFile, symbol: CodeSymbol,
+    options: FormattingOptions): string | null => {
+        const { showFileIds = true } = options;
+        const idx = getDisplayIndex(file, symbol);
+        if (idx == null) return null;
+        const fileIdPart = showFileIds ? file.id : '';
+        return `(${fileIdPart}.${idx})`;
+    };
+
+
+    const formatSymbol = (symbol: CodeSymbol, allFiles: SourceFile[], options:
+    FormattingOptions): string[] => {
+        const {
+            showOutgoing = true,
+            showIncoming = true,
+            showIcons = true,
+            showExportedIndicator = true,
+            showPrivateIndicator = true,
+            showModifiers = true,
+            showTags = true,
+            showSymbolIds = true,
+        } = options;
+        let icon = showIcons ? (ICONS[symbol.kind] || ICONS.default || '?') : '';
+        let prefix = '';
+        if (symbol.isExported && showExportedIndicator) {
+            prefix = SCN_SYMBOLS.EXPORTED_PREFIX;
+        } else if (!symbol.isExported && showPrivateIndicator) {
+            prefix = SCN_SYMBOLS.PRIVATE_PREFIX;
+        }
+        let name = symbol.name === '<anonymous>' ? '' : symbol.name;
+        if (symbol.kind === 'variable' && name.trim() === 'default') name = '';
+        
+        // Handle styled components: ~div ComponentName, ~h1 ComponentName, etc.
+        if (showIcons && symbol.kind === 'styled_component' && (symbol as any)._styledTag) {
+            const tagName = (symbol as any)._styledTag;
+            icon = `~${tagName}`;
+        }
+
+        const mods: string[] = [];
+        if (showTags) {
+            if (symbol.isAbstract) mods.push(SCN_SYMBOLS.TAG_ABSTRACT.slice(1, -1));
+            if (symbol.isStatic) mods.push(SCN_SYMBOLS.TAG_STATIC.slice(1, -1));
+        }
+        const modStr = mods.length > 0 ? ` [${mods.join(' ')}]` : '';
+
+        const suffixParts: string[] = [];
+        if (symbol.signature) name += symbol.name === '<anonymous>' ? symbol.signature : `${symbol.signature}`;
+        if (symbol.typeAnnotation) name += `: ${symbol.typeAnnotation}`;
+        if (symbol.typeAliasValue) name += ` ${symbol.typeAliasValue}`;
+        // Merge async + throws into a single token
+        if (showModifiers) {
+            const asyncToken = symbol.isAsync ? SCN_SYMBOLS.ASYNC : '';
+            const throwsToken = symbol.throws ? SCN_SYMBOLS.THROWS : '';
+            const asyncThrows = (asyncToken + throwsToken) || '';
+            if (asyncThrows) suffixParts.push(asyncThrows);
+            if (symbol.isPure) suffixParts.push(SCN_SYMBOLS.PURE);
+        }
+        if (showTags && symbol.labels && symbol.labels.length > 0) suffixParts.push(...symbol.labels.map(l => `[${l}]`));
+        const suffix = suffixParts.join(' ');
+
+        // Build ID portion conditionally
+        const file = allFiles.find(f => f.id === symbol.fileId)!;
+        const idPart = showSymbolIds ? formatSymbolIdDisplay(file, symbol, options) : null;
+        const idText = (symbol.kind === 'property' || symbol.kind === 'constructor') ? null : (idPart ?? null);
+        const segments: string[] = [prefix, icon];
+        if (idText) segments.push(idText);
+        if (name) segments.push(name.trim());
+        if (modStr) segments.push(modStr);
+        if (suffix) segments.push(suffix);
+        const line = `  ${segments.filter(Boolean).join(' ')}`;
+        const result = [line];
+
+        const outgoing = new Map<number, Set<string>>();
+        const unresolvedDeps: string[] = [];
+        symbol.dependencies.forEach(dep => {
+            if (dep.resolvedFileId !== undefined && dep.resolvedFileId !== symbol.fileId) {
+                if (!outgoing.has(dep.resolvedFileId)) outgoing.set(dep.resolvedFileId, new Set());
+                if (dep.resolvedSymbolId) {
+                    const targetFile = allFiles.find(f => f.id === dep.resolvedFileId);
+                    const targetSymbol = targetFile?.symbols.find(s => s.id === dep.resolvedSymbolId);
+                    if (targetSymbol) {
+                        const displayId = showSymbolIds ? formatSymbolIdDisplay(targetFile!, targetSymbol, options) : null;
+                        let text = displayId ?? formatFileIdDisplay(targetFile!.id, options);
+                        if (dep.kind === 'goroutine') {
+                            text += ` ${SCN_SYMBOLS.TAG_GOROUTINE}`;
+                        }
+                        outgoing.get(dep.resolvedFileId)!.add(text);
+                    }
+                } else {
+                    let text = formatFileIdDisplay(dep.resolvedFileId, options);
+                    if (dep.kind === 'dynamic_import') text += ` ${SCN_SYMBOLS.TAG_DYNAMIC}`;
+                    outgoing.get(dep.resolvedFileId)!.add(text);
+                }
+            } else if (dep.resolvedFileId === undefined) {
+                if (dep.kind === 'macro') {
+                    unresolvedDeps.push(`${dep.targetName} ${SCN_SYMBOLS.TAG_MACRO}`);
+                }
+            }
+        });
+
+        const outgoingParts: string[] = [];
+        if (outgoing.size > 0) {
+            const resolvedParts = Array.from(outgoing.entries())
+                .sort((a, b) => a[0] - b[0])
+                .map(([fileId, symbolIds]) => {
+                    const items = Array.from(symbolIds).sort();
+                    return items.length > 0 ? `${items.join(', ')}` : formatFileIdDisplay(fileId, options);
+                });
+            outgoingParts.push(...resolvedParts);
+        }
+        outgoingParts.push(...unresolvedDeps);
+
+        if (showOutgoing && outgoingParts.length > 0) {
+            result.push(`    ${SCN_SYMBOLS.OUTGOING_ARROW} ${outgoingParts.join(', ')}`);
+        }
+        
+        if (!showIncoming) {
+            return result;
+        }
+
+        const incoming = new Map<number, Set<string>>();
+        allFiles.forEach(file => {
+            file.symbols.forEach(s => {
+                s.dependencies.forEach(d => {
+                    if (d.resolvedFileId === symbol.fileId && d.resolvedSymbolId === symbol.id && s !== symbol) {
+                        if(!incoming.has(file.id)) incoming.set(file.id, new Set());
+                        // Suppress same-file incoming for properties
+                        if (file.id === symbol.fileId && symbol.kind === 'property') return;
+                        const disp = showSymbolIds ? (formatSymbolIdDisplay(file, s, options) ?? formatFileIdDisplay(file.id, options)) : formatFileIdDisplay(file.id, options);
+                        incoming.get(file.id)!.add(disp);
+                    }
+                });
+            });
+            // Include file-level imports to this file as incoming for exported symbols
+            // but only if there is no symbol-level incoming from that file already
+            if (file.id !== symbol.fileId && symbol.isExported) {
+                file.fileRelationships?.forEach(rel => {
+                    if (rel.resolvedFileId === symbol.fileId) {
+                        const already = incoming.get(file.id);
+                        if (!already || already.size === 0) {
+                            if(!incoming.has(file.id)) incoming.set(file.id, new Set());
+                            incoming.get(file.id)!.add(formatFileIdDisplay(file.id, options));
+                        }
+                    }
+                });
+            }
+        });
+
+        if (incoming.size > 0) {
+            const parts = Array.from(incoming.entries()).map(([_fileId, symbolIds]) => Array.from(symbolIds).join(', '));
+            result.push(`    ${SCN_SYMBOLS.INCOMING_ARROW} ${parts.join(', ')}`);
+        }
+
+        return result;
+    };
+
+
+
+    const isWithin = (inner: CodeSymbol, outer: CodeSymbol): boolean => {
+        const a = inner.range;
+        const b = outer.scopeRange;
+        return (
+            (a.start.line > b.start.line || (a.start.line === b.start.line && a.start.column >= b.start.column)) &&
+            (a.end.line < b.end.line || (a.end.line === b.end.line && a.end.column <= b.end.column))
+        );
+    };
+
+
+    const buildChildrenMap = (symbols: CodeSymbol[]): Map<string, CodeSymbol[]>
+    => {
+        const parents = symbols.filter(s => s.kind === 'class' || s.kind === 'interface' || s.kind === 'react_component');
+        const map = new Map<string, CodeSymbol[]>();
+        for (const parent of parents) map.set(parent.id, []);
+        for (const sym of symbols) {
+            if (sym.kind === 'class' || sym.kind === 'interface' || sym.kind === 'react_component') continue;
+            const parent = parents
+                .filter(p => isWithin(sym, p))
+                .sort((a, b) => (a.scopeRange.end.line - a.scopeRange.start.line) - (b.scopeRange.end.line - b.scopeRange.start.line))[0];
+            if (parent) {
+                map.get(parent.id)!.push(sym);
+            }
+        }
+        // Sort children by position
+        for (const [, arr] of map.entries()) {
+            arr.sort((a, b) => a.range.start.line - b.range.start.line || a.range.start.column - b.range.start.column);
+        }
+        return map;
+    };
+
+
+    const formatFile = (file: SourceFile, allFiles: SourceFile[], options:
+    FormattingOptions): string => {
+        const {
+            showOutgoing = true,
+            showIncoming = true,
+            showTags = true,
+            showFilePrefix = true,
+            showFileIds = true,
+        } = options;
+
+        const headerParts: string[] = [];
+        if (showFilePrefix) headerParts.push(SCN_SYMBOLS.FILE_PREFIX);
+        if (showFileIds) headerParts.push(`(${file.id})`);
+        headerParts.push(file.relativePath);
+
+        if (file.parseError) return `${headerParts.join(' ')} [error]`;
+        if (!file.sourceCode.trim()) return headerParts.join(' ');
+
+        const directives = showTags ? [
+            file.isGenerated && SCN_SYMBOLS.TAG_GENERATED.slice(1, -1),
+            ...(file.languageDirectives || [])
+        ].filter(Boolean) : [];
+        const directiveStr = directives.length > 0 ? ` [${directives.join(' ')}]` : '';
+        const header = `${headerParts.join(' ')}${directiveStr}`;
+        const headerLines: string[] = [header];
+
+        // File-level outgoing/incoming dependencies
+        const outgoing: string[] = [];
+        if (file.fileRelationships) {
+            const outgoingFiles = new Set<number>();
+            file.fileRelationships.forEach(rel => {
+                // Only show true file-level imports on the header
+                if ((rel.kind === 'import' || rel.kind === 'dynamic_import') && rel.resolvedFileId && rel.resolvedFileId !== file.id) {
+                    let text = formatFileIdDisplay(rel.resolvedFileId, options);
+                    if (rel.kind === 'dynamic_import') text += ` ${SCN_SYMBOLS.TAG_DYNAMIC}`;
+                    outgoingFiles.add(rel.resolvedFileId);
+                    outgoing.push(text);
+                }
+            });
+            if (showOutgoing && outgoing.length > 0) {
+                headerLines.push(`  ${SCN_SYMBOLS.OUTGOING_ARROW} ${Array.from(new Set(outgoing)).sort().join(', ')}`);
+            }
+        }
+
+        // Incoming: any other file that has a file-level relationship pointing here
+        const incoming: string[] = [];
+        if (showIncoming) {
+            allFiles.forEach(other => {
+                if (other.id === file.id) return;
+                other.fileRelationships?.forEach(rel => {
+                    if (rel.resolvedFileId === file.id) incoming.push(formatFileIdDisplay(other.id, options));
+                });
+            });
+            if (incoming.length > 0) headerLines.push(`  ${SCN_SYMBOLS.INCOMING_ARROW} ${Array.from(new Set(incoming)).sort().join(', ')}`);
+        }
+        // If file has no exported symbols, only show symbols that are "entry points" for analysis,
+        // which we define as having outgoing dependencies.
+        const hasExports = file.symbols.some(s => s.isExported);
+        let symbolsToPrint = hasExports
+            ? file.symbols.slice()
+            : file.symbols.filter(s => s.dependencies.length > 0);
+
+        // Apply AST-based display filters
+        if (options.displayFilters) {
+            symbolsToPrint = symbolsToPrint.filter(s => options.displayFilters![s.kind] !== false);
+        }
+
+        // Group properties/methods under their class/interface parent if option is enabled
+        const groupMembers = options.groupMembers ?? true;
+        const childrenMap = groupMembers ? buildChildrenMap(symbolsToPrint) : new Map();
+        const childIds = new Set<string>(Array.from(childrenMap.values()).flat().map(s => s.id));
+        const topLevel = symbolsToPrint.filter(s => !childIds.has(s.id));
+
+        const symbolLines: string[] = [];
+        for (const sym of topLevel) {
+            const lines = formatSymbol(sym, allFiles, options);
+            symbolLines.push(...lines);
+            if (childrenMap.has(sym.id)) {
+                const kids = childrenMap.get(sym.id)!;
+                for (const kid of kids) {
+                    const kLines = formatSymbol(kid, allFiles, options).map(l => `  ${l}`);
+                    symbolLines.push(...kLines);
+                }
+            }
+        }
+
+        // If we hid symbols (or there were none to begin with for an entry file),
+        // aggregate outgoing dependencies from all symbols onto the file header
+        if (showOutgoing && symbolLines.length === 0 && (file.symbols.length > 0 || (file.fileRelationships && file.fileRelationships.length > 0))) {
+            const aggOutgoing = new Map<number, Set<string>>();
+            const unresolvedDeps: string[] = [];
+
+            const processDep = (dep: import('./types').Relationship) => {
+                if (dep.resolvedFileId && dep.resolvedFileId !== file.id) {
+                    if (!aggOutgoing.has(dep.resolvedFileId)) aggOutgoing.set(dep.resolvedFileId, new Set());
+                    let text = formatFileIdDisplay(dep.resolvedFileId, options); // Default to file-level
+                    if (dep.resolvedSymbolId) {
+                        const targetFile = allFiles.find(f => f.id === dep.resolvedFileId)!;
+                        const targetSymbol = targetFile.symbols.find(ts => ts.id === dep.resolvedSymbolId);
+                        if (targetSymbol) {
+                            text = options.showSymbolIds ? (formatSymbolIdDisplay(targetFile, targetSymbol, options) ?? formatFileIdDisplay(dep.resolvedFileId, options)) : formatFileIdDisplay(dep.resolvedFileId, options);
+                        }
+                    }
+                    if (dep.kind === 'dynamic_import') text += ` ${SCN_SYMBOLS.TAG_DYNAMIC}`;
+                    aggOutgoing.get(dep.resolvedFileId)!.add(text);
+                } else if (dep.resolvedFileId === undefined && dep.kind === 'macro') {
+                    unresolvedDeps.push(`${dep.targetName} ${SCN_SYMBOLS.TAG_MACRO}`);
+                }
+            };
+
+            file.symbols.forEach(s => s.dependencies.forEach(processDep));
+            file.fileRelationships?.forEach(processDep);
+
+            const outgoingParts: string[] = [];
+            if (aggOutgoing.size > 0) {
+                const resolvedParts = Array.from(aggOutgoing.entries())
+                    .sort((a, b) => a[0] - b[0])
+                    .flatMap(([, symbolIds]) => Array.from(symbolIds).sort());
+                outgoingParts.push(...resolvedParts);
+            }
+            outgoingParts.push(...unresolvedDeps);
+
+            if (outgoingParts.length > 0) {
+                // Some fixtures expect separate -> lines per dependency.
+                // This preserves that behavior.
+                for (const part of outgoingParts) {
+                    headerLines.push(`  ${SCN_SYMBOLS.OUTGOING_ARROW} ${part}`);
+                }
+            }
+        }
+        return [...headerLines, ...symbolLines].join('\n');
+    };
+
+
+    export const formatScn = (analyzedFiles: SourceFile[], options:
+    FormattingOptions = {}): string => {
+        const sortedFiles = topologicalSort(analyzedFiles);
+        return sortedFiles.map(file => formatFile(file, analyzedFiles, options)).join('\n\n');
+    };
+  src/main.ts: >-
+    import { getLanguageForFile } from './languages';
+
+    import { initializeParser as init, parse } from './parser';
+
+    import type { ParserInitOptions, SourceFile, InputFile, ScnTsConfig,
+    AnalyzeProjectOptions, FormattingOptions, FormattingOptionsTokenImpact,
+    SymbolKind } from './types';
+
+    import { analyze } from './analyzer';
+
+    import { formatScn } from './formatter';
+
+    import path from './utils/path';
+
+    import { getPathResolver } from './utils/tsconfig';
+
+    import { resolveGraph } from './graph-resolver';
+
+    import { logger } from './logger';
+
+    import { initializeTokenizer as initTokenizer, countTokens as
+    countTokensInternal } from './tokenizer';
+
+
+    /**
+     * Public API to initialize the parser. Must be called before any other APIs.
+     */
+    export const initializeParser = (options: ParserInitOptions): Promise<void>
+    => init(options);
+
+
+    /**
+     * Initializes the tokenizer. Call this for consistency, although `countTokens` will auto-initialize on first use.
+     * It's a synchronous and lightweight operation.
+     */
+    export const initializeTokenizer = (): boolean => initTokenizer();
+
+
+    // Types for web demo
+
+    export type { ParserInitOptions, SourceFile, LogLevel, InputFile, TsConfig,
+    ScnTsConfig, AnalyzeProjectOptions, LogHandler, FormattingOptions,
+    FormattingOptionsTokenImpact, CodeSymbol, SymbolKind } from './types';
+
+    export type FileContent = InputFile;
+
+
+    // Exports for web demo. The constants are exported from index.ts directly.
+
+    export { logger };
+
+
+    /**
+     * Counts tokens in a string using the cl100k_base model.
+     */
+    export const countTokens = (text: string): number =>
+    countTokensInternal(text);
+
+
+    /**
+     * Generate SCN from analyzed source files
+     */
+    export const generateScn = (analyzedFiles: SourceFile[], options?:
+    FormattingOptions): string => {
+        return formatScn(analyzedFiles, options);
+    };
+
+
+    /**
+     * Calculates the token impact of toggling each formatting option.
+     * This can be slow as it re-generates the SCN for each option.
+     * @param analyzedFiles The result from `analyzeProject`.
+     * @param baseOptions The formatting options to calculate deltas from.
+     * @returns An object detailing the token change for toggling each option.
+     */
+    export const calculateTokenImpact = (
+        analyzedFiles: SourceFile[],
+        baseOptions: FormattingOptions
+    ): FormattingOptionsTokenImpact => {
+        logger.debug('Calculating token impact...');
+        const startTime = performance.now();
+
+        const baseScn = formatScn(analyzedFiles, baseOptions);
+        const baseTokens = countTokensInternal(baseScn);
+
+        const impact: FormattingOptionsTokenImpact = {
+            options: {},
+            displayFilters: {},
+        };
+
+        const simpleOptionKeys: Array<keyof Omit<FormattingOptions, 'displayFilters'>> = [
+            'showOutgoing', 'showIncoming', 'showIcons', 'showExportedIndicator',
+            'showPrivateIndicator', 'showModifiers', 'showTags', 'showSymbolIds',
+            'groupMembers', 'showFilePrefix', 'showFileIds'
+        ];
+
+        for (const key of simpleOptionKeys) {
+            // All boolean options default to true.
+            const currentValue = baseOptions[key] ?? true;
+            const newOptions = { ...baseOptions, [key]: !currentValue };
+            const newScn = formatScn(analyzedFiles, newOptions);
+            const newTokens = countTokensInternal(newScn);
+            impact.options[key] = newTokens - baseTokens;
+        }
+
+        const allSymbolKinds = new Set<SymbolKind>(analyzedFiles.flatMap(file => file.symbols.map(s => s.kind)));
+
+        for (const kind of allSymbolKinds) {
+            const currentFilterValue = baseOptions.displayFilters?.[kind] ?? true;
+            const newOptions = {
+                ...baseOptions,
+                displayFilters: { ...(baseOptions.displayFilters ?? {}), [kind]: !currentFilterValue }
+            };
+            const newScn = formatScn(analyzedFiles, newOptions);
+            const newTokens = countTokensInternal(newScn);
+            impact.displayFilters[kind] = newTokens - baseTokens;
+        }
+
+        const duration = performance.now() - startTime;
+        logger.debug(`Token impact calculation finished in ${duration.toFixed(2)}ms`);
+
+        return impact;
+    };
+
+
+    /**
+     * Legacy API: Generate SCN from config (for backward compatibility)
+     */
+    export const generateScnFromConfig = async (config: ScnTsConfig):
+    Promise<string> => {
+        const { sourceFiles: analyzedFiles } = await analyzeProject({
+            files: config.files,
+            tsconfig: config.tsconfig,
+            root: config.root,
+        });
+        return formatScn(analyzedFiles, config.formattingOptions);
+    };
+
+
+    /**
+     * Parses and analyzes a project's files to build a dependency graph.
+     */
+    export const analyzeProject = async (
+        {
+            files,
+            tsconfig,
+            root = '/',
+            onProgress,
+            logLevel,
+            signal,
+        }: AnalyzeProjectOptions
+    ): Promise<{ sourceFiles: SourceFile[], analysisTime: number }> => {
+        const startTime = performance.now();
+        if (logLevel) {
+            logger.setLevel(logLevel);
+        }
+        logger.info(`Starting analysis of ${files.length} files...`);
+        const pathResolver = getPathResolver(tsconfig);
+
+        const checkAborted = () => { if (signal?.aborted) throw new DOMException('Aborted', 'AbortError'); };
+        let fileIdCounter = 1;
+
+        onProgress?.({ percentage: 0, message: 'Creating source files...' });
+
+        // Step 1: Create SourceFile objects for all files
+        const sourceFiles = files.map((file) => {
+            checkAborted();
+            const absolutePath = path.join(root, file.path);
+            const sourceFile: SourceFile = {
+                id: fileIdCounter++,
+                relativePath: file.path,
+                absolutePath,
+                sourceCode: file.content,
+                language: getLanguageForFile(file.path)!,
+                symbols: [],
+                parseError: false,
+            };
+            return sourceFile;
+        });
+
+        logger.debug(`Created ${sourceFiles.length} SourceFile objects.`);
+        onProgress?.({ percentage: 10, message: `Parsing ${sourceFiles.length} files...` });
+
+        // Step 2: Parse all files
+        const parsedFiles = sourceFiles.map((file, i) => {
+            checkAborted();
+            if (!file.language || !file.language.wasmPath || file.sourceCode.trim() === '') {
+                return file;
+            }
+            logger.debug(`Parsing ${file.relativePath}`);
+            const tree = parse(file.sourceCode, file.language);
+            if (!tree) {
+                file.parseError = true;
+                logger.warn(`Failed to parse ${file.relativePath}`);
+            } else {
+                file.ast = tree;
+            }
+            const percentage = 10 + (40 * (i + 1) / sourceFiles.length);
+            onProgress?.({ percentage, message: `Parsing ${file.relativePath}` });
+            return file;
+        });
+
+        onProgress?.({ percentage: 50, message: 'Analyzing files...' });
+        logger.info(`Parsing complete. Analyzing symbols and relationships...`);
+
+        // Step 3: Analyze all parsed files
+        const analyzedFiles = parsedFiles.map((file, i) => {
+            checkAborted();
+            if (file.ast) {
+                logger.debug(`Analyzing ${file.relativePath}`);
+                const analyzed = analyze(file);
+                const percentage = 50 + (40 * (i + 1) / sourceFiles.length);
+                onProgress?.({ percentage, message: `Analyzing ${file.relativePath}` });
+                return analyzed;
+            }
+            return file;
+        });
+        
+        onProgress?.({ percentage: 90, message: 'Resolving dependency graph...' });
+        logger.info('Analysis complete. Resolving dependency graph...');
+
+        // Step 4: Resolve the dependency graph across all files
+        checkAborted();
+        const resolvedGraph = resolveGraph(analyzedFiles, pathResolver, root);
+        
+        onProgress?.({ percentage: 100, message: 'Analysis complete.' });
+        logger.info('Graph resolution complete. Project analysis finished.');
+        const analysisTime = performance.now() - startTime;
+        return { sourceFiles: resolvedGraph, analysisTime };
+    };
+  src/index.ts: |-
+    export {
+        initializeParser,
+        generateScn,
+        generateScnFromConfig,
+        calculateTokenImpact,
+        analyzeProject,
+        logger,
+        initializeTokenizer,
+        countTokens,
+    } from './main';
+
+    export { ICONS, SCN_SYMBOLS } from './constants';
+
+    export type {
+        ParserInitOptions,
+        SourceFile,
+        LogLevel,
+        InputFile,
+        TsConfig,
+        ScnTsConfig,
+        AnalyzeProjectOptions,
+        LogHandler,
+        FormattingOptions,
+        FormattingOptionsTokenImpact,
+        FileContent,
+        CodeSymbol,
+        SymbolKind
+    } from './main';
+approved: true

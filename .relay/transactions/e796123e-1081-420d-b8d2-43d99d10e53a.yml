@@ -1,0 +1,94 @@
+uuid: e796123e-1081-420d-b8d2-43d99d10e53a
+projectId: scn-ts-core
+createdAt: '2025-09-07T07:12:16.896Z'
+linesAdded: 1
+linesRemoved: 1
+gitCommitMsg: 'fix(web): update vite alias for scn-ts-core to fix module resolution'
+promptSummary: >-
+  Fix a runtime error in the web demo where a new export from scn-ts-core is not
+  found, likely due to a stale Vite cache.
+reasoning:
+  - >-
+    Ah, the dreaded stale dependency cache. A classic Vite-in-a-monorepo
+    situation. When you're aliasing a local package and that package is also
+    being pre-bundled via `optimizeDeps`, Vite can sometimes fail to pick up new
+    exports without a little kick.
+  - >-
+    The problem is that the pre-bundled version of `scn-ts-core` in
+    `node_modules/.vite/deps` is out of date. It was created *before* I added
+    the `getFormattingOptionsForPreset` export.
+  - >-
+    The best way to fix this is to make the configuration more robust. Right
+    now, the Vite alias for `scn-ts-core` points directly to the entry point
+    file (`.../src/index.ts`). It's better to point it to the package's root
+    directory and let Vite's resolver use the `package.json` (`"module":
+    "src/index.ts"`) to find the entry point. This is how it handles regular npm
+    packages, so it's more reliable.
+  - >-
+    As a bonus, changing the `vite.config.ts` will invalidate Vite's dependency
+    cache, forcing it to re-bundle `scn-ts-core` with the new export. Two birds,
+    one stone.
+  - 'Here''s the fix for `vite.config.ts`:'
+  - >-
+    This should resolve the runtime error and make the setup more resilient to
+    future changes in the core package.
+operations:
+  - type: write
+    path: packages/scn-ts-web-demo/vite.config.ts
+    content: |-
+      --- packages/scn-ts-web-demo/vite.config.ts
+      +++ packages/scn-ts-web-demo/vite.config.ts
+      @@ -14,7 +14,7 @@
+         resolve: {
+           alias: {
+             "@": path.resolve(__dirname, "src"),
+      -      "scn-ts-core": path.resolve(__dirname, "../../src/index.ts"),
+      +      "scn-ts-core": path.resolve(__dirname, "../../"),
+           },
+         },
+         optimizeDeps: {
+    patchStrategy: new-unified
+snapshot:
+  packages/scn-ts-web-demo/vite.config.ts: |
+    import { defineConfig } from 'vite'
+    import react from '@vitejs/plugin-react'
+    import path from 'path'
+    import wasm from 'vite-plugin-wasm'
+    import topLevelAwait from 'vite-plugin-top-level-await'
+
+    // https://vitejs.dev/config/
+    export default defineConfig({
+      plugins: [
+        wasm(),
+        topLevelAwait(),
+        react()
+      ],
+      resolve: {
+        alias: {
+          "@": path.resolve(__dirname, "src"),
+          "scn-ts-core": path.resolve(__dirname, "../../src/index.ts"),
+        },
+      },
+      optimizeDeps: {
+        // Exclude packages that have special loading mechanisms (like wasm)
+        // to prevent Vite from pre-bundling them and causing issues.
+        exclude: ['web-tree-sitter'],
+        // Force pre-bundling of our monorepo packages. As linked dependencies,
+        // Vite doesn't optimize it by default. We need to include it so Vite
+        // discovers its deep CJS dependencies (like graphology) and converts
+        // them to ESM for the dev server. We specifically `exclude` 'web-tree-sitter'
+        // above to prevent Vite from interfering with its unique WASM loading mechanism.
+        // `js-tiktoken` is another CJS-like dependency that needs to be pre-bundled.
+        include: ['scn-ts-core', 'js-tiktoken'],
+      },
+      server: {
+        headers: {
+          // These headers are required for SharedArrayBuffer, which is used by
+          // web-tree-sitter and is good practice for applications using wasm
+          // with threading or advanced memory features.
+          'Cross-Origin-Embedder-Policy': 'require-corp',
+          'Cross-Origin-Opener-Policy': 'same-origin',
+        },
+      },
+    })
+approved: true

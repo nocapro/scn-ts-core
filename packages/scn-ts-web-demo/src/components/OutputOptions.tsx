@@ -1,7 +1,8 @@
 import * as React from 'react';
-import type { FormattingOptions } from '../types';
+import type { FormattingOptions, FormattingPreset } from '../types';
 import { ChevronDown, ChevronRight, ListChecks, ListX, ChevronsDown, ChevronsUp, X } from 'lucide-react';
-import type { FormattingOptionsTokenImpact } from 'scn-ts-core';
+import { getFormattingOptionsForPreset, type FormattingOptionsTokenImpact } from 'scn-ts-core';
+import { cn } from '../lib/utils';
 
 import { Checkbox } from './ui/checkbox';
 import { Label } from './ui/label';
@@ -14,7 +15,7 @@ interface OutputOptionsProps {
   tokenImpact: FormattingOptionsTokenImpact | null;
 }
 
-type RegularOptionKey = keyof Omit<FormattingOptions, 'displayFilters'>;
+type RegularOptionKey = keyof Omit<FormattingOptions, 'displayFilters' | 'preset'>;
 type OptionItem = RegularOptionKey | string | { name: string; children: OptionItem[] };
 
 const symbolKindLabels: Record<string, string> = {
@@ -102,7 +103,7 @@ const optionTree: OptionItem[] = [
   },
   {
     name: 'Structure',
-    children: ['groupMembers'],
+    children: ['groupMembers', 'showOnlyExports'],
   },
   symbolVisibilityTree,
 ];
@@ -120,6 +121,7 @@ const optionLabels: Record<RegularOptionKey, string> & Record<string, string> = 
   showOutgoing: 'Outgoing',
   showIncoming: 'Incoming',
   groupMembers: 'Group Members',
+  showOnlyExports: 'Show Only Exports',
 };
 
 function getAllKeys(item: OptionItem): string[] {
@@ -206,7 +208,7 @@ export const OutputOptions: React.FC<OutputOptionsProps> = ({ options, setOption
   }, []);
   const selectAll = React.useCallback(() => {
     setOptions(prev => {
-      const newOptions: FormattingOptions = { ...prev };
+      const newOptions: FormattingOptions = { ...prev, preset: undefined };
       const newDisplayFilters = { ...(prev.displayFilters ?? {}) };
 
       for (const key of allOptionKeys) {
@@ -222,7 +224,7 @@ export const OutputOptions: React.FC<OutputOptionsProps> = ({ options, setOption
   }, [allOptionKeys]);
   const deselectAll = React.useCallback(() => {
     setOptions(prev => {
-      const newOptions: FormattingOptions = { ...prev };
+      const newOptions: FormattingOptions = { ...prev, preset: undefined };
       const newDisplayFilters = { ...(prev.displayFilters ?? {}) };
 
       for (const key of allOptionKeys) {
@@ -255,17 +257,18 @@ export const OutputOptions: React.FC<OutputOptionsProps> = ({ options, setOption
       const kind = optionKey.substring('filter:'.length);
       setOptions(prev => ({
         ...prev,
+        preset: undefined,
         displayFilters: { ...(prev.displayFilters ?? {}), [kind]: isChecked },
       }));
     } else {
-      setOptions(prev => ({ ...prev, [optionKey]: isChecked }));
+      setOptions(prev => ({ ...prev, preset: undefined, [optionKey]: isChecked }));
     }
   };
 
   const handleGroupChange = (keys: ReadonlyArray<string>) => (checked: boolean | 'indeterminate') => {
     const isChecked = checked === true;
     setOptions(prev => {
-      const newOptions: FormattingOptions = { ...prev };
+      const newOptions: FormattingOptions = { ...prev, preset: undefined };
       const newDisplayFilters = { ...(prev.displayFilters ?? {}) };
 
       for (const key of keys) {
@@ -390,8 +393,23 @@ export const OutputOptions: React.FC<OutputOptionsProps> = ({ options, setOption
     );
   };
 
+  const presets: FormattingPreset[] = ['minimal', 'compact', 'default', 'detailed', 'verbose'];
+
   return (
     <div className="space-y-1">
+      <div className="flex justify-between gap-1 mb-3">
+        {presets.map(p => (
+          <Button
+            key={p}
+            variant={options.preset === p ? 'default' : 'outline'}
+            size="sm"
+            onClick={() => setOptions(getFormattingOptionsForPreset(p))}
+            className={cn("capitalize flex-1 text-xs h-7", options.preset !== p && "text-muted-foreground")}
+          >
+            {p}
+          </Button>
+        ))}
+      </div>
       <div className="flex gap-2 mb-3">
         <div className="relative flex-grow">
           <Input

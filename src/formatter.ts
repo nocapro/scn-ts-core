@@ -268,9 +268,13 @@ const formatFile = (file: SourceFile, allFiles: SourceFile[], options: Formattin
         ? file.symbols.slice()
         : file.symbols.filter(s => s.dependencies.length > 0);
 
+    if (options.showOnlyExports) {
+        symbolsToPrint = symbolsToPrint.filter(s => s.isExported);
+    }
+
     // Apply AST-based display filters
     if (options.displayFilters) {
-        symbolsToPrint = symbolsToPrint.filter(s => options.displayFilters![s.kind] !== false);
+        symbolsToPrint = symbolsToPrint.filter(s => (options.displayFilters![s.kind] ?? options.displayFilters!['*'] ?? true));
     }
 
     // Group properties/methods under their class/interface parent if option is enabled

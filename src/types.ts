@@ -22,10 +22,13 @@ export interface AnalyzeProjectOptions {
     signal?: AbortSignal;
 }
 
+export type FormattingPreset = 'minimal' | 'compact' | 'default' | 'detailed' | 'verbose';
+
 /**
  * Options to control the SCN output format.
  */
 export interface FormattingOptions {
+    preset?: FormattingPreset;
     showOutgoing?: boolean;
     showIncoming?: boolean;
     showIcons?: boolean;
@@ -35,9 +38,10 @@ export interface FormattingOptions {
     showTags?: boolean;      // [generated], [styled], etc.
     showSymbolIds?: boolean; // (1.2) identifiers
     groupMembers?: boolean;  // group class/interface members under parent
-    displayFilters?: Partial<Record<SymbolKind, boolean>>;
+    displayFilters?: Partial<Record<string, boolean>>;
     showFilePrefix?: boolean; // § prefix, defaults to true
     showFileIds?: boolean;    // (1) file identifiers in headers and references, defaults to true
+    showOnlyExports?: boolean;
 }
 
 /**

@@ -9,6 +9,8 @@ import { resolveGraph } from './graph-resolver';
 import { logger } from './logger';
 import { initializeTokenizer as initTokenizer, countTokens as countTokensInternal } from './tokenizer';
 
+import type { FormattingPreset } from './types';
+
 /**
  * Public API to initialize the parser. Must be called before any other APIs.
  */
@@ -21,11 +23,81 @@ export const initializeParser = (options: ParserInitOptions): Promise<void> => i
 export const initializeTokenizer = (): boolean => initTokenizer();
 
 // Types for web demo
-export type { ParserInitOptions, SourceFile, LogLevel, InputFile, TsConfig, ScnTsConfig, AnalyzeProjectOptions, LogHandler, FormattingOptions, FormattingOptionsTokenImpact, CodeSymbol, SymbolKind } from './types';
+export type { ParserInitOptions, SourceFile, LogLevel, InputFile, TsConfig, ScnTsConfig, AnalyzeProjectOptions, LogHandler, FormattingOptions, FormattingPreset, FormattingOptionsTokenImpact, CodeSymbol, SymbolKind } from './types';
 export type FileContent = InputFile;
 
 // Exports for web demo. The constants are exported from index.ts directly.
 export { logger };
+
+const defaultFormattingOptions: Omit<FormattingOptions, 'preset'> = {
+  showOutgoing: true,
+  showIncoming: true,
+  showIcons: true,
+  showExportedIndicator: true,
+  showPrivateIndicator: true,
+  showModifiers: true,
+  showTags: true,
+  showSymbolIds: true,
+  groupMembers: true,
+  displayFilters: {},
+  showFilePrefix: true,
+  showFileIds: true,
+  showOnlyExports: false,
+};
+
+export function getFormattingOptionsForPreset(preset: FormattingPreset): FormattingOptions {
+  switch (preset) {
+    case 'minimal':
+      return {
+        preset: 'minimal',
+        ...defaultFormattingOptions,
+        showIcons: false,
+        showExportedIndicator: false,
+        showPrivateIndicator: false,
+        showModifiers: false,
+        showTags: false,
+        showSymbolIds: false,
+        groupMembers: false,
+        displayFilters: { '*': false },
+      };
+    case 'compact':
+      return {
+        preset: 'compact',
+        ...defaultFormattingOptions,
+        showPrivateIndicator: false,
+        showModifiers: false,
+        showTags: false,
+        showSymbolIds: false,
+        displayFilters: {
+          'property': false,
+          'method': false,
+          'constructor': false,
+          'enum_member': false,
+          'import_specifier': false,
+        },
+        showOnlyExports: true,
+      };
+    case 'detailed':
+      return {
+        preset: 'detailed',
+        ...defaultFormattingOptions,
+        groupMembers: false,
+      };
+    case 'verbose':
+      return {
+        preset: 'verbose',
+        ...defaultFormattingOptions,
+        groupMembers: false,
+        displayFilters: { '*': true },
+      };
+    case 'default':
+    default:
+      return {
+        preset: 'default',
+        ...defaultFormattingOptions,
+      };
+  }
+}
 
 /**
  * Counts tokens in a string using the cl100k_base model.
@@ -35,8 +107,11 @@ export const countTokens = (text: string): number => countTokensInternal(text);
 /**
  * Generate SCN from analyzed source files
  */
-export const generateScn = (analyzedFiles: SourceFile[], options?: FormattingOptions): string => {
-    return formatScn(analyzedFiles, options);
+export const generateScn = (analyzedFiles: SourceFile[], options: FormattingOptions = {}): string => {
+    const formattingOptions = options.preset
+        ? { ...getFormattingOptionsForPreset(options.preset), ...options }
+        : options;
+    return formatScn(analyzedFiles, formattingOptions);
 };
 
 /**
@@ -53,7 +128,11 @@ export const calculateTokenImpact = (
     logger.debug('Calculating token impact...');
     const startTime = performance.now();
 
-    const baseScn = formatScn(analyzedFiles, baseOptions);
+    const resolvedBaseOptions = baseOptions.preset
+        ? { ...getFormattingOptionsForPreset(baseOptions.preset), ...baseOptions }
+        : baseOptions;
+
+    const baseScn = formatScn(analyzedFiles, resolvedBaseOptions);
     const baseTokens = countTokensInternal(baseScn);
 
     const impact: FormattingOptionsTokenImpact = {
@@ -69,8 +148,8 @@ export const calculateTokenImpact = (
 
     for (const key of simpleOptionKeys) {
         // All boolean options default to true.
-        const currentValue = baseOptions[key] ?? true;
-        const newOptions = { ...baseOptions, [key]: !currentValue };
+        const currentValue = resolvedBaseOptions[key] ?? true;
+        const newOptions = { ...resolvedBaseOptions, [key]: !currentValue };
         const newScn = formatScn(analyzedFiles, newOptions);
         const newTokens = countTokensInternal(newScn);
         impact.options[key] = newTokens - baseTokens;
@@ -79,10 +158,10 @@ export const calculateTokenImpact = (
     const allSymbolKinds = new Set<SymbolKind>(analyzedFiles.flatMap(file => file.symbols.map(s => s.kind)));
 
     for (const kind of allSymbolKinds) {
-        const currentFilterValue = baseOptions.displayFilters?.[kind] ?? true;
+        const currentFilterValue = resolvedBaseOptions.displayFilters?.[kind] ?? true;
         const newOptions = {
-            ...baseOptions,
-            displayFilters: { ...(baseOptions.displayFilters ?? {}), [kind]: !currentFilterValue }
+            ...resolvedBaseOptions,
+            displayFilters: { ...(resolvedBaseOptions.displayFilters ?? {}), [kind]: !currentFilterValue }
         };
         const newScn = formatScn(analyzedFiles, newOptions);
         const newTokens = countTokensInternal(newScn);

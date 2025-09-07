@@ -14,7 +14,7 @@ export default defineConfig({
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "src"),
-      "scn-ts-core": path.resolve(__dirname, "../../src/index.ts"),
+      "scn-ts-core": path.resolve(__dirname, "../../"),
     },
   },
   optimizeDeps: {

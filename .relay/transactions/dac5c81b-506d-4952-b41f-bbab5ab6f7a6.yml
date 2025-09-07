@@ -1,0 +1,1113 @@
+uuid: dac5c81b-506d-4952-b41f-bbab5ab6f7a6
+projectId: scn-ts-core
+createdAt: '2025-09-07T07:07:36.614Z'
+linesAdded: 45
+linesRemoved: 28
+gitCommitMsg: 'feat(web): integrate formatting presets into UI'
+promptSummary: Integrate formatting presets into the web demo UI.
+reasoning:
+  - >-
+    Alright, phase two it is. Time to bring those presets to the front-end. I'll
+    integrate the new preset API into the web demo, adding a selector in the UI
+    and wiring everything up.
+  - 'Here''s how I''ll tackle it:'
+  - >-
+    1.  **Update Demo Types**: First, I'll update the `FormattingOptions` type
+    in the web demo to match the new shape from `scn-ts-core`, including the
+    `preset` and `showOnlyExports` fields.
+  - >-
+    2.  **Initialize with Default Preset**: I'll modify the application's state
+    store to initialize the formatting options using the new
+    `getFormattingOptionsForPreset('default')` function, ensuring we start in a
+    known state.
+  - >-
+    3.  **Build the UI**: I'll add a set of preset buttons (`minimal`,
+    `compact`, `default`, etc.) to the `OutputOptions` component. Clicking a
+    preset will apply its full configuration.
+  - >-
+    4.  **Handle Customization**: If a user changes any individual option after
+    selecting a preset, I'll automatically switch them to a "custom" mode by
+    unsetting the `preset` property. This makes the UI feel intuitive.
+  - >-
+    5.  **Add `showOnlyExports`**: I'll add the new `showOnlyExports` toggle to
+    the options tree.
+  - >-
+    6.  **Update Symbol Count**: Finally, I'll adjust the logic that displays
+    the "visible symbols" count to correctly reflect the filtering from
+    `showOnlyExports` and the new wildcard `displayFilters`.
+  - Let's get this UI shipped.
+  - First up, updating the types for the web demo.
+  - >-
+    Now, let's update the app store to use the new preset function for its
+    initial state.
+  - >-
+    Here comes the main UI work in `OutputOptions.tsx`. I'll add the preset
+    buttons and update the event handlers.
+  - Finally, let's make sure the visible symbol count in `App.tsx` is accurate.
+  - >-
+    And that's a wrap for phase two. The web demo now has a slick preset system
+    that's easy to use and customize.
+operations:
+  - type: write
+    path: packages/scn-ts-web-demo/src/types.ts
+    content: >-
+      --- packages/scn-ts-web-demo/src/types.ts
+
+      +++ packages/scn-ts-web-demo/src/types.ts
+
+      @@ -1,5 +1,7 @@
+
+      -import type { LogLevel } from 'scn-ts-core';
+
+      +import type { LogLevel, FormattingPreset as CoreFormattingPreset } from
+      'scn-ts-core';
+       
+      +export type FormattingPreset = CoreFormattingPreset;
+
+      +
+       export interface LogEntry {
+         level: Exclude<LogLevel, 'silent'>;
+         message: string;
+      @@ -12,6 +14,7 @@
+       }
+       
+       export interface FormattingOptions {
+      +  preset?: FormattingPreset;
+         showOutgoing?: boolean;
+         showIncoming?: boolean;
+         showIcons?: boolean;
+      @@ -20,7 +23,8 @@
+         showModifiers?: boolean;
+         showTags?: boolean;
+         showSymbolIds?: boolean;
+         groupMembers?: boolean;
+      -  displayFilters?: Partial<Record<string, boolean>>;
+
+      +  displayFilters?: Partial<Record<string, boolean>>;
+         showFilePrefix?: boolean;
+         showFileIds?: boolean;
+      +  showOnlyExports?: boolean;
+       }
+    patchStrategy: new-unified
+  - type: write
+    path: packages/scn-ts-web-demo/src/stores/app.store.ts
+    content: >-
+      --- packages/scn-ts-web-demo/src/stores/app.store.ts
+
+      +++ packages/scn-ts-web-demo/src/stores/app.store.ts
+
+      @@ -1,23 +1,10 @@
+       import { useState } from 'react';
+       import { defaultFilesJSON } from '../default-files';
+       import type { FormattingOptions } from '../types';
+      +import { getFormattingOptionsForPreset } from 'scn-ts-core';
+       
+       export function useAppStore() {
+         const [filesInput, setFilesInput] = useState(defaultFilesJSON);
+         const [scnOutput, setScnOutput] = useState('');
+      -  const [formattingOptions, setFormattingOptions] =
+      useState<FormattingOptions>({
+
+      -    showOutgoing: true,
+
+      -    showIncoming: true,
+
+      -    showIcons: true,
+
+      -    showExportedIndicator: true,
+
+      -    showPrivateIndicator: true,
+
+      -    showModifiers: true,
+
+      -    showTags: true,
+
+      -    showSymbolIds: true,
+
+      -    groupMembers: true,
+
+      -    displayFilters: {},
+
+      -    showFilePrefix: true,
+
+      -    showFileIds: true,
+
+      -  });
+
+      +  const [formattingOptions, setFormattingOptions] =
+      useState<FormattingOptions>(getFormattingOptionsForPreset('default'));
+       
+         return {
+           filesInput,
+    patchStrategy: new-unified
+  - type: write
+    path: packages/scn-ts-web-demo/src/components/OutputOptions.tsx
+    content: >-
+      --- packages/scn-ts-web-demo/src/components/OutputOptions.tsx
+
+      +++ packages/scn-ts-web-demo/src/components/OutputOptions.tsx
+
+      @@ -1,16 +1,17 @@
+       import * as React from 'react';
+      -import type { FormattingOptions } from '../types';
+
+      +import type { FormattingOptions, FormattingPreset } from '../types';
+       import { ChevronDown, ChevronRight, ListChecks, ListX, ChevronsDown, ChevronsUp, X } from 'lucide-react';
+      -import type { FormattingOptionsTokenImpact } from 'scn-ts-core';
+
+      +import { getFormattingOptionsForPreset, type FormattingOptionsTokenImpact
+      } from 'scn-ts-core';
+
+      +import { cn } from '../lib/utils';
+       
+       import { Checkbox } from './ui/checkbox';
+       import { Label } from './ui/label';
+       import { Input } from './ui/input';
+       import { Button } from './ui/button';
+       
+       interface OutputOptionsProps {
+         options: FormattingOptions;
+         setOptions: React.Dispatch<React.SetStateAction<FormattingOptions>>;
+         tokenImpact: FormattingOptionsTokenImpact | null;
+       }
+       
+      -type RegularOptionKey = keyof Omit<FormattingOptions, 'displayFilters'>;
+
+      +type RegularOptionKey = keyof Omit<FormattingOptions, 'displayFilters' |
+      'preset'>;
+       type OptionItem = RegularOptionKey | string | { name: string; children: OptionItem[] };
+       
+       const symbolKindLabels: Record<string, string> = {
+      @@ -93,7 +94,7 @@
+         },
+         {
+           name: 'Structure',
+      -    children: ['groupMembers'],
+
+      +    children: ['groupMembers', 'showOnlyExports'],
+         },
+         symbolVisibilityTree,
+       ];
+      @@ -111,6 +112,7 @@
+         showOutgoing: 'Outgoing',
+         showIncoming: 'Incoming',
+         groupMembers: 'Group Members',
+      +  showOnlyExports: 'Show Only Exports',
+       };
+       
+       function getAllKeys(item: OptionItem): string[] {
+      @@ -188,7 +190,7 @@
+         }, []);
+         const selectAll = React.useCallback(() => {
+           setOptions(prev => {
+      -      const newOptions: FormattingOptions = { ...prev };
+
+      +      const newOptions: FormattingOptions = { ...prev, preset: undefined
+      };
+             const newDisplayFilters = { ...(prev.displayFilters ?? {}) };
+       
+             for (const key of allOptionKeys) {
+      @@ -204,7 +206,7 @@
+         }, [allOptionKeys]);
+         const deselectAll = React.useCallback(() => {
+           setOptions(prev => {
+      -      const newOptions: FormattingOptions = { ...prev };
+
+      +      const newOptions: FormattingOptions = { ...prev, preset: undefined
+      };
+             const newDisplayFilters = { ...(prev.displayFilters ?? {}) };
+       
+             for (const key of allOptionKeys) {
+      @@ -236,16 +238,17 @@
+           if (optionKey.startsWith('filter:')) {
+             const kind = optionKey.substring('filter:'.length);
+             setOptions(prev => ({
+               ...prev,
+      +        preset: undefined,
+               displayFilters: { ...(prev.displayFilters ?? {}), [kind]: isChecked },
+             }));
+           } else {
+      -      setOptions(prev => ({ ...prev, [optionKey]: isChecked }));
+
+      +      setOptions(prev => ({ ...prev, preset: undefined, [optionKey]:
+      isChecked }));
+           }
+         };
+       
+         const handleGroupChange = (keys: ReadonlyArray<string>) => (checked: boolean | 'indeterminate') => {
+           const isChecked = checked === true;
+           setOptions(prev => {
+      -      const newOptions: FormattingOptions = { ...prev };
+
+      +      const newOptions: FormattingOptions = { ...prev, preset: undefined
+      };
+             const newDisplayFilters = { ...(prev.displayFilters ?? {}) };
+       
+             for (const key of keys) {
+      @@ -369,8 +372,24 @@
+           );
+         };
+       
+      +  const presets: FormattingPreset[] = ['minimal', 'compact', 'default',
+      'detailed', 'verbose'];
+
+      +
+         return (
+           <div className="space-y-1">
+      +      <div className="flex justify-between gap-1 mb-3">
+
+      +        {presets.map(p => (
+
+      +          <Button
+
+      +            key={p}
+
+      +            variant={options.preset === p ? 'default' : 'outline'}
+
+      +            size="sm"
+
+      +            onClick={() => setOptions(getFormattingOptionsForPreset(p))}
+
+      +            className={cn("capitalize flex-1 text-xs h-7", options.preset
+      !== p && "text-muted-foreground")}
+
+      +          >
+
+      +            {p}
+
+      +          </Button>
+
+      +        ))}
+
+      +      </div>
+             <div className="flex gap-2 mb-3">
+               <div className="relative flex-grow">
+                 <Input
+    patchStrategy: new-unified
+  - type: write
+    path: packages/scn-ts-web-demo/src/App.tsx
+    content: >-
+      --- packages/scn-ts-web-demo/src/App.tsx
+
+      +++ packages/scn-ts-web-demo/src/App.tsx
+
+      @@ -107,13 +107,19 @@
+           if (!analysisResult) {
+             return { totalSymbols: 0, visibleSymbols: 0 };
+           }
+           const allSymbols: CodeSymbol[] = analysisResult.flatMap(file => file.symbols);
+           const total = allSymbols.length;
+      -    const visible = allSymbols.filter(symbol => {
+
+      -      return formattingOptions.displayFilters?.[symbol.kind] !== false;
+
+      -    }).length;
+
+      -    return { totalSymbols: total, visibleSymbols: visible };
+
+      -  }, [analysisResult, formattingOptions.displayFilters]);
+
+      +    let visibleSymbolsArr = allSymbols;
+
+      +    if (formattingOptions.showOnlyExports) {
+
+      +      visibleSymbolsArr = visibleSymbolsArr.filter(symbol =>
+      symbol.isExported);
+
+      +    }
+
+      +    if (formattingOptions.displayFilters) {
+
+      +      const filters = formattingOptions.displayFilters;
+
+      +      visibleSymbolsArr = visibleSymbolsArr.filter(symbol => {
+
+      +        return (filters[symbol.kind] ?? filters['*'] ?? true);
+
+      +      });
+
+      +    }
+
+      +    return { totalSymbols: total, visibleSymbols:
+      visibleSymbolsArr.length };
+
+      +  }, [analysisResult, formattingOptions.displayFilters,
+      formattingOptions.showOnlyExports]);
+       
+         return (
+           <div className="h-screen w-screen flex bg-background text-foreground overflow-hidden">
+    patchStrategy: new-unified
+snapshot:
+  packages/scn-ts-web-demo/src/types.ts: |-
+    import type { LogLevel } from 'scn-ts-core';
+
+    export interface LogEntry {
+      level: Exclude<LogLevel, 'silent'>;
+      message: string;
+      timestamp: number;
+    }
+
+    export interface ProgressData {
+      percentage: number;
+      message: string;
+    }
+
+    export interface FormattingOptions {
+      showOutgoing?: boolean;
+      showIncoming?: boolean;
+      showIcons?: boolean;
+      showExportedIndicator?: boolean;
+      showPrivateIndicator?: boolean;
+      showModifiers?: boolean;
+      showTags?: boolean;
+      showSymbolIds?: boolean;
+      groupMembers?: boolean;
+      displayFilters?: Partial<Record<string, boolean>>;
+      showFilePrefix?: boolean;
+      showFileIds?: boolean;
+    }
+  packages/scn-ts-web-demo/src/stores/app.store.ts: |-
+    import { useState } from 'react';
+    import { defaultFilesJSON } from '../default-files';
+    import type { FormattingOptions } from '../types';
+
+    export function useAppStore() {
+      const [filesInput, setFilesInput] = useState(defaultFilesJSON);
+      const [scnOutput, setScnOutput] = useState('');
+      const [formattingOptions, setFormattingOptions] = useState<FormattingOptions>({
+        showOutgoing: true,
+        showIncoming: true,
+        showIcons: true,
+        showExportedIndicator: true,
+        showPrivateIndicator: true,
+        showModifiers: true,
+        showTags: true,
+        showSymbolIds: true,
+        groupMembers: true,
+        displayFilters: {},
+        showFilePrefix: true,
+        showFileIds: true,
+      });
+
+      return {
+        filesInput,
+        setFilesInput,
+        scnOutput,
+        setScnOutput,
+        formattingOptions,
+        setFormattingOptions,
+      };
+    }
+  packages/scn-ts-web-demo/src/App.tsx: >
+    import { useEffect, useCallback, useMemo, useRef, useState } from 'react';
+
+    import { generateScn, initializeTokenizer, countTokens } from 'scn-ts-core';
+
+    import { Button } from './components/ui/button';
+
+    import { Textarea } from './components/ui/textarea';
+
+    import LogViewer from './components/LogViewer';
+
+    import { OutputOptions } from './components/OutputOptions';
+
+    import { Legend } from './components/Legend';
+
+    import { Play, Loader, Copy, Check, StopCircle, ZoomIn, ZoomOut, RefreshCw }
+    from 'lucide-react';
+
+    import { Accordion, AccordionContent, AccordionItem, AccordionHeader,
+    AccordionTrigger } from './components/ui/accordion';
+
+    import { useAnalysis } from './hooks/useAnalysis.hook';
+
+    import { useClipboard } from './hooks/useClipboard.hook';
+
+    import { useResizableSidebar } from './hooks/useResizableSidebar.hook';
+
+    import { useAppStore } from './stores/app.store';
+
+    import { cn } from './lib/utils';
+
+    import type { CodeSymbol } from 'scn-ts-core';
+
+
+    function App() {
+      const {
+        filesInput,
+        setFilesInput,
+        scnOutput,
+        setScnOutput,
+        formattingOptions,
+        setFormattingOptions,
+      } = useAppStore();
+
+      const {
+        isInitialized,
+        isLoading,
+        analysisResult,
+        progress,
+        logs,
+        analysisTime,
+        tokenImpact,
+        handleAnalyze: performAnalysis,
+        handleStop,
+        onLogPartial,
+      } = useAnalysis();
+
+      const [zoomLevel, setZoomLevel] = useState(1);
+      const baseFontSizeRem = 0.75; // Corresponds to text-xs
+
+      const handleZoomIn = () => setZoomLevel(z => Math.min(z * 1.2, 4));
+      const handleZoomOut = () => setZoomLevel(z => Math.max(z / 1.2, 0.25));
+      const handleZoomReset = () => setZoomLevel(1);
+
+      const { sidebarWidth, handleMouseDown } = useResizableSidebar(480);
+      const { isCopied, handleCopy: performCopy } = useClipboard();
+
+      useEffect(() => {
+        if (!initializeTokenizer()) {
+          onLogPartial({ level: 'error', message: 'Failed to initialize tokenizer.' });
+        }
+      }, [onLogPartial]);
+
+      useEffect(() => {
+        if (analysisResult) {
+          setScnOutput(generateScn(analysisResult, formattingOptions));
+        } else {
+          setScnOutput('');
+        }
+      }, [analysisResult, formattingOptions]);
+
+      const { tokenCounts, tokenReductionPercent } = useMemo(() => {
+        const input = countTokens(filesInput);
+        const output = countTokens(scnOutput);
+        let reductionPercent: number | null = null;
+        if (input > 0) {
+          reductionPercent = ((input - output) / input) * 100;
+        }
+        return {
+          tokenCounts: { input, output },
+          tokenReductionPercent: reductionPercent,
+        };
+      }, [filesInput, scnOutput]);
+
+      const handleCopy = useCallback(() => {
+        performCopy(scnOutput);
+      }, [performCopy, scnOutput]);
+
+      const handleAnalyze = useCallback(async () => {
+        performAnalysis(filesInput, formattingOptions);
+      }, [performAnalysis, filesInput, formattingOptions]);
+
+      const { totalSymbols, visibleSymbols } = useMemo(() => {
+        if (!analysisResult) {
+          return { totalSymbols: 0, visibleSymbols: 0 };
+        }
+        const allSymbols: CodeSymbol[] = analysisResult.flatMap(file => file.symbols);
+        const total = allSymbols.length;
+        const visible = allSymbols.filter(symbol => {
+          return formattingOptions.displayFilters?.[symbol.kind] !== false;
+        }).length;
+        return { totalSymbols: total, visibleSymbols: visible };
+      }, [analysisResult, formattingOptions.displayFilters]);
+
+      return (
+        <div className="h-screen w-screen flex bg-background text-foreground overflow-hidden">
+          {/* Sidebar */}
+          <aside style={{ width: `${sidebarWidth}px` }} className="max-w-[80%] min-w-[320px] flex-shrink-0 flex flex-col border-r">
+            <div className="flex-shrink-0 flex items-center justify-between p-4 border-b bg-background relative z-20">
+              <h1 className="text-xl font-bold tracking-tight">SCN-TS Web Demo</h1>
+              <div className="flex items-center space-x-2">
+                {isLoading ? (
+                  <>
+                    <Button disabled className="w-32 justify-center">
+                      <Loader className="mr-2 h-4 w-4 animate-spin" />
+                      <span>{progress ? `${Math.round(progress.percentage)}%` : 'Analyzing...'}</span>
+                    </Button>
+                    <Button onClick={handleStop} variant="outline" size="icon" title="Stop analysis">
+                      <StopCircle className="h-4 w-4" />
+                    </Button>
+                  </>
+                ) : (
+                  <Button onClick={handleAnalyze} disabled={!isInitialized} className="w-32 justify-center">
+                    <Play className="mr-2 h-4 w-4" />
+                    <span>Analyze</span>
+                  </Button>
+                )}
+              </div>
+            </div>
+
+            <div className="flex-grow overflow-y-auto">
+              <Accordion type="multiple" defaultValue={['input', 'options', 'logs']} className="w-full">
+                <AccordionItem value="input">
+                  <AccordionHeader>
+                    <AccordionTrigger className="px-4 text-sm font-semibold hover:no-underline">
+                      <div className="flex w-full justify-between items-center">
+                        <span>Input Files (JSON)</span>
+                        <span className="text-xs font-normal text-muted-foreground tabular-nums">
+                          {tokenCounts.input.toLocaleString()} tokens
+                        </span>
+                      </div>
+                    </AccordionTrigger>
+                  </AccordionHeader>
+                  <AccordionContent className="p-4">
+                    <div className="h-96">
+                      <Textarea
+                        value={filesInput}
+                        onChange={(e) => setFilesInput(e.currentTarget.value)}
+                        className="h-full w-full font-mono text-xs resize-none"
+                        placeholder="Paste an array of FileContent objects here..."
+                      />
+                    </div>
+                  </AccordionContent>
+                </AccordionItem>
+
+                <AccordionItem value="options">
+                  <AccordionHeader className="items-center">
+                    <AccordionTrigger className="px-4 text-sm font-semibold hover:no-underline">
+                      <div className="flex w-full items-center justify-between">
+                        <span>Formatting Options</span>
+                          {analysisResult && (
+                            <span className="text-xs font-normal text-muted-foreground tabular-nums">
+                              {visibleSymbols} / {totalSymbols} symbols
+                            </span>
+                          )}
+                      </div>
+                    </AccordionTrigger>
+                  </AccordionHeader>
+                  <AccordionContent className="px-4 pt-4">
+                    <OutputOptions options={formattingOptions} setOptions={setFormattingOptions} tokenImpact={tokenImpact} />
+                  </AccordionContent>
+                </AccordionItem>
+
+                <AccordionItem value="logs">
+                  <AccordionHeader>
+                    <AccordionTrigger className="px-4 text-sm font-semibold hover:no-underline">Logs</AccordionTrigger>
+                  </AccordionHeader>
+                  <AccordionContent className="px-4 pt-4">
+                    <LogViewer logs={logs} />
+                  </AccordionContent>
+                </AccordionItem>
+              </Accordion>
+            </div>
+          </aside>
+
+          {/* Resizer */}
+          <div
+            role="separator"
+            onMouseDown={handleMouseDown}
+            className="w-1.5 flex-shrink-0 cursor-col-resize hover:bg-primary/20 transition-colors duration-200"
+          />
+
+          {/* Main Content Area */}
+          <main className="flex-grow flex flex-col overflow-hidden relative group">
+            <div className="flex justify-between items-center p-4 border-b flex-shrink-0">
+              <h2 className="text-lg font-semibold leading-none tracking-tight">Output (SCN)</h2>
+              <div className="flex items-center gap-4">
+                {analysisTime !== null && (
+                  <span className="text-sm text-muted-foreground">
+                    Analyzed in {(analysisTime / 1000).toFixed(2)}s
+                  </span>
+                )}
+                <span className="text-sm font-normal text-muted-foreground tabular-nums">{tokenCounts.output.toLocaleString()} tokens</span>
+                {tokenReductionPercent !== null && analysisResult && (
+                  <span
+                    className={cn(
+                      "text-sm font-medium tabular-nums",
+                      tokenReductionPercent >= 0 ? "text-green-500" : "text-red-500"
+                    )}
+                    title="Token count change from input to output"
+                  >
+                    {tokenReductionPercent >= 0 ? '▼' : '▲'}{' '}
+                    {Math.abs(tokenReductionPercent).toFixed(0)}%
+                  </span>
+                )}
+                <Button variant="ghost" size="icon" onClick={handleCopy} disabled={!scnOutput} title="Copy to clipboard">
+                  {isCopied ? <Check className="h-4 w-4 text-green-500" /> : <Copy className="h-4 w-4" />}
+                </Button>
+              </div>
+            </div>
+            <div className="p-4 flex-grow overflow-auto font-mono text-xs relative group">
+              <Legend />
+              <pre
+                className="whitespace-pre-wrap"
+                style={{
+                  fontSize: `${baseFontSizeRem * zoomLevel}rem`,
+                  lineHeight: `${zoomLevel}rem`,
+                }}
+              >
+                {scnOutput || (isLoading ? "Generating..." : "Output will appear here.")}
+              </pre>
+            </div>
+            <div className="absolute bottom-4 right-4 z-10 flex items-center gap-1 rounded-md border bg-background/80 p-1 opacity-0 backdrop-blur-sm transition-opacity duration-200 group-hover:opacity-100">
+              <Button variant="ghost" size="icon" onClick={handleZoomOut} title="Zoom out" className="h-7 w-7">
+                <ZoomOut className="h-4 w-4" />
+              </Button>
+              <Button variant="ghost" size="icon" onClick={handleZoomReset} title="Reset zoom" className="h-7 w-7">
+                <RefreshCw className="h-4 w-4" />
+              </Button>
+              <Button variant="ghost" size="icon" onClick={handleZoomIn} title="Zoom in" className="h-7 w-7">
+                <ZoomIn className="h-4 w-4" />
+              </Button>
+            </div>
+          </main>
+        </div>
+      );
+    }
+
+
+    export default App;
+  packages/scn-ts-web-demo/src/components/OutputOptions.tsx: >
+    import * as React from 'react';
+
+    import type { FormattingOptions } from '../types';
+
+    import { ChevronDown, ChevronRight, ListChecks, ListX, ChevronsDown,
+    ChevronsUp, X } from 'lucide-react';
+
+    import type { FormattingOptionsTokenImpact } from 'scn-ts-core';
+
+
+    import { Checkbox } from './ui/checkbox';
+
+    import { Label } from './ui/label';
+
+    import { Input } from './ui/input';
+
+    import { Button } from './ui/button';
+
+
+    interface OutputOptionsProps {
+      options: FormattingOptions;
+      setOptions: React.Dispatch<React.SetStateAction<FormattingOptions>>;
+      tokenImpact: FormattingOptionsTokenImpact | null;
+    }
+
+
+    type RegularOptionKey = keyof Omit<FormattingOptions, 'displayFilters'>;
+
+    type OptionItem = RegularOptionKey | string | { name: string; children:
+    OptionItem[] };
+
+
+    const symbolKindLabels: Record<string, string> = {
+      // TS/JS
+      class: 'Classes',
+      interface: 'Interfaces',
+      function: 'Functions',
+      method: 'Methods',
+      constructor: 'Constructors',
+      variable: 'Variables',
+      property: 'Properties',
+      enum: 'Enums',
+      enum_member: 'Enum Members',
+      type_alias: 'Type Aliases',
+      module: 'Modules',
+      // React
+      react_component: 'React Components',
+      styled_component: 'Styled Components',
+      jsx_element: 'JSX Elements',
+      // CSS
+      css_class: 'CSS Classes',
+      css_id: 'CSS IDs',
+      css_tag: 'CSS Tags',
+      css_at_rule: 'CSS At-Rules',
+      css_variable: 'CSS Variables',
+      // Go
+      go_package: 'Go Packages',
+      // Rust
+      rust_struct: 'Rust Structs',
+      rust_trait: 'Rust Traits',
+      rust_impl: 'Rust Impls',
+    };
+
+
+    const tsDeclarationKinds = ['class', 'interface', 'function', 'variable',
+    'enum', 'type_alias', 'module'];
+
+    const tsMemberKinds = ['method', 'constructor', 'property', 'enum_member'];
+
+    const reactKinds = ['react_component', 'styled_component', 'jsx_element'];
+
+    const cssKinds = ['css_class', 'css_id', 'css_tag', 'css_at_rule',
+    'css_variable'];
+
+    const goKinds = ['go_package'];
+
+    const rustKinds = ['rust_struct', 'rust_trait', 'rust_impl'];
+
+
+    const toFilter = (kind: string): string => `filter:${kind}`;
+
+
+    const symbolVisibilityTree: OptionItem = {
+      name: 'Symbol Visibility',
+      children: [
+        {
+          name: 'TypeScript/JavaScript',
+          children: [
+            { name: 'Declarations', children: tsDeclarationKinds.map(toFilter) },
+            { name: 'Members', children: tsMemberKinds.map(toFilter) },
+          ],
+        },
+        { name: 'React', children: reactKinds.map(toFilter) },
+        { name: 'CSS', children: cssKinds.map(toFilter) },
+        {
+          name: 'Other Languages',
+          children: [
+            { name: 'Go', children: goKinds.map(toFilter) },
+            { name: 'Rust', children: rustKinds.map(toFilter) },
+          ],
+        },
+      ],
+    };
+
+
+    const optionTree: OptionItem[] = [
+      {
+        name: 'Display Elements',
+        children: [
+          'showIcons',
+          {
+            name: 'Indicators',
+            children: ['showExportedIndicator', 'showPrivateIndicator'],
+          },
+          'showModifiers',
+          'showTags',
+          {
+            name: 'Identifiers',
+            children: ['showFilePrefix', 'showFileIds', 'showSymbolIds'],
+          },
+        ],
+      },
+      {
+        name: 'Relationships',
+        children: ['showOutgoing', 'showIncoming'],
+      },
+      {
+        name: 'Structure',
+        children: ['groupMembers'],
+      },
+      symbolVisibilityTree,
+    ];
+
+
+    const optionLabels: Record<RegularOptionKey, string> & Record<string,
+    string> = {
+      ...symbolKindLabels,
+      showIcons: 'Icons',
+      showExportedIndicator: 'Exported (+)',
+      showPrivateIndicator: 'Private (-)',
+      showModifiers: 'Modifiers',
+      showTags: 'Tags',
+      showSymbolIds: 'Symbol IDs',
+      showFilePrefix: 'File Prefix (§)',
+      showFileIds: 'File IDs',
+      showOutgoing: 'Outgoing',
+      showIncoming: 'Incoming',
+      groupMembers: 'Group Members',
+    };
+
+
+    function getAllKeys(item: OptionItem): string[] {
+      if (typeof item === 'string') {
+        return [item];
+      }
+      return item.children.flatMap(getAllKeys);
+    }
+
+
+    const getAllGroupNames = (items: OptionItem[]): string[] => {
+      return items.flatMap(item => {
+        if (typeof item === 'object' && 'name' in item) {
+          return [item.name, ...getAllGroupNames(item.children)];
+        }
+        return [];
+      });
+    }
+
+
+    export const OutputOptions: React.FC<OutputOptionsProps> = ({ options,
+    setOptions, tokenImpact }) => {
+      const [expandedGroups, setExpandedGroups] = React.useState<Set<string>>(
+        () =>
+          new Set([
+            'Display Elements', 'Indicators', 'Relationships', 'Structure',
+            'TypeScript/JavaScript',
+            'React', 'Identifiers',
+          ])
+      );
+
+      const [searchTerm, setSearchTerm] = React.useState('');
+
+      const allOptionKeys = React.useMemo(() => optionTree.flatMap(getAllKeys), []);
+
+      const areAllSelected = React.useMemo(() => {
+        if (allOptionKeys.length === 0) return false;
+        return allOptionKeys.every(key => {
+          if (key.startsWith('filter:')) {
+            const kind = key.substring('filter:'.length);
+            if (options.displayFilters && Object.hasOwn(options.displayFilters, kind)) {
+              return options.displayFilters[kind] as boolean;
+            }
+            return true; // Default is selected
+          }
+          return options[key as RegularOptionKey] ?? true;
+        });
+      }, [allOptionKeys, options]);
+
+      const filteredOptionTree = React.useMemo(() => {
+        if (!searchTerm.trim()) return optionTree;
+        const lowerCaseSearchTerm = searchTerm.toLowerCase();
+
+        function filter(item: OptionItem): OptionItem | null {
+          if (typeof item === 'string') {
+            const label = optionLabels[item as keyof typeof optionLabels] || item;
+            return label.toLowerCase().includes(lowerCaseSearchTerm) ? item : null;
+          }
+
+          if (item.name.toLowerCase().includes(lowerCaseSearchTerm)) {
+            return item; // Keep group and all its children if group name matches
+          }
+
+          const filteredChildren = item.children.map(filter).filter((c): c is OptionItem => c !== null);
+          if (filteredChildren.length > 0) {
+            return { ...item, children: filteredChildren };
+          }
+          return null;
+        }
+        return optionTree.map(filter).filter((i): i is OptionItem => i !== null);
+      }, [searchTerm]);
+
+      const allFilteredGroupNames = React.useMemo(() => getAllGroupNames(filteredOptionTree), [filteredOptionTree]);
+      const areAllExpanded = React.useMemo(() => 
+        allFilteredGroupNames.length > 0 && allFilteredGroupNames.every(g => expandedGroups.has(g)), 
+        [allFilteredGroupNames, expandedGroups]);
+
+      React.useEffect(() => {
+        if (searchTerm.trim()) {
+          setExpandedGroups(new Set(allFilteredGroupNames));
+        }
+      }, [searchTerm, allFilteredGroupNames]);
+
+      const expandAll = React.useCallback(() => setExpandedGroups(new Set(allFilteredGroupNames)), [allFilteredGroupNames]);
+      const collapseAll = React.useCallback(() => {
+        setExpandedGroups(new Set());
+      }, []);
+      const selectAll = React.useCallback(() => {
+        setOptions(prev => {
+          const newOptions: FormattingOptions = { ...prev };
+          const newDisplayFilters = { ...(prev.displayFilters ?? {}) };
+
+          for (const key of allOptionKeys) {
+            if (key.startsWith('filter:')) {
+              newDisplayFilters[key.substring('filter:'.length)] = true;
+            } else {
+              newOptions[key as RegularOptionKey] = true;
+            }
+          }
+          newOptions.displayFilters = newDisplayFilters;
+          return newOptions;
+        });
+      }, [allOptionKeys]);
+      const deselectAll = React.useCallback(() => {
+        setOptions(prev => {
+          const newOptions: FormattingOptions = { ...prev };
+          const newDisplayFilters = { ...(prev.displayFilters ?? {}) };
+
+          for (const key of allOptionKeys) {
+            if (key.startsWith('filter:')) {
+              newDisplayFilters[key.substring('filter:'.length)] = false;
+            } else {
+              newOptions[key as RegularOptionKey] = false;
+            }
+          }
+          newOptions.displayFilters = newDisplayFilters;
+          return newOptions;
+        });
+      }, [allOptionKeys]);
+
+      const toggleGroup = (groupName: string) => {
+        setExpandedGroups(prev => {
+          const newSet = new Set(prev);
+          if (newSet.has(groupName)) {
+            newSet.delete(groupName);
+          } else {
+            newSet.add(groupName);
+          }
+          return newSet;
+        });
+      };
+
+      const handleChange = (optionKey: string) => (checked: boolean | 'indeterminate') => {
+        const isChecked = checked === true;
+        if (optionKey.startsWith('filter:')) {
+          const kind = optionKey.substring('filter:'.length);
+          setOptions(prev => ({
+            ...prev,
+            displayFilters: { ...(prev.displayFilters ?? {}), [kind]: isChecked },
+          }));
+        } else {
+          setOptions(prev => ({ ...prev, [optionKey]: isChecked }));
+        }
+      };
+
+      const handleGroupChange = (keys: ReadonlyArray<string>) => (checked: boolean | 'indeterminate') => {
+        const isChecked = checked === true;
+        setOptions(prev => {
+          const newOptions: FormattingOptions = { ...prev };
+          const newDisplayFilters = { ...(prev.displayFilters ?? {}) };
+
+          for (const key of keys) {
+            if (key.startsWith('filter:')) {
+              newDisplayFilters[key.substring('filter:'.length)] = isChecked;
+            } else {
+              newOptions[key as RegularOptionKey] = isChecked;
+            }
+          }
+          newOptions.displayFilters = newDisplayFilters;
+          return newOptions;
+        });
+      };
+
+      const renderItem = (item: OptionItem, level: number): React.ReactNode => {
+        if (typeof item === 'string') {
+          const key = item as string;
+          const isFilter = key.startsWith('filter:');
+          const filterKind = isFilter ? key.substring('filter:'.length) : null;
+          const labelKey = filterKind ?? key;
+
+          return (
+            <div key={key} style={{ paddingLeft: `${level * 1.5}rem` }} className="flex items-center space-x-1.5">
+              <Checkbox
+                id={key}
+                checked={isFilter
+                  ? (options.displayFilters && Object.hasOwn(options.displayFilters, filterKind!)
+                    ? options.displayFilters[filterKind!]
+                    : true)
+                  : (options[key as RegularOptionKey] ?? true)}
+                onCheckedChange={handleChange(key)}
+              />
+              <Label htmlFor={key} className="flex-1 cursor-pointer select-none text-sm text-muted-foreground font-normal">
+                <div className="flex justify-between items-center">
+                  <span>{optionLabels[labelKey as keyof typeof optionLabels] ?? labelKey}</span>
+                  {tokenImpact && (
+                    <span className="text-xs font-mono tabular-nums text-foreground/50">
+                      {(() => {
+                        let impact: number | undefined;
+                        if (isFilter) {
+                          if (tokenImpact.displayFilters && Object.hasOwn(tokenImpact.displayFilters, filterKind!)) {
+                            impact = tokenImpact.displayFilters[filterKind!];
+                          }
+                        } else {
+                          impact = tokenImpact.options?.[key as RegularOptionKey];
+                        }
+                        if (impact === undefined) return null;
+                        return `${impact > 0 ? '+' : ''}${impact}`;
+                      })()}
+                    </span>
+                  )}
+                </div>
+              </Label>
+            </div>
+          );
+        }
+
+        const { name, children } = item;
+        const isExpanded = expandedGroups.has(name);
+        const allKeys = getAllKeys(item);
+        const allChecked = allKeys.every(key => {
+          if (key.startsWith('filter:')) {
+            const kind = key.substring('filter:'.length);
+            return (options.displayFilters && Object.hasOwn(options.displayFilters, kind))
+              ? options.displayFilters[kind]
+              : true;
+          }
+          return options[key as RegularOptionKey] ?? true;
+        });
+        const groupTokenImpact = tokenImpact ? allKeys.reduce((sum, key) => {
+          let impact: number | undefined;
+          if (key.startsWith('filter:')) {
+            const kind = key.substring('filter:'.length);
+            if (tokenImpact.displayFilters && Object.hasOwn(tokenImpact.displayFilters, kind)) {
+              impact = tokenImpact.displayFilters[kind];
+            }
+          } else {
+            impact = tokenImpact.options?.[key as RegularOptionKey];
+          }
+          return sum + (impact ?? 0);
+        }, 0) : null;
+
+        const impactDisplay = tokenImpact && groupTokenImpact !== null ? (
+          <span className="text-xs font-mono tabular-nums text-foreground/50 ml-auto mr-2">
+            {(() => {
+              const impact = groupTokenImpact;
+              if (impact === undefined) return null;
+              return `${impact > 0 ? '+' : ''}${impact}`;
+            })()}
+          </span>
+        ) : null;
+
+        return (
+          <div key={name}>
+            <div
+              className="flex items-center space-x-1.5 py-1 rounded-md hover:bg-accent/50 cursor-pointer select-none -mx-2 px-2"
+              style={{ paddingLeft: `calc(${level * 1.5}rem + 0.5rem)` }}
+              onClick={() => toggleGroup(name)}
+            >
+              {isExpanded ? <ChevronDown className="h-4 w-4 flex-shrink-0" /> : <ChevronRight className="h-4 w-4 flex-shrink-0" />}
+              <Checkbox
+                id={`group-${name.replace(/\s+/g, '-')}`}
+                title={`Toggle all in ${name}`}
+                checked={allChecked}
+                onCheckedChange={handleGroupChange(allKeys)}
+                onClick={(e: React.MouseEvent) => e.stopPropagation()} // Prevent row click from firing
+              />
+              <Label
+                htmlFor={`group-${name.replace(/\s+/g, '-')}`} // The label itself is clickable
+                className="flex-1 font-semibold text-sm cursor-pointer select-none"
+              >
+                <div className="flex justify-between items-center">
+                  <span>{name}</span> {impactDisplay}</div>
+              </Label>
+            </div>
+            {isExpanded && (
+              <div className="pt-1.5 space-y-1.5">
+                {children.map(child => renderItem(child, level + 1))}
+              </div>
+            )}
+          </div>
+        );
+      };
+
+      return (
+        <div className="space-y-1">
+          <div className="flex gap-2 mb-3">
+            <div className="relative flex-grow">
+              <Input
+                placeholder="Search options..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="h-8 text-xs pr-8"
+              />
+              {searchTerm && (
+                <Button variant="ghost" size="icon" onClick={() => setSearchTerm('')} className="absolute right-0 top-0 h-8 w-8 text-muted-foreground hover:text-foreground">
+                  <X className="h-4 w-4" />
+                </Button>
+              )}
+            </div>
+            <div className="flex items-center">
+              <Button variant="ghost" size="icon" onClick={areAllSelected ? deselectAll : selectAll} title={areAllSelected ? "Deselect all" : "Select all"} className="h-8 w-8 text-muted-foreground hover:text-foreground">
+                {areAllSelected ? <ListX className="h-4 w-4" /> : <ListChecks className="h-4 w-4" />}
+              </Button>
+              <Button variant="ghost" size="icon" onClick={areAllExpanded ? collapseAll : expandAll} title={areAllExpanded ? "Collapse all" : "Expand all"} className="h-8 w-8 text-muted-foreground hover:text-foreground">
+                {areAllExpanded ? <ChevronsUp className="h-4 w-4" /> : <ChevronsDown className="h-4 w-4" />}
+              </Button>
+            </div>
+          </div>
+          {filteredOptionTree.map(item => renderItem(item, 0))}
+        </div>
+      );
+    };
+approved: true

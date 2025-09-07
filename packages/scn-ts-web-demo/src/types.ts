@@ -1,4 +1,6 @@
-import type { LogLevel } from 'scn-ts-core';
+import type { LogLevel, FormattingPreset as CoreFormattingPreset } from 'scn-ts-core';
+
+export type FormattingPreset = CoreFormattingPreset;
 
 export interface LogEntry {
   level: Exclude<LogLevel, 'silent'>;
@@ -12,6 +14,7 @@ export interface ProgressData {
 }
 
 export interface FormattingOptions {
+  preset?: FormattingPreset;
   showOutgoing?: boolean;
   showIncoming?: boolean;
   showIcons?: boolean;
@@ -24,4 +27,5 @@ export interface FormattingOptions {
   displayFilters?: Partial<Record<string, boolean>>;
   showFilePrefix?: boolean;
   showFileIds?: boolean;
+  showOnlyExports?: boolean;
 }

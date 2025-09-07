@@ -4,32 +4,10 @@ packages/
   scn-ts-web-demo/
     src/
       components/
-        ui/
-          accordion.tsx
-          button.tsx
-          card.tsx
-          checkbox.tsx
-          label.tsx
-          textarea.tsx
-        Legend.tsx
-        LogViewer.tsx
         OutputOptions.tsx
       hooks/
         useAnalysis.hook.ts
-        useClipboard.hook.ts
-        useResizableSidebar.hook.ts
-      lib/
-        utils.ts
-      services/
-        analysis.service.ts
-      stores/
-        app.store.ts
       App.tsx
-      constants.ts
-      default-files.ts
-      index.css
-      main.tsx
-      types.ts
       worker.ts
     index.html
     package.json
@@ -38,673 +16,14 @@ packages/
     tsconfig.json
     tsconfig.node.json
     vite.config.ts
+src/
+  main.ts
+  types.ts
 package.json
 tsconfig.json
 ```
 
 # Files
-
-## File: packages/scn-ts-web-demo/src/components/ui/button.tsx
-```typescript
-import * as React from "react"
-import { Slot } from "@radix-ui/react-slot"
-import { cva, type VariantProps } from "class-variance-authority"
-import { cn } from "../../lib/utils"
-
-const buttonVariants = cva(
-  "inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50",
-  {
-    variants: {
-      variant: {
-        default: "bg-primary text-primary-foreground hover:bg-primary/90",
-        destructive:
-          "bg-destructive text-destructive-foreground hover:bg-destructive/90",
-        outline:
-          "border border-input bg-background hover:bg-accent hover:text-accent-foreground",
-        secondary:
-          "bg-secondary text-secondary-foreground hover:bg-secondary/80",
-        ghost: "hover:bg-accent hover:text-accent-foreground",
-        link: "text-primary underline-offset-4 hover:underline",
-      },
-      size: {
-        default: "h-10 px-4 py-2",
-        sm: "h-9 rounded-md px-3",
-        lg: "h-11 rounded-md px-8",
-        icon: "h-10 w-10",
-      },
-    },
-    defaultVariants: {
-      variant: "default",
-      size: "default",
-    },
-  }
-)
-
-export interface ButtonProps
-  extends React.ButtonHTMLAttributes<HTMLButtonElement>,
-    VariantProps<typeof buttonVariants> {
-  asChild?: boolean
-}
-
-const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
-  ({ className, variant, size, asChild = false, ...props }, ref) => {
-    const Comp = asChild ? Slot : "button"
-    return (
-      <Comp
-        className={cn(buttonVariants({ variant, size, className }))}
-        ref={ref}
-        {...props}
-      />
-    )
-  }
-)
-Button.displayName = "Button"
-
-export { Button, buttonVariants }
-```
-
-## File: packages/scn-ts-web-demo/src/components/ui/card.tsx
-```typescript
-import * as React from "react"
-import { cn } from "../../lib/utils"
-
-const Card = React.forwardRef<
-  HTMLDivElement,
-  React.HTMLAttributes<HTMLDivElement>
->(({ className, ...props }, ref) => (
-  <div
-    ref={ref}
-    className={cn(
-      "rounded-lg border bg-card text-card-foreground shadow-sm",
-      className
-    )}
-    {...props}
-  />
-))
-Card.displayName = "Card"
-
-const CardHeader = React.forwardRef<
-  HTMLDivElement,
-  React.HTMLAttributes<HTMLDivElement>
->(({ className, ...props }, ref) => (
-  <div
-    ref={ref}
-    className={cn("flex flex-col space-y-1.5 p-6", className)}
-    {...props}
-  />
-))
-CardHeader.displayName = "CardHeader"
-
-const CardTitle = React.forwardRef<
-  HTMLHeadingElement,
-  React.HTMLAttributes<HTMLHeadingElement>
->(({ className, ...props }, ref) => (
-  <h3
-    ref={ref}
-    className={cn("text-lg font-semibold leading-none tracking-tight", className)}
-    {...props}
-  />
-))
-CardTitle.displayName = "CardTitle"
-
-
-const CardContent = React.forwardRef<
-  HTMLDivElement,
-  React.HTMLAttributes<HTMLDivElement>
->(({ className, ...props }, ref) => (
-  <div ref={ref} className={cn("p-6 pt-0", className)} {...props} />
-))
-CardContent.displayName = "CardContent"
-
-
-export { Card, CardHeader, CardTitle, CardContent }
-```
-
-## File: packages/scn-ts-web-demo/src/components/ui/checkbox.tsx
-```typescript
-import * as React from "react"
-import * as CheckboxPrimitive from "@radix-ui/react-checkbox"
-import { Check } from "lucide-react"
-
-import { cn } from "../../lib/utils"
-
-const Checkbox = React.forwardRef<
-  React.ElementRef<typeof CheckboxPrimitive.Root>,
-  React.ComponentPropsWithoutRef<typeof CheckboxPrimitive.Root>
->(({ className, ...props }, ref) => (
-  <CheckboxPrimitive.Root
-    ref={ref}
-    className={cn(
-      "peer h-4 w-4 shrink-0 rounded-sm border border-primary ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 data-[state=checked]:bg-primary data-[state=checked]:text-primary-foreground",
-      className
-    )}
-    {...props}
-  >
-    <CheckboxPrimitive.Indicator
-      className={cn("flex items-center justify-center text-current")}
-    >
-      <Check className="h-4 w-4" />
-    </CheckboxPrimitive.Indicator>
-  </CheckboxPrimitive.Root>
-))
-Checkbox.displayName = CheckboxPrimitive.Root.displayName
-
-export { Checkbox }
-```
-
-## File: packages/scn-ts-web-demo/src/components/ui/label.tsx
-```typescript
-import * as React from "react"
-import * as LabelPrimitive from "@radix-ui/react-label"
-import { cva, type VariantProps } from "class-variance-authority"
-
-import { cn } from "../../lib/utils"
-
-const labelVariants = cva(
-  "text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
-)
-
-const Label = React.forwardRef<
-  React.ElementRef<typeof LabelPrimitive.Root>,
-  React.ComponentPropsWithoutRef<typeof LabelPrimitive.Root> &
-    VariantProps<typeof labelVariants>
->(({ className, ...props }, ref) => (
-  <LabelPrimitive.Root
-    ref={ref}
-    className={cn(labelVariants(), className)}
-    {...props}
-  />
-))
-Label.displayName = LabelPrimitive.Root.displayName
-
-export { Label }
-```
-
-## File: packages/scn-ts-web-demo/src/components/ui/textarea.tsx
-```typescript
-import * as React from "react"
-import { cn } from "../../lib/utils"
-
-export interface TextareaProps
-  extends React.TextareaHTMLAttributes<HTMLTextAreaElement> {}
-
-const Textarea = React.forwardRef<HTMLTextAreaElement, TextareaProps>(
-  ({ className, ...props }, ref) => {
-    return (
-      <textarea
-        className={cn(
-          "flex min-h-[80px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50",
-          className
-        )}
-        ref={ref}
-        {...props}
-      />
-    )
-  }
-)
-Textarea.displayName = "Textarea"
-
-export { Textarea }
-```
-
-## File: packages/scn-ts-web-demo/src/components/Legend.tsx
-```typescript
-import * as React from 'react';
-import { Button } from './ui/button';
-import { HelpCircle, X } from 'lucide-react';
-import { ICONS, SCN_SYMBOLS } from 'scn-ts-core';
-import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
-import {
-  Accordion,
-  AccordionContent,
-  AccordionItem,
-  AccordionTrigger,
-} from "./ui/accordion"
-
-const symbolIconGroups: Record<string, (keyof typeof ICONS)[]> = {
-  'Class or Component': ['class', 'react_component'],
-  'Interface or Trait': ['interface', 'rust_trait'],
-  'Function or Method': ['function', 'method', 'styled_component'],
-  'Variable or Property': ['variable', 'property'],
-  Enum: ['enum'],
-  'Type Alias': ['type_alias'],
-  'JSX Element': ['jsx_element'],
-  'CSS Selector': ['css_class'],
-};
-
-const symbolIcons = Object.entries(symbolIconGroups).flatMap(([description, iconKeys]) =>
-  iconKeys.map(key => ({ symbol: ICONS[key], description }))
-);
-
-const legendSections = [
-  {
-    title: 'Prefixes',
-    items: [
-      { symbol: SCN_SYMBOLS.FILE_PREFIX, description: 'File path' },
-      { symbol: SCN_SYMBOLS.EXPORTED_PREFIX, description: 'Exported symbol' },
-      { symbol: SCN_SYMBOLS.PRIVATE_PREFIX, description: 'Private/unexported symbol' },
-    ],
-  },
-  {
-    title: 'Symbol Icons',
-    items: Array.from(new Map(symbolIcons.map(item => [item.symbol, item])).values()),
-  },
-  {
-    title: 'Relationships',
-    items: [
-      { symbol: SCN_SYMBOLS.OUTGOING_ARROW, description: 'Outgoing dependency' },
-      { symbol: SCN_SYMBOLS.INCOMING_ARROW, description: 'Incoming dependency' },
-    ],
-  },
-  {
-    title: 'Modifiers & Tags',
-    items: [
-      { symbol: SCN_SYMBOLS.ASYNC, description: 'Async' },
-      { symbol: SCN_SYMBOLS.THROWS, description: 'Throws error' },
-      { symbol: SCN_SYMBOLS.PURE, description: 'Pure (no side-effects)' },
-      { symbol: SCN_SYMBOLS.TAG_STYLED, description: 'Styled component' },
-      { symbol: SCN_SYMBOLS.TAG_DYNAMIC, description: 'Dynamic import' },
-      { symbol: SCN_SYMBOLS.TAG_GENERATED, description: 'Generated file' },
-    ],
-  },
-];
-
-const LegendItem: React.FC<{ symbol: string; description: string }> = ({ symbol, description }) => (
-  <div className="grid grid-cols-[3rem_1fr] items-center gap-x-3 text-sm">
-    <code className="font-mono text-base font-bold text-foreground/90 justify-self-center">{symbol}</code>
-    <span className="text-muted-foreground">{description}</span>
-  </div>
-);
-
-export const Legend: React.FC = () => {
-  const [isOpen, setIsOpen] = React.useState(false);
-
-  if (!isOpen) {
-    return (
-      <div className="sticky top-4 right-4 z-30 float-right">
-        <Button
-          variant="secondary"
-          size="icon"
-          onClick={() => setIsOpen(true)}
-          title="Show Legend"
-          className="rounded-full shadow-lg"
-        >
-          <HelpCircle className="h-5 w-5" />
-        </Button>
-      </div>
-    );
-  }
-
-  return (
-    <div className="sticky top-4 right-4 z-30 float-right">
-      <Card className="w-80 max-h-[80vh] flex flex-col shadow-2xl bg-background/90 backdrop-blur-sm">
-        <CardHeader className="flex flex-row items-center justify-between py-3 px-4 border-b">
-          <CardTitle className="text-base">Legend</CardTitle>
-          <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setIsOpen(false)}>
-            <X className="h-4 w-4" />
-          </Button>
-        </CardHeader>
-        <CardContent className="p-0 overflow-y-auto">
-          <Accordion type="multiple" defaultValue={legendSections.map(s => s.title)} className="w-full">
-            {legendSections.map(({ title, items }) => (
-              <AccordionItem key={title} value={title}>
-                <AccordionTrigger className="px-4 py-2 text-sm hover:no-underline">{title}</AccordionTrigger>
-                <AccordionContent className="px-4 pb-3">
-                  <div className="space-y-1.5">
-                    {items.map(({ symbol, description }) =>
-                      symbol && <LegendItem key={`${symbol}-${description}`} symbol={symbol} description={description} />
-                    )}
-                  </div>
-                </AccordionContent>
-              </AccordionItem>
-            ))}
-          </Accordion>
-        </CardContent>
-      </Card>
-    </div>
-  );
-};
-```
-
-## File: packages/scn-ts-web-demo/src/components/LogViewer.tsx
-```typescript
-import React, { useRef, useState, useCallback } from 'react';
-import { cn } from '../lib/utils';
-import type { LogEntry } from '../types';
-import { levelColorMap } from '../constants';
-import { Button } from './ui/button';
-import { Copy, Check } from 'lucide-react';
-import type { LogLevel } from 'scn-ts-core';
-
-const LOG_LEVELS: Exclude<LogLevel, 'silent'>[] = ['error', 'warn', 'info', 'debug'];
-
-const LogViewer: React.FC<{ logs: readonly LogEntry[] }> = ({ logs }) => {
-  const scrollContainerRef = useRef<HTMLDivElement>(null);
-  const [isCopied, setIsCopied] = useState(false);
-  const [visibleLevels, setVisibleLevels] = useState<Set<Exclude<LogLevel, 'silent'>>>(
-    new Set(LOG_LEVELS),
-  );
-
-  const handleCopy = useCallback(() => {
-    const logsToCopy = logs.filter(log => visibleLevels.has(log.level));
-    if (logsToCopy.length > 0) {
-      const logText = logsToCopy
-        .map(
-          log =>
-            `${new Date(log.timestamp).toLocaleTimeString()} [${log.level.toUpperCase()}] ${log.message}`,
-        )
-        .join('\n');
-      navigator.clipboard.writeText(logText).then(() => {
-        setIsCopied(true);
-        setTimeout(() => setIsCopied(false), 2000);
-      });
-    }
-  }, [logs, visibleLevels]);
-
-  const toggleLevel = (level: Exclude<LogLevel, 'silent'>) => {
-    setVisibleLevels(prev => {
-      const newSet = new Set(prev);
-      if (newSet.has(level)) {
-        newSet.delete(level);
-      } else {
-        newSet.add(level);
-      }
-      return newSet;
-    });
-  };
-
-  const filteredLogs = logs.filter(log => visibleLevels.has(log.level));
-
-  return (
-    <div className="flex flex-col">
-      <div className="flex items-center space-x-2 pb-2 border-b mb-2 flex-shrink-0">
-        <span className="text-xs font-medium text-muted-foreground">Show levels:</span>
-        {LOG_LEVELS.map(level => (
-          <Button
-            key={level}
-            variant={visibleLevels.has(level) ? 'secondary' : 'ghost'}
-            size="sm"
-            className={cn(
-              'h-6 px-2 text-xs capitalize',
-              !visibleLevels.has(level) && 'opacity-50',
-              levelColorMap[level],
-            )}
-            onClick={() => toggleLevel(level)}
-          >
-            {level}
-          </Button>
-        ))}
-      </div>
-      <div className="relative">
-        <div ref={scrollContainerRef} className="font-mono text-xs pr-10">
-          {filteredLogs.length === 0 && (
-            <p className="text-muted-foreground">
-              {logs.length === 0 ? 'No logs yet. Click "Analyze" to start.' : 'No logs match the current filter.'}
-            </p>
-          )}
-          {filteredLogs.map((log, index) => (
-            <div key={index} className="flex items-start">
-              <span className="text-muted-foreground/80 mr-4 flex-shrink-0">
-                {new Date(log.timestamp).toLocaleTimeString()}
-              </span>
-              <span className={cn('font-bold w-14 flex-shrink-0', levelColorMap[log.level])}>
-                [{log.level.toUpperCase()}]
-              </span>
-              <span className="whitespace-pre-wrap break-all text-foreground">{log.message}</span>
-            </div>
-          ))}
-        </div>
-        {logs.length > 0 && (
-          <Button variant="ghost" size="icon" className="absolute top-0 right-0 h-8 w-8" onClick={handleCopy} title="Copy logs to clipboard">
-            {isCopied ? <Check className="h-4 w-4 text-green-500" /> : <Copy className="h-4 w-4" />}
-          </Button>
-        )}
-      </div>
-    </div>
-  );
-};
-
-export default LogViewer;
-```
-
-## File: packages/scn-ts-web-demo/src/hooks/useClipboard.hook.ts
-```typescript
-import { useState, useCallback } from 'react';
-
-export function useClipboard(timeout = 2000) {
-  const [isCopied, setIsCopied] = useState(false);
-
-  const handleCopy = useCallback((text: string) => {
-    if (text) {
-      navigator.clipboard.writeText(text).then(() => {
-        setIsCopied(true);
-        setTimeout(() => setIsCopied(false), timeout);
-      });
-    }
-  }, [timeout]);
-
-  return { isCopied, handleCopy };
-}
-```
-
-## File: packages/scn-ts-web-demo/src/hooks/useResizableSidebar.hook.ts
-```typescript
-import { useState, useCallback, useRef } from 'react';
-
-export function useResizableSidebar(initialWidth: number, minWidth = 320, maxWidthPercent = 0.8) {
-  const [sidebarWidth, setSidebarWidth] = useState(initialWidth);
-  const isResizing = useRef(false);
-
-  const handleMouseDown = useCallback((e: React.MouseEvent) => {
-    e.preventDefault();
-    isResizing.current = true;
-    document.body.style.cursor = 'col-resize';
-    document.body.style.userSelect = 'none';
-
-    const handleMouseMove = (event: MouseEvent) => {
-      if (isResizing.current) {
-        const newWidth = event.clientX;
-        const maxWidth = window.innerWidth * maxWidthPercent;
-        setSidebarWidth(Math.min(maxWidth, Math.max(minWidth, newWidth)));
-      }
-    };
-
-    const handleMouseUp = () => {
-      isResizing.current = false;
-      document.body.style.cursor = '';
-      document.body.style.userSelect = '';
-      window.removeEventListener('mousemove', handleMouseMove);
-      window.removeEventListener('mouseup', handleMouseUp);
-    };
-
-    window.addEventListener('mousemove', handleMouseMove);
-    window.addEventListener('mouseup', handleMouseUp);
-  }, [minWidth, maxWidthPercent]);
-
-  return { sidebarWidth, handleMouseDown };
-}
-```
-
-## File: packages/scn-ts-web-demo/src/lib/utils.ts
-```typescript
-import { type ClassValue, clsx } from "clsx"
-import { twMerge } from "tailwind-merge"
-
-export function cn(...inputs: ClassValue[]) {
-  return twMerge(clsx(inputs))
-}
-```
-
-## File: packages/scn-ts-web-demo/src/stores/app.store.ts
-```typescript
-import { useState } from 'react';
-import { defaultFilesJSON } from '../default-files';
-import type { FormattingOptions } from '../types';
-
-export function useAppStore() {
-  const [filesInput, setFilesInput] = useState(defaultFilesJSON);
-  const [scnOutput, setScnOutput] = useState('');
-  const [formattingOptions, setFormattingOptions] = useState<FormattingOptions>({
-    showOutgoing: true,
-    showIncoming: true,
-    showIcons: true,
-    showExportedIndicator: true,
-    showPrivateIndicator: true,
-    showModifiers: true,
-    showTags: true,
-    showSymbolIds: true,
-    groupMembers: true,
-    displayFilters: {},
-    showFilePrefix: true,
-    showFileIds: true,
-  });
-
-  return {
-    filesInput,
-    setFilesInput,
-    scnOutput,
-    setScnOutput,
-    formattingOptions,
-    setFormattingOptions,
-  };
-}
-```
-
-## File: packages/scn-ts-web-demo/src/constants.ts
-```typescript
-import type { LogLevel } from 'scn-ts-core';
-
-export const levelColorMap: Record<Exclude<LogLevel, 'silent'>, string> = {
-  error: 'text-red-500',
-  warn: 'text-yellow-500',
-  info: 'text-blue-400',
-  debug: 'text-gray-500',
-};
-```
-
-## File: packages/scn-ts-web-demo/src/index.css
-```css
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
-
-@layer base {
-  :root {
-    --background: 0 0% 100%;
-    --foreground: 222.2 84% 4.9%;
-    --card: 0 0% 100%;
-    --card-foreground: 222.2 84% 4.9%;
-    --popover: 0 0% 100%;
-    --popover-foreground: 222.2 84% 4.9%;
-    --primary: 222.2 47.4% 11.2%;
-    --primary-foreground: 210 40% 98%;
-    --secondary: 210 40% 96.1%;
-    --secondary-foreground: 215.4 16.3% 46.9%;
-    --muted: 210 40% 96.1%;
-    --muted-foreground: 215.4 16.3% 46.9%;
-    --accent: 210 40% 96.1%;
-    --accent-foreground: 222.2 47.4% 11.2%;
-    --destructive: 0 84.2% 60.2%;
-    --destructive-foreground: 210 40% 98%;
-    --border: 214.3 31.8% 91.4%;
-    --input: 214.3 31.8% 91.4%;
-    --ring: 222.2 84% 4.9%;
-    --radius: 0.5rem;
-  }
-
-  .dark {
-    --background: 222.2 84% 4.9%;
-    --foreground: 210 40% 98%;
-    --card: 222.2 84% 4.9%;
-    --card-foreground: 210 40% 98%;
-    --popover: 222.2 84% 4.9%;
-    --popover-foreground: 210 40% 98%;
-    --primary: 210 40% 98%;
-    --primary-foreground: 222.2 47.4% 11.2%;
-    --secondary: 217.2 32.6% 17.5%;
-    --secondary-foreground: 210 40% 98%;
-    --muted: 217.2 32.6% 17.5%;
-    --muted-foreground: 215 20.2% 65.1%;
-    --accent: 217.2 32.6% 17.5%;
-    --accent-foreground: 210 40% 98%;
-    --destructive: 0 62.8% 30.6%;
-    --destructive-foreground: 210 40% 98%;
-    --border: 217.2 32.6% 17.5%;
-    --input: 217.2 32.6% 17.5%;
-    --ring: 212.7 26.8% 83.9%;
-  }
-}
-
-@layer base {
-  * {
-    @apply border-border;
-  }
-  body {
-    @apply bg-background text-foreground;
-  }
-}
-
-/* For custom scrollbars */
-::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
-}
-::-webkit-scrollbar-track {
-  background: transparent;
-}
-::-webkit-scrollbar-thumb {
-  background: hsl(var(--border));
-  border-radius: 4px;
-}
-::-webkit-scrollbar-thumb:hover {
-  background: hsl(var(--accent-foreground));
-}
-```
-
-## File: packages/scn-ts-web-demo/src/main.tsx
-```typescript
-import React from 'react'
-import ReactDOM from 'react-dom/client'
-import App from './App'
-import './index.css'
-
-ReactDOM.createRoot(document.getElementById('root')!).render(
-  <React.StrictMode>
-    <App />
-  </React.StrictMode>,
-)
-```
-
-## File: packages/scn-ts-web-demo/src/types.ts
-```typescript
-import type { LogLevel } from 'scn-ts-core';
-
-export interface LogEntry {
-  level: Exclude<LogLevel, 'silent'>;
-  message: string;
-  timestamp: number;
-}
-
-export interface ProgressData {
-  percentage: number;
-  message: string;
-}
-
-export interface FormattingOptions {
-  showOutgoing?: boolean;
-  showIncoming?: boolean;
-  showIcons?: boolean;
-  showExportedIndicator?: boolean;
-  showPrivateIndicator?: boolean;
-  showModifiers?: boolean;
-  showTags?: boolean;
-  showSymbolIds?: boolean;
-  groupMembers?: boolean;
-  displayFilters?: Partial<Record<string, boolean>>;
-  showFilePrefix?: boolean;
-  showFileIds?: boolean;
-}
-```
 
 ## File: packages/scn-ts-web-demo/index.html
 ```html
@@ -848,359 +167,6 @@ export default {
 }
 ```
 
-## File: packages/scn-ts-web-demo/src/components/ui/accordion.tsx
-```typescript
-import * as React from "react"
-import * as AccordionPrimitive from "@radix-ui/react-accordion"
-import { ChevronDown } from "lucide-react"
-
-import { cn } from "../../lib/utils"
-
-const Accordion = AccordionPrimitive.Root
-
-const AccordionItem = React.forwardRef<
-  React.ElementRef<typeof AccordionPrimitive.Item>,
-  React.ComponentPropsWithoutRef<typeof AccordionPrimitive.Item>
->(({ className, ...props }, ref) => (
-  <AccordionPrimitive.Item
-    ref={ref}
-    className={cn(className)}
-    {...props}
-  />
-))
-AccordionItem.displayName = "AccordionItem"
-
-const AccordionHeader = React.forwardRef<
-  React.ElementRef<typeof AccordionPrimitive.Header>,
-  React.ComponentPropsWithoutRef<typeof AccordionPrimitive.Header>
->(({ className, ...props }, ref) => <AccordionPrimitive.Header ref={ref} className={cn("flex sticky top-0 z-10 border-b bg-background", className)} {...props} />);
-AccordionHeader.displayName = AccordionPrimitive.Header.displayName;
-
-const AccordionTrigger = React.forwardRef<
-  React.ElementRef<typeof AccordionPrimitive.Trigger>,
-  React.ComponentPropsWithoutRef<typeof AccordionPrimitive.Trigger>
->(({ className, children, ...props }, ref) => (
-  <AccordionPrimitive.Trigger ref={ref} className={cn("flex flex-1 items-center justify-between py-4 font-medium transition-all hover:underline [&[data-state=open]>svg]:rotate-180", className)} {...props}>
-    {children}
-    <ChevronDown className="h-4 w-4 shrink-0 transition-transform duration-200" />
-  </AccordionPrimitive.Trigger>
-))
-AccordionTrigger.displayName = AccordionPrimitive.Trigger.displayName
-
-const AccordionContent = React.forwardRef<
-  React.ElementRef<typeof AccordionPrimitive.Content>,
-  React.ComponentPropsWithoutRef<typeof AccordionPrimitive.Content>
->(({ className, children, ...props }, ref) => (
-  <AccordionPrimitive.Content
-    ref={ref}
-    className="overflow-hidden text-sm transition-all data-[state=closed]:animate-accordion-up data-[state=open]:animate-accordion-down"
-    {...props}
-  >
-    <div className={cn("pb-4 pt-0", className)}>{children}</div>
-  </AccordionPrimitive.Content>
-))
-
-AccordionContent.displayName = AccordionPrimitive.Content.displayName
-
-export { Accordion, AccordionItem, AccordionHeader, AccordionTrigger, AccordionContent }
-```
-
-## File: packages/scn-ts-web-demo/src/default-files.ts
-```typescript
-import type { FileContent } from "scn-ts-core";
-
-const files: FileContent[] = [
-  {
-    path: "src/main.tsx",
-    content: `import React from 'react';
-import { Page } from './components/layout/Page';
-import { UserProfile } from './components/UserProfile';
-import { getUser } from './api/client';
-import { Log } from './services/logger';
-import { createTokenProvider } from './auth/token';
-import './styles/main.css';
-
-async function main() {
-    Log('App starting...');
-
-    const tokenProvider = createTokenProvider();
-    console.log('Auth token:', tokenProvider.getToken());
-
-    const user = await getUser('1');
-    
-    const App = () => (
-        <Page>
-            <UserProfile initialUser={user} />
-        </Page>
-    );
-    
-    console.log('App ready to be rendered.');
-    // The existence of <App /> is enough for analysis.
-    // In a real app: ReactDOM.render(<App />, document.getElementById('root'));
-    Log('App finished setup.');
-}
-
-main();
-`
-  },
-  {
-    path: "src/api/client.ts",
-    content: `import type { User } from '../types';
-import { capitalize } from '../utils/string';
-
-const API_BASE = '/api/v1';
-
-export async function getUser(id: string): Promise<User> {
-    console.log(\`Fetching user \${id} from \${API_BASE}\`);
-    await new Promise(res => setTimeout(res, 100));
-    return {
-        id,
-        name: capitalize('john doe'),
-        email: 'john.doe@example.com',
-    };
-}
-
-export const updateUser = async (user: Partial<User> & { id: string }): Promise<User> => {
-    console.log(\`Updating user \${user.id}\`);
-    await new Promise(res => setTimeout(res, 100));
-    const fullUser = await getUser(user.id);
-    return { ...fullUser, ...user };
-};
-`
-  },
-  {
-    path: "src/components/Button.tsx",
-    content: `import React from 'react';
-import './../styles/components/button.css';
-
-type ButtonVariant = 'primary' | 'secondary';
-
-export interface ButtonProps {
-    text: string;
-    variant?: ButtonVariant;
-    onClick?: () => void;
-}
-
-export const Button: React.FC<ButtonProps> = ({ text, variant = 'primary', onClick }) => {
-    return (
-        <button className={\`btn btn-\${variant}\`} onClick={onClick}>
-            {text}
-        </button>
-    );
-};
-`
-  },
-  {
-    path: "src/components/UserProfile.tsx",
-    content: `import React from 'react';
-import type { User } from '../types';
-import { useUser } from '../hooks/useUser';
-
-// Fake styled-component to test parser. In a real app this would be \`import styled from 'styled-components';\`
-const styled = {
-  div: (template: TemplateStringsArray) => (props: any) => React.createElement('div', props)
-};
-
-const UserCard = styled.div\`
-  border: 1px solid #ccc;
-  padding: 1rem;
-  border-radius: 8px;
-\`;
-
-interface UserProfileProps {
-    initialUser: User;
-}
-
-export function UserProfile({ initialUser }: UserProfileProps): React.ReactElement {
-    const { user, updateUser } = useUser(initialUser.id, initialUser);
-
-    if (!user) {
-        return <div>Loading...</div>;
-    }
-
-    return (
-        <UserCard>
-            <h2>{user.name}</h2>
-            <p>{user.email}</p>
-            <button onClick={() => updateUser({ name: 'Jane Doe' })}>
-                Change Name
-            </button>
-        </UserCard>
-    );
-}
-`
-  },
-  {
-    path: "src/components/layout/Page.tsx",
-    content: `import React from 'react';
-import { Button } from '../Button';
-import type { Theme } from '../../types';
-
-interface PageProps {
-    children: React.ReactNode;
-}
-
-const theme: Theme = 'light';
-
-export const Page = ({ children }: PageProps): React.ReactElement => {
-    return (
-        <div className={\`page-container theme-\${theme}\`}>
-            <header>
-                <h1>My App</h1>
-                <Button text="Logout" />
-            </header>
-            <main>
-                {children}
-            </main>
-        </div>
-    );
-};
-`
-  },
-  {
-    path: "src/hooks/useUser.ts",
-    content: `import { getUser, updateUser as apiUpdateUser } from '../api/client';
-import type { User } from '../types';
-
-// This is a fake hook for dependency analysis purposes.
-export function useUser(userId: string, initialUser?: User) {
-    let user: User | null = initialUser || null;
-
-    const fetchUser = async () => {
-        user = await getUser(userId);
-    };
-
-    if (!user) {
-        fetchUser();
-    }
-
-    const updateUser = async (data: Partial<User>) => {
-        if (!user) return;
-        const updatedUser = await apiUpdateUser({ ...data, id: userId });
-        user = updatedUser;
-    };
-
-    return { user, updateUser };
-}
-`
-  },
-  {
-    path: "src/styles/main.css",
-    content: `@import url('./components/button.css');
-
-:root {
-    --primary-color: #007bff;
-}
-
-body {
-    font-family: sans-serif;
-    background-color: #f0f0f0;
-}
-
-.page-container {
-    max-width: 960px;
-    margin: 0 auto;
-}
-`
-  },
-  {
-    path: "src/styles/components/button.css",
-    content: `.btn {
-    padding: 0.5rem 1rem;
-    border: none;
-    border-radius: 4px;
-    cursor: pointer;
-}
-
-.btn-primary {
-    background-color: var(--primary-color);
-    color: white;
-}
-
-.btn-secondary {
-    background-color: gray;
-    color: white;
-}
-`
-  },
-  {
-    path: "src/types/index.ts",
-    content: `export interface User {
-    id: string;
-    name: string;
-    email: string;
-}
-
-export type Theme = 'light' | 'dark';
-`
-  },
-  {
-    path: "src/utils/string.ts",
-    content: `/**
- * Capitalizes the first letter of a string.
- */
-export function capitalize(str: string): string {
-    if (!str) return '';
-    return str.charAt(0).toUpperCase() + str.slice(1);
-}
-`
-  },
-  {
-    path: "src/auth/token.ts",
-    content: `import { generate_secret } from '../services/auth'; // fake import from .rs
-
-export function createTokenProvider() {
-    const secret = generate_secret();
-    return {
-        getToken(): string {
-            return \`fake-token-with-\${secret}\`;
-        }
-    };
-}
-`
-  },
-  {
-    path: "src/services/logger.go",
-    content: `package services
-
-import "fmt"
-
-// Log prints a message to the console.
-func Log(message string) {
-	fmt.Println("[Go Logger]", message)
-}
-`
-  },
-  {
-    path: "src/services/auth.rs",
-    content: `// A simple auth service mock
-pub struct AuthService {
-    secret_key: String,
-}
-
-impl AuthService {
-    pub fn new(secret: &str) -> Self {
-        AuthService {
-            secret_key: secret.to_string(),
-        }
-    }
-
-    pub fn verify_token(&self, token: &str) -> bool {
-        // In a real app, you'd have complex logic here.
-        token.len() > 10 && self.secret_key != ""
-    }
-}
-
-pub fn generate_secret() -> String {
-    "super_secret_key_from_rust".to_string()
-}
-`
-  },
-];
-
-export const defaultFilesJSON = JSON.stringify(files, null, 2);
-```
-
 ## File: packages/scn-ts-web-demo/package.json
 ```json
 {
@@ -1243,62 +209,6 @@ export const defaultFilesJSON = JSON.stringify(files, null, 2);
     "vite-plugin-top-level-await": "^1.4.1",
     "vite-plugin-wasm": "^3.3.0"
   }
-}
-```
-
-## File: packages/scn-ts-web-demo/src/services/analysis.service.ts
-```typescript
-import * as Comlink from 'comlink';
-import type { WorkerApi } from '../worker';
-import type { LogEntry, ProgressData } from '../types';
-import type { LogLevel, SourceFile, FormattingOptions, FormattingOptionsTokenImpact } from 'scn-ts-core';
-
-export type AnalysisServiceAPI = {
-  init: () => Promise<void>;
-  analyze: (
-    filesInput: string,
-    logLevel: LogLevel,
-    formattingOptions: FormattingOptions,
-    onProgress: (progress: ProgressData) => void,
-    onLog: (log: LogEntry) => void,
-  ) => Promise<{ result: SourceFile[]; analysisTime: number, tokenImpact: FormattingOptionsTokenImpact }>;
-  cancel: () => Promise<void>;
-  cleanup: () => void;
-};
-
-export function createAnalysisService(): AnalysisServiceAPI {
-  const worker = new Worker(new URL('../worker.ts', import.meta.url), { type: 'module' });
-  const workerApi = Comlink.wrap<WorkerApi>(worker);
-
-  const init = async (): Promise<void> => {
-    return workerApi.init();
-  };
-
-  const analyze = async (
-    filesInput: string,
-    logLevel: LogLevel,
-    formattingOptions: FormattingOptions,
-    onProgress: (progress: ProgressData) => void,
-    onLog: (log: LogEntry) => void,
-  ): Promise<{ result: SourceFile[]; analysisTime: number, tokenImpact: FormattingOptionsTokenImpact }> => {
-    return workerApi.analyze({ filesInput, logLevel, formattingOptions }, Comlink.proxy(onProgress), Comlink.proxy(onLog));
-  };
-
-  const cancel = async (): Promise<void> => {
-    return workerApi.cancel();
-  };
-
-  const cleanup = (): void => {
-    workerApi[Comlink.releaseProxy]();
-    worker.terminate();
-  };
-
-  return {
-    init,
-    analyze,
-    cancel,
-    cleanup,
-  };
 }
 ```
 
@@ -2149,7 +1059,10 @@ function App() {
           <Legend />
           <pre
             className="whitespace-pre-wrap"
-            style={{ fontSize: `${baseFontSizeRem * zoomLevel}rem` }}
+            style={{
+              fontSize: `${baseFontSizeRem * zoomLevel}rem`,
+              lineHeight: `${zoomLevel}rem`,
+            }}
           >
             {scnOutput || (isLoading ? "Generating..." : "Output will appear here.")}
           </pre>
@@ -2195,5 +1108,404 @@ export default App;
   "peerDependencies": {
     "typescript": "^5"
   }
+}
+```
+
+## File: src/main.ts
+```typescript
+import { getLanguageForFile } from './languages';
+import { initializeParser as init, parse } from './parser';
+import type { ParserInitOptions, SourceFile, InputFile, ScnTsConfig, AnalyzeProjectOptions, FormattingOptions, FormattingOptionsTokenImpact, SymbolKind } from './types';
+import { analyze } from './analyzer';
+import { formatScn } from './formatter';
+import path from './utils/path';
+import { getPathResolver } from './utils/tsconfig';
+import { resolveGraph } from './graph-resolver';
+import { logger } from './logger';
+import { initializeTokenizer as initTokenizer, countTokens as countTokensInternal } from './tokenizer';
+
+/**
+ * Public API to initialize the parser. Must be called before any other APIs.
+ */
+export const initializeParser = (options: ParserInitOptions): Promise<void> => init(options);
+
+/**
+ * Initializes the tokenizer. Call this for consistency, although `countTokens` will auto-initialize on first use.
+ * It's a synchronous and lightweight operation.
+ */
+export const initializeTokenizer = (): boolean => initTokenizer();
+
+// Types for web demo
+export type { ParserInitOptions, SourceFile, LogLevel, InputFile, TsConfig, ScnTsConfig, AnalyzeProjectOptions, LogHandler, FormattingOptions, FormattingOptionsTokenImpact, CodeSymbol, SymbolKind } from './types';
+export type FileContent = InputFile;
+
+// Exports for web demo. The constants are exported from index.ts directly.
+export { logger };
+
+/**
+ * Counts tokens in a string using the cl100k_base model.
+ */
+export const countTokens = (text: string): number => countTokensInternal(text);
+
+/**
+ * Generate SCN from analyzed source files
+ */
+export const generateScn = (analyzedFiles: SourceFile[], options?: FormattingOptions): string => {
+    return formatScn(analyzedFiles, options);
+};
+
+/**
+ * Calculates the token impact of toggling each formatting option.
+ * This can be slow as it re-generates the SCN for each option.
+ * @param analyzedFiles The result from `analyzeProject`.
+ * @param baseOptions The formatting options to calculate deltas from.
+ * @returns An object detailing the token change for toggling each option.
+ */
+export const calculateTokenImpact = (
+    analyzedFiles: SourceFile[],
+    baseOptions: FormattingOptions
+): FormattingOptionsTokenImpact => {
+    logger.debug('Calculating token impact...');
+    const startTime = performance.now();
+
+    const baseScn = formatScn(analyzedFiles, baseOptions);
+    const baseTokens = countTokensInternal(baseScn);
+
+    const impact: FormattingOptionsTokenImpact = {
+        options: {},
+        displayFilters: {},
+    };
+
+    const simpleOptionKeys: Array<keyof Omit<FormattingOptions, 'displayFilters'>> = [
+        'showOutgoing', 'showIncoming', 'showIcons', 'showExportedIndicator',
+        'showPrivateIndicator', 'showModifiers', 'showTags', 'showSymbolIds',
+        'groupMembers', 'showFilePrefix', 'showFileIds'
+    ];
+
+    for (const key of simpleOptionKeys) {
+        // All boolean options default to true.
+        const currentValue = baseOptions[key] ?? true;
+        const newOptions = { ...baseOptions, [key]: !currentValue };
+        const newScn = formatScn(analyzedFiles, newOptions);
+        const newTokens = countTokensInternal(newScn);
+        impact.options[key] = newTokens - baseTokens;
+    }
+
+    const allSymbolKinds = new Set<SymbolKind>(analyzedFiles.flatMap(file => file.symbols.map(s => s.kind)));
+
+    for (const kind of allSymbolKinds) {
+        const currentFilterValue = baseOptions.displayFilters?.[kind] ?? true;
+        const newOptions = {
+            ...baseOptions,
+            displayFilters: { ...(baseOptions.displayFilters ?? {}), [kind]: !currentFilterValue }
+        };
+        const newScn = formatScn(analyzedFiles, newOptions);
+        const newTokens = countTokensInternal(newScn);
+        impact.displayFilters[kind] = newTokens - baseTokens;
+    }
+
+    const duration = performance.now() - startTime;
+    logger.debug(`Token impact calculation finished in ${duration.toFixed(2)}ms`);
+
+    return impact;
+};
+
+/**
+ * Legacy API: Generate SCN from config (for backward compatibility)
+ */
+export const generateScnFromConfig = async (config: ScnTsConfig): Promise<string> => {
+    const { sourceFiles: analyzedFiles } = await analyzeProject({
+        files: config.files,
+        tsconfig: config.tsconfig,
+        root: config.root,
+    });
+    return formatScn(analyzedFiles, config.formattingOptions);
+};
+
+/**
+ * Parses and analyzes a project's files to build a dependency graph.
+ */
+export const analyzeProject = async (
+    {
+        files,
+        tsconfig,
+        root = '/',
+        onProgress,
+        logLevel,
+        signal,
+    }: AnalyzeProjectOptions
+): Promise<{ sourceFiles: SourceFile[], analysisTime: number }> => {
+    const startTime = performance.now();
+    if (logLevel) {
+        logger.setLevel(logLevel);
+    }
+    logger.info(`Starting analysis of ${files.length} files...`);
+    const pathResolver = getPathResolver(tsconfig);
+
+    const checkAborted = () => { if (signal?.aborted) throw new DOMException('Aborted', 'AbortError'); };
+    let fileIdCounter = 1;
+
+    onProgress?.({ percentage: 0, message: 'Creating source files...' });
+
+    // Step 1: Create SourceFile objects for all files
+    const sourceFiles = files.map((file) => {
+        checkAborted();
+        const absolutePath = path.join(root, file.path);
+        const sourceFile: SourceFile = {
+            id: fileIdCounter++,
+            relativePath: file.path,
+            absolutePath,
+            sourceCode: file.content,
+            language: getLanguageForFile(file.path)!,
+            symbols: [],
+            parseError: false,
+        };
+        return sourceFile;
+    });
+
+    logger.debug(`Created ${sourceFiles.length} SourceFile objects.`);
+    onProgress?.({ percentage: 10, message: `Parsing ${sourceFiles.length} files...` });
+
+    // Step 2: Parse all files
+    const parsedFiles = sourceFiles.map((file, i) => {
+        checkAborted();
+        if (!file.language || !file.language.wasmPath || file.sourceCode.trim() === '') {
+            return file;
+        }
+        logger.debug(`Parsing ${file.relativePath}`);
+        const tree = parse(file.sourceCode, file.language);
+        if (!tree) {
+            file.parseError = true;
+            logger.warn(`Failed to parse ${file.relativePath}`);
+        } else {
+            file.ast = tree;
+        }
+        const percentage = 10 + (40 * (i + 1) / sourceFiles.length);
+        onProgress?.({ percentage, message: `Parsing ${file.relativePath}` });
+        return file;
+    });
+
+    onProgress?.({ percentage: 50, message: 'Analyzing files...' });
+    logger.info(`Parsing complete. Analyzing symbols and relationships...`);
+
+    // Step 3: Analyze all parsed files
+    const analyzedFiles = parsedFiles.map((file, i) => {
+        checkAborted();
+        if (file.ast) {
+            logger.debug(`Analyzing ${file.relativePath}`);
+            const analyzed = analyze(file);
+            const percentage = 50 + (40 * (i + 1) / sourceFiles.length);
+            onProgress?.({ percentage, message: `Analyzing ${file.relativePath}` });
+            return analyzed;
+        }
+        return file;
+    });
+    
+    onProgress?.({ percentage: 90, message: 'Resolving dependency graph...' });
+    logger.info('Analysis complete. Resolving dependency graph...');
+
+    // Step 4: Resolve the dependency graph across all files
+    checkAborted();
+    const resolvedGraph = resolveGraph(analyzedFiles, pathResolver, root);
+    
+    onProgress?.({ percentage: 100, message: 'Analysis complete.' });
+    logger.info('Graph resolution complete. Project analysis finished.');
+    const analysisTime = performance.now() - startTime;
+    return { sourceFiles: resolvedGraph, analysisTime };
+};
+```
+
+## File: src/types.ts
+```typescript
+import type { Parser, Tree, Language } from 'web-tree-sitter';
+import type { PathResolver } from './utils/tsconfig';
+export type { PathResolver };
+
+export type LogLevel = 'error' | 'warn' | 'info' | 'debug' | 'silent';
+
+export type LogHandler = (level: Exclude<LogLevel, 'silent'>, ...args: any[]) => void;
+
+export interface TsConfig {
+    compilerOptions?: {
+        baseUrl?: string;
+        paths?: Record<string, string[]>;
+    };
+}
+
+export interface AnalyzeProjectOptions {
+    files: InputFile[];
+    tsconfig?: TsConfig;
+    root?: string;
+    onProgress?: (progress: { percentage: number; message: string }) => void;
+    logLevel?: LogLevel;
+    signal?: AbortSignal;
+}
+
+/**
+ * Options to control the SCN output format.
+ */
+export interface FormattingOptions {
+    showOutgoing?: boolean;
+    showIncoming?: boolean;
+    showIcons?: boolean;
+    showExportedIndicator?: boolean; // + prefix
+    showPrivateIndicator?: boolean; // - prefix
+    showModifiers?: boolean; // ..., !, o
+    showTags?: boolean;      // [generated], [styled], etc.
+    showSymbolIds?: boolean; // (1.2) identifiers
+    groupMembers?: boolean;  // group class/interface members under parent
+    displayFilters?: Partial<Record<SymbolKind, boolean>>;
+    showFilePrefix?: boolean; // § prefix, defaults to true
+    showFileIds?: boolean;    // (1) file identifiers in headers and references, defaults to true
+}
+
+/**
+ * Represents the token cost of toggling each formatting option.
+ * The value is the delta when an option is toggled from its state in the `baseOptions`.
+ * e.g. `new_token_count - base_token_count`.
+ */
+export interface FormattingOptionsTokenImpact {
+    options: Partial<{ [K in keyof Omit<FormattingOptions, 'displayFilters'>]: number }>;
+    displayFilters: Partial<Record<string, number>>;
+}
+
+/**
+ * Represents a file to be processed.
+ */
+export interface InputFile {
+  path: string; // relative path from root
+  content: string;
+}
+
+/**
+ * Configuration for the SCN generation process.
+ */
+export interface ScnTsConfig {
+  files: InputFile[];
+  tsconfig?: TsConfig;
+  formattingOptions?: FormattingOptions;
+  root?: string; // Optional: A virtual root path for resolution. Defaults to '/'.
+  _test_id?: string; // Special property for test runner to identify fixtures
+}
+
+/**
+ * Options for initializing the Tree-sitter parser.
+ */
+export interface ParserInitOptions {
+    wasmBaseUrl: string;
+}
+
+/**
+ * Represents a supported programming language and its configuration.
+ */
+export type SymbolKind =
+  // TS/JS
+  | 'class' | 'interface' | 'function' | 'method' | 'constructor'
+  | 'variable' | 'property' | 'enum' | 'enum_member' | 'type_alias' | 'module'
+  | 'decorator' | 'parameter' | 'type_parameter' | 'import_specifier' | 're_export'
+  // React
+  | 'react_component' | 'react_hook' | 'react_hoc' | 'jsx_attribute' | 'jsx_element' | 'styled_component'
+  // CSS
+  | 'css_class' | 'css_id' | 'css_tag' | 'css_at_rule' | 'css_property' | 'css_variable'
+  // Generic / Meta
+  | 'file' | 'reference' | 'comment' | 'error' | 'unresolved'
+  // Other Languages
+  | 'go_package' | 'go_struct' | 'go_goroutine' | 'rust_struct' | 'rust_trait' | 'rust_impl' | 'rust_macro'
+  | 'java_package' | 'python_class'
+  | 'unknown';
+
+export interface Position {
+  line: number;
+  column: number;
+}
+
+export interface Range {
+  start: Position;
+  end: Position;
+}
+
+export interface CodeSymbol {
+  id: string;
+  fileId: number;
+  name: string;
+  kind: SymbolKind;
+  range: Range;
+  // Modifiers and metadata
+  isExported: boolean;
+  isAbstract?: boolean;
+  isStatic?: boolean;
+  isReadonly?: boolean;
+  isAsync?: boolean;
+  isPure?: boolean; // for 'o'
+  throws?: boolean; // for '!'
+  labels?: string[]; // extra display labels like [symbol], [proxy]
+  isGenerated?: boolean;
+  languageDirectives?: string[]; // e.g. 'use server'
+  superClass?: string;
+  implementedInterfaces?: string[];
+  scopeRange: Range; // The range of the entire scope (e.g., function body) for relationship association
+  accessibility?: 'public' | 'private' | 'protected';
+  // Type information and signatures
+  signature?: string; // e.g., (a: #number, b: #number): #number
+  typeAnnotation?: string; // e.g., #string for properties/variables
+  typeAliasValue?: string; // e.g., #number|string for type aliases
+  // Relationships
+  dependencies: Relationship[];
+}
+
+export type RelationshipKind =
+  | 'import'
+  | 'dynamic_import'
+  | 'reference'
+  | 'tagged'
+  | 'export'
+  | 'call'
+  | 'extends'
+  | 'implements'
+  | 'references'
+  | 'aliased'
+  | 'goroutine'
+  | 'macro';
+
+export interface Relationship {
+  targetName: string; // The raw name of the target (e.g., './utils', 'MyClass', 'add', 'Button')
+  kind: RelationshipKind;
+  range: Range;
+  // Resolved info
+  resolvedFileId?: number;
+  resolvedSymbolId?: string;
+}
+
+export interface SourceFile {
+  id: number;
+  relativePath: string;
+  absolutePath: string;
+  language: LanguageConfig;
+  sourceCode: string;
+  ast?: Tree;
+  symbols: CodeSymbol[];
+  parseError: boolean;
+  isGenerated?: boolean;
+  languageDirectives?: string[];
+  // File-level relationships (e.g., imports not tied to a specific symbol)
+  fileRelationships?: Relationship[];
+}
+
+/**
+ * Represents a supported programming language and its configuration.
+ */
+export interface LanguageConfig {
+    id: string;
+    name: string;
+    extensions: string[];
+    wasmPath: string;
+    parser?: Parser;
+    loadedLanguage?: Language;
+    queries?: Record<string, string>;
+}
+
+export interface AnalysisContext {
+    sourceFiles: SourceFile[];
+    pathResolver: PathResolver;
 }
 ```

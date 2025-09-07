@@ -221,9 +221,11 @@ const OutputOptions = React.forwardRef<OutputOptionsHandle, OutputOptionsProps>(
         <div key={key} style={{ paddingLeft: `${level * 1.5}rem` }} className="flex items-center space-x-1.5">
           <Checkbox
             id={key}
-            checked={
-              isFilter ? options.displayFilters?.[filterKind!] ?? true : options[key as RegularOptionKey] ?? true
-            }
+            checked={isFilter
+              ? (options.displayFilters && Object.hasOwn(options.displayFilters, filterKind!)
+                ? options.displayFilters[filterKind!]
+                : true)
+              : (options[key as RegularOptionKey] ?? true)}
             onCheckedChange={handleChange(key)}
           />
           <Label htmlFor={key} className="flex-1 cursor-pointer select-none text-sm text-muted-foreground font-normal">
@@ -232,9 +234,14 @@ const OutputOptions = React.forwardRef<OutputOptionsHandle, OutputOptionsProps>(
               {tokenImpact && (
                 <span className="text-xs font-mono tabular-nums text-foreground/50">
                   {(() => {
-                    const impact = isFilter
-                      ? tokenImpact.displayFilters?.[filterKind!]
-                      : tokenImpact.options?.[key as RegularOptionKey];
+                    let impact: number | undefined;
+                    if (isFilter) {
+                      if (tokenImpact.displayFilters && Object.hasOwn(tokenImpact.displayFilters, filterKind!)) {
+                        impact = tokenImpact.displayFilters[filterKind!];
+                      }
+                    } else {
+                      impact = tokenImpact.options?.[key as RegularOptionKey];
+                    }
                     if (impact === undefined) return null;
                     return `${impact > 0 ? '+' : ''}${impact}`;
                   })()}
@@ -251,7 +258,10 @@ const OutputOptions = React.forwardRef<OutputOptionsHandle, OutputOptionsProps>(
     const allKeys = getAllKeys(item);
     const allChecked = allKeys.every(key => {
       if (key.startsWith('filter:')) {
-        return options.displayFilters?.[key.substring('filter:'.length)] ?? true;
+        const kind = key.substring('filter:'.length);
+        return (options.displayFilters && Object.hasOwn(options.displayFilters, kind))
+          ? options.displayFilters[kind]
+          : true;
       }
       return options[key as RegularOptionKey] ?? true;
     });
@@ -259,7 +269,9 @@ const OutputOptions = React.forwardRef<OutputOptionsHandle, OutputOptionsProps>(
       let impact: number | undefined;
       if (key.startsWith('filter:')) {
         const kind = key.substring('filter:'.length);
-        impact = tokenImpact.displayFilters?.[kind];
+        if (tokenImpact.displayFilters && Object.hasOwn(tokenImpact.displayFilters, kind)) {
+          impact = tokenImpact.displayFilters[kind];
+        }
       } else {
         impact = tokenImpact.options?.[key as RegularOptionKey];
       }

@@ -1,9 +1,29 @@
-glob include exclude feature
+input
+
+add glob include exclude feature
+
+"src/main.ts",
+  "src/types.ts",
+  "packages/scn-ts-web-demo/src/App.tsx",
+  "packages/scn-ts-web-demo/src/stores/app.store.ts",
+  "packages/scn-ts-web-demo/src/hooks/useAnalysis.hook.ts",
+  "packages/scn-ts-web-demo/src/worker.ts"
 
 ===
 
-add 5 level presets
-the behaviour should be provided by scn-ts-core level api
+add 5 level presets to formatting options;
+the behaviour should be provided by scn-ts-core level api if non exist then create
+
+  "src/types.ts",
+  "src/main.ts",
+  "src/formatter.ts",
+  "src/index.ts",
+  "packages/scn-ts-web-demo/src/types.ts",
+  "packages/scn-ts-web-demo/src/stores/app.store.ts",
+  "packages/scn-ts-web-demo/src/App.tsx",
+  "packages/scn-ts-web-demo/src/components/OutputOptions.tsx",
+  "packages/scn-ts-web-demo/src/hooks/useAnalysis.hook.ts",
+  "packages/scn-ts-web-demo/src/worker.ts"
 
 ===
 
@@ -11,9 +31,26 @@ input;
 
 beside json, we want also git repo url
 
+  "packages/scn-ts-web-demo/src/App.tsx",
+  "packages/scn-ts-web-demo/src/hooks/useAnalysis.hook.ts",
+  "packages/scn-ts-web-demo/src/services/analysis.service.ts",
+  "packages/scn-ts-web-demo/src/worker.ts",
+  "packages/scn-ts-web-demo/src/stores/app.store.ts",
+  "src/main.ts",
+  "src/types.ts"
+
 ===
 
 analyzed timetook should including token impact timetook
+
+the behaviour should be provided by scn-ts-core level api
+
+  "src/main.ts",
+  "src/types.ts",
+  "packages/scn-ts-web-demo/src/worker.ts",
+  "packages/scn-ts-web-demo/src/hooks/useAnalysis.hook.ts",
+  "packages/scn-ts-web-demo/src/services/analysis.service.ts",
+  "packages/scn-ts-web-demo/src/App.tsx"
 
 === DONE
 
@@ -38,12 +75,13 @@ add de/select all iconbutton without text. the behaviour should be provided by s
 
 formatting options;
 
-I want all item should has token cost
+I want all item should has token cost. even its zero
 
 currently no cost for;
 
 classes
 enums
+etc
 
 ===
 formatting options;
@@ -57,6 +95,14 @@ fix below problem where token cost impact showing invalid value
 <div class="flex justify-between items-center"><span>Members</span> <span class="text-xs font-mono tabular-nums text-foreground/50 ml-auto mr-2">-31function Object() { [native code] }-1850</span></div>
 
 <div class="flex justify-between items-center"><span>Constructors</span><span class="text-xs font-mono tabular-nums text-foreground/50">function Object() { [native code] }</span></div>
+
+
+ "packages/scn-ts-web-demo/src/components/OutputOptions.tsx",
+  "src/main.ts",
+  "src/types.ts",
+  "packages/scn-ts-web-demo/src/App.tsx",
+  "packages/scn-ts-web-demo/src/hooks/useAnalysis.hook.ts",
+  "packages/scn-ts-web-demo/src/worker.ts"
 
 
 === DONE

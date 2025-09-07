@@ -3,9 +3,9 @@ import { generateScn, initializeTokenizer, countTokens } from 'scn-ts-core';
 import { Button } from './components/ui/button';
 import { Textarea } from './components/ui/textarea';
 import LogViewer from './components/LogViewer';
-import OutputOptions, { type OutputOptionsHandle } from './components/OutputOptions';
+import { OutputOptions } from './components/OutputOptions';
 import { Legend } from './components/Legend';
-import { Play, Loader, Copy, Check, StopCircle, ChevronsDown, ChevronsUp, ZoomIn, ZoomOut, RefreshCw, ListChecks, ListX } from 'lucide-react';
+import { Play, Loader, Copy, Check, StopCircle, ZoomIn, ZoomOut, RefreshCw } from 'lucide-react';
 import { Accordion, AccordionContent, AccordionItem, AccordionHeader, AccordionTrigger } from './components/ui/accordion';
 import { useAnalysis } from './hooks/useAnalysis.hook';
 import { useClipboard } from './hooks/useClipboard.hook';
@@ -36,8 +36,6 @@ function App() {
     handleStop,
     onLogPartial,
   } = useAnalysis();
-
-  const outputOptionsRef = useRef<OutputOptionsHandle>(null);
 
   const [zoomLevel, setZoomLevel] = useState(1);
   const baseFontSizeRem = 0.75; // Corresponds to text-xs
@@ -83,26 +81,6 @@ function App() {
   const handleAnalyze = useCallback(async () => {
     performAnalysis(filesInput, formattingOptions);
   }, [performAnalysis, filesInput, formattingOptions]);
-
-  const handleExpandOptions = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    outputOptionsRef.current?.expandAll();
-  };
-
-  const handleCollapseOptions = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    outputOptionsRef.current?.collapseAll();
-  };
-
-  const handleSelectAllOptions = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    outputOptionsRef.current?.selectAll();
-  };
-
-  const handleDeselectAllOptions = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    outputOptionsRef.current?.deselectAll();
-  };
 
   const { totalSymbols, visibleSymbols } = useMemo(() => {
     if (!analysisResult) {
@@ -155,8 +133,8 @@ function App() {
                   </div>
                 </AccordionTrigger>
               </AccordionHeader>
-              <AccordionContent>
-                <div className="px-4 pb-4 h-96">
+              <AccordionContent className="p-4">
+                <div className="h-96">
                   <Textarea
                     value={filesInput}
                     onChange={(e) => setFilesInput(e.currentTarget.value)}
@@ -179,23 +157,9 @@ function App() {
                       )}
                   </div>
                 </AccordionTrigger>
-                <div className="flex items-center gap-1 pr-4">
-                  <Button variant="ghost" size="icon" onClick={handleSelectAllOptions} title="Select all" className="h-7 w-7 text-muted-foreground hover:text-foreground">
-                    <ListChecks className="h-4 w-4" />
-                  </Button>
-                  <Button variant="ghost" size="icon" onClick={handleDeselectAllOptions} title="Deselect all" className="h-7 w-7 text-muted-foreground hover:text-foreground">
-                    <ListX className="h-4 w-4" />
-                  </Button>
-                  <Button variant="ghost" size="icon" onClick={handleExpandOptions} title="Expand all" className="h-7 w-7 text-muted-foreground hover:text-foreground">
-                    <ChevronsDown className="h-4 w-4" />
-                  </Button>
-                  <Button variant="ghost" size="icon" onClick={handleCollapseOptions} title="Collapse all" className="h-7 w-7 text-muted-foreground hover:text-foreground">
-                    <ChevronsUp className="h-4 w-4" />
-                  </Button>
-                </div>
               </AccordionHeader>
-              <AccordionContent className="px-4">
-                <OutputOptions ref={outputOptionsRef} options={formattingOptions} setOptions={setFormattingOptions} tokenImpact={tokenImpact} />
+              <AccordionContent className="px-4 pt-4">
+                <OutputOptions options={formattingOptions} setOptions={setFormattingOptions} tokenImpact={tokenImpact} />
               </AccordionContent>
             </AccordionItem>
 
@@ -203,7 +167,7 @@ function App() {
               <AccordionHeader>
                 <AccordionTrigger className="px-4 text-sm font-semibold hover:no-underline">Logs</AccordionTrigger>
               </AccordionHeader>
-              <AccordionContent className="px-4">
+              <AccordionContent className="px-4 pt-4">
                 <LogViewer logs={logs} />
               </AccordionContent>
             </AccordionItem>

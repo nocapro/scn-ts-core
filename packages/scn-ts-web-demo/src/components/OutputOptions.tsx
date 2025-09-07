@@ -1,23 +1,17 @@
 import * as React from 'react';
 import type { FormattingOptions } from '../types';
-import { ChevronDown, ChevronRight } from 'lucide-react';
+import { ChevronDown, ChevronRight, ListChecks, ListX, ChevronsDown, ChevronsUp, X } from 'lucide-react';
 import type { FormattingOptionsTokenImpact } from 'scn-ts-core';
 
 import { Checkbox } from './ui/checkbox';
 import { Label } from './ui/label';
+import { Input } from './ui/input';
+import { Button } from './ui/button';
 
 interface OutputOptionsProps {
   options: FormattingOptions;
   setOptions: React.Dispatch<React.SetStateAction<FormattingOptions>>;
   tokenImpact: FormattingOptionsTokenImpact | null;
-}
-
-
-export interface OutputOptionsHandle {
-  expandAll: () => void;
-  collapseAll: () => void;
-  selectAll: () => void;
-  deselectAll: () => void;
 }
 
 type RegularOptionKey = keyof Omit<FormattingOptions, 'displayFilters'>;
@@ -144,7 +138,7 @@ const getAllGroupNames = (items: OptionItem[]): string[] => {
   });
 }
 
-const OutputOptions = React.forwardRef<OutputOptionsHandle, OutputOptionsProps>(({ options, setOptions, tokenImpact }, ref) => {
+export const OutputOptions: React.FC<OutputOptionsProps> = ({ options, setOptions, tokenImpact }) => {
   const [expandedGroups, setExpandedGroups] = React.useState<Set<string>>(
     () =>
       new Set([
@@ -154,18 +148,62 @@ const OutputOptions = React.forwardRef<OutputOptionsHandle, OutputOptionsProps>(
       ])
   );
 
-  const allGroupNames = React.useMemo(() => getAllGroupNames(optionTree), []);
-
-  const expandAll = React.useCallback(() => {
-    setExpandedGroups(new Set(allGroupNames));
-  }, [allGroupNames]);
-
-  const collapseAll = React.useCallback(() => {
-    setExpandedGroups(new Set());
-  }, []);
+  const [searchTerm, setSearchTerm] = React.useState('');
 
   const allOptionKeys = React.useMemo(() => optionTree.flatMap(getAllKeys), []);
 
+  const areAllSelected = React.useMemo(() => {
+    if (allOptionKeys.length === 0) return false;
+    return allOptionKeys.every(key => {
+      if (key.startsWith('filter:')) {
+        const kind = key.substring('filter:'.length);
+        if (options.displayFilters && Object.hasOwn(options.displayFilters, kind)) {
+          return options.displayFilters[kind] as boolean;
+        }
+        return true; // Default is selected
+      }
+      return options[key as RegularOptionKey] ?? true;
+    });
+  }, [allOptionKeys, options]);
+
+  const filteredOptionTree = React.useMemo(() => {
+    if (!searchTerm.trim()) return optionTree;
+    const lowerCaseSearchTerm = searchTerm.toLowerCase();
+
+    function filter(item: OptionItem): OptionItem | null {
+      if (typeof item === 'string') {
+        const label = optionLabels[item as keyof typeof optionLabels] || item;
+        return label.toLowerCase().includes(lowerCaseSearchTerm) ? item : null;
+      }
+
+      if (item.name.toLowerCase().includes(lowerCaseSearchTerm)) {
+        return item; // Keep group and all its children if group name matches
+      }
+
+      const filteredChildren = item.children.map(filter).filter((c): c is OptionItem => c !== null);
+      if (filteredChildren.length > 0) {
+        return { ...item, children: filteredChildren };
+      }
+      return null;
+    }
+    return optionTree.map(filter).filter((i): i is OptionItem => i !== null);
+  }, [searchTerm]);
+
+  const allFilteredGroupNames = React.useMemo(() => getAllGroupNames(filteredOptionTree), [filteredOptionTree]);
+  const areAllExpanded = React.useMemo(() => 
+    allFilteredGroupNames.length > 0 && allFilteredGroupNames.every(g => expandedGroups.has(g)), 
+    [allFilteredGroupNames, expandedGroups]);
+
+  React.useEffect(() => {
+    if (searchTerm.trim()) {
+      setExpandedGroups(new Set(allFilteredGroupNames));
+    }
+  }, [searchTerm, allFilteredGroupNames]);
+
+  const expandAll = React.useCallback(() => setExpandedGroups(new Set(allFilteredGroupNames)), [allFilteredGroupNames]);
+  const collapseAll = React.useCallback(() => {
+    setExpandedGroups(new Set());
+  }, []);
   const selectAll = React.useCallback(() => {
     setOptions(prev => {
       const newOptions: FormattingOptions = { ...prev };
@@ -181,8 +219,7 @@ const OutputOptions = React.forwardRef<OutputOptionsHandle, OutputOptionsProps>(
       newOptions.displayFilters = newDisplayFilters;
       return newOptions;
     });
-  }, [setOptions, allOptionKeys]);
-
+  }, [allOptionKeys]);
   const deselectAll = React.useCallback(() => {
     setOptions(prev => {
       const newOptions: FormattingOptions = { ...prev };
@@ -198,14 +235,7 @@ const OutputOptions = React.forwardRef<OutputOptionsHandle, OutputOptionsProps>(
       newOptions.displayFilters = newDisplayFilters;
       return newOptions;
     });
-  }, [setOptions, allOptionKeys]);
-
-  React.useImperativeHandle(ref, () => ({
-    expandAll,
-    collapseAll,
-    selectAll,
-    deselectAll,
-  }), [expandAll, collapseAll, selectAll, deselectAll]);
+  }, [allOptionKeys]);
 
   const toggleGroup = (groupName: string) => {
     setExpandedGroups(prev => {
@@ -362,9 +392,30 @@ const OutputOptions = React.forwardRef<OutputOptionsHandle, OutputOptionsProps>(
 
   return (
     <div className="space-y-1">
-      {optionTree.map(item => renderItem(item, 0))}
+      <div className="flex gap-2 mb-3">
+        <div className="relative flex-grow">
+          <Input
+            placeholder="Search options..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="h-8 text-xs pr-8"
+          />
+          {searchTerm && (
+            <Button variant="ghost" size="icon" onClick={() => setSearchTerm('')} className="absolute right-0 top-0 h-8 w-8 text-muted-foreground hover:text-foreground">
+              <X className="h-4 w-4" />
+            </Button>
+          )}
+        </div>
+        <div className="flex items-center">
+          <Button variant="ghost" size="icon" onClick={areAllSelected ? deselectAll : selectAll} title={areAllSelected ? "Deselect all" : "Select all"} className="h-8 w-8 text-muted-foreground hover:text-foreground">
+            {areAllSelected ? <ListX className="h-4 w-4" /> : <ListChecks className="h-4 w-4" />}
+          </Button>
+          <Button variant="ghost" size="icon" onClick={areAllExpanded ? collapseAll : expandAll} title={areAllExpanded ? "Collapse all" : "Expand all"} className="h-8 w-8 text-muted-foreground hover:text-foreground">
+            {areAllExpanded ? <ChevronsUp className="h-4 w-4" /> : <ChevronsDown className="h-4 w-4" />}
+          </Button>
+        </div>
+      </div>
+      {filteredOptionTree.map(item => renderItem(item, 0))}
     </div>
   );
-});
-
-export default OutputOptions;
+};

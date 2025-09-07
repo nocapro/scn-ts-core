@@ -190,40 +190,6 @@ export default {
 }
 ```
 
-## File: packages/scn-ts-web-demo/tsconfig.json
-```json
-{
-  "compilerOptions": {
-    "target": "ES2020",
-    "useDefineForClassFields": true,
-    "lib": ["ES2020", "DOM", "DOM.Iterable"],
-    "module": "ESNext",
-    "skipLibCheck": true,
-    "noEmit": true,
-
-    /* Bundler mode */
-    "moduleResolution": "bundler",
-    "resolveJsonModule": true,
-    "isolatedModules": true,
-    "outDir": "dist",
-    "jsx": "react-jsx",
-    "baseUrl": ".",
-    "paths": {
-      "@/*": ["src/*"],
-      "scn-ts-core": ["../../src/index.ts"],
-      "scn-ts-core/*": ["../../src/*"]
-    },
-
-    /* Linting */
-    "strict": true,
-    "noUnusedLocals": true,
-    "noUnusedParameters": true,
-    "noFallthroughCasesInSwitch": true
-  },
-  "include": ["src"]
-}
-```
-
 ## File: packages/scn-ts-web-demo/tsconfig.node.json
 ```json
 {
@@ -280,6 +246,40 @@ export default {
     "vite-plugin-top-level-await": "^1.4.1",
     "vite-plugin-wasm": "^3.3.0"
   }
+}
+```
+
+## File: packages/scn-ts-web-demo/tsconfig.json
+```json
+{
+  "compilerOptions": {
+    "target": "ESNext",
+    "useDefineForClassFields": true,
+    "lib": ["ESNext", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "skipLibCheck": true,
+    "noEmit": true,
+
+    /* Bundler mode */
+    "moduleResolution": "bundler",
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "outDir": "dist",
+    "jsx": "react-jsx",
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["src/*"],
+      "scn-ts-core": ["../../src/index.ts"],
+      "scn-ts-core/*": ["../../src/*"]
+    },
+
+    /* Linting */
+    "strict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noFallthroughCasesInSwitch": true
+  },
+  "include": ["src"]
 }
 ```
 
@@ -606,24 +606,18 @@ export type {
 ```typescript
 import * as React from 'react';
 import type { FormattingOptions } from '../types';
-import { ChevronDown, ChevronRight } from 'lucide-react';
+import { ChevronDown, ChevronRight, ListChecks, ListX, ChevronsDown, ChevronsUp, X } from 'lucide-react';
 import type { FormattingOptionsTokenImpact } from 'scn-ts-core';
 
 import { Checkbox } from './ui/checkbox';
 import { Label } from './ui/label';
+import { Input } from './ui/input';
+import { Button } from './ui/button';
 
 interface OutputOptionsProps {
   options: FormattingOptions;
   setOptions: React.Dispatch<React.SetStateAction<FormattingOptions>>;
   tokenImpact: FormattingOptionsTokenImpact | null;
-}
-
-
-export interface OutputOptionsHandle {
-  expandAll: () => void;
-  collapseAll: () => void;
-  selectAll: () => void;
-  deselectAll: () => void;
 }
 
 type RegularOptionKey = keyof Omit<FormattingOptions, 'displayFilters'>;
@@ -750,7 +744,7 @@ const getAllGroupNames = (items: OptionItem[]): string[] => {
   });
 }
 
-const OutputOptions = React.forwardRef<OutputOptionsHandle, OutputOptionsProps>(({ options, setOptions, tokenImpact }, ref) => {
+export const OutputOptions: React.FC<OutputOptionsProps> = ({ options, setOptions, tokenImpact }) => {
   const [expandedGroups, setExpandedGroups] = React.useState<Set<string>>(
     () =>
       new Set([
@@ -760,18 +754,43 @@ const OutputOptions = React.forwardRef<OutputOptionsHandle, OutputOptionsProps>(
       ])
   );
 
-  const allGroupNames = React.useMemo(() => getAllGroupNames(optionTree), []);
-
-  const expandAll = React.useCallback(() => {
-    setExpandedGroups(new Set(allGroupNames));
-  }, [allGroupNames]);
-
-  const collapseAll = React.useCallback(() => {
-    setExpandedGroups(new Set());
-  }, []);
+  const [searchTerm, setSearchTerm] = React.useState('');
 
   const allOptionKeys = React.useMemo(() => optionTree.flatMap(getAllKeys), []);
 
+  const filteredOptionTree = React.useMemo(() => {
+    if (!searchTerm.trim()) return optionTree;
+    const lowerCaseSearchTerm = searchTerm.toLowerCase();
+
+    function filter(item: OptionItem): OptionItem | null {
+      if (typeof item === 'string') {
+        const label = optionLabels[item as keyof typeof optionLabels] || item;
+        return label.toLowerCase().includes(lowerCaseSearchTerm) ? item : null;
+      }
+
+      if (item.name.toLowerCase().includes(lowerCaseSearchTerm)) {
+        return item; // Keep group and all its children if group name matches
+      }
+
+      const filteredChildren = item.children.map(filter).filter((c): c is OptionItem => c !== null);
+      if (filteredChildren.length > 0) {
+        return { ...item, children: filteredChildren };
+      }
+      return null;
+    }
+    return optionTree.map(filter).filter((i): i is OptionItem => i !== null);
+  }, [searchTerm]);
+
+  React.useEffect(() => {
+    if (searchTerm.trim()) {
+      setExpandedGroups(new Set(getAllGroupNames(filteredOptionTree)));
+    }
+  }, [searchTerm, filteredOptionTree]);
+
+  const expandAll = React.useCallback(() => setExpandedGroups(new Set(getAllGroupNames(filteredOptionTree))), [filteredOptionTree]);
+  const collapseAll = React.useCallback(() => {
+    setExpandedGroups(new Set());
+  }, []);
   const selectAll = React.useCallback(() => {
     setOptions(prev => {
       const newOptions: FormattingOptions = { ...prev };
@@ -787,8 +806,7 @@ const OutputOptions = React.forwardRef<OutputOptionsHandle, OutputOptionsProps>(
       newOptions.displayFilters = newDisplayFilters;
       return newOptions;
     });
-  }, [setOptions, allOptionKeys]);
-
+  }, [allOptionKeys]);
   const deselectAll = React.useCallback(() => {
     setOptions(prev => {
       const newOptions: FormattingOptions = { ...prev };
@@ -804,14 +822,7 @@ const OutputOptions = React.forwardRef<OutputOptionsHandle, OutputOptionsProps>(
       newOptions.displayFilters = newDisplayFilters;
       return newOptions;
     });
-  }, [setOptions, allOptionKeys]);
-
-  React.useImperativeHandle(ref, () => ({
-    expandAll,
-    collapseAll,
-    selectAll,
-    deselectAll,
-  }), [expandAll, collapseAll, selectAll, deselectAll]);
+  }, [allOptionKeys]);
 
   const toggleGroup = (groupName: string) => {
     setExpandedGroups(prev => {
@@ -968,12 +979,39 @@ const OutputOptions = React.forwardRef<OutputOptionsHandle, OutputOptionsProps>(
 
   return (
     <div className="space-y-1">
-      {optionTree.map(item => renderItem(item, 0))}
+      <div className="flex gap-2 mb-3">
+        <div className="relative flex-grow">
+          <Input
+            placeholder="Search options..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="h-8 text-xs pr-8"
+          />
+          {searchTerm && (
+            <Button variant="ghost" size="icon" onClick={() => setSearchTerm('')} className="absolute right-0 top-0 h-8 w-8 text-muted-foreground hover:text-foreground">
+              <X className="h-4 w-4" />
+            </Button>
+          )}
+        </div>
+        <div className="flex items-center">
+          <Button variant="ghost" size="icon" onClick={selectAll} title="Select all" className="h-8 w-8 text-muted-foreground hover:text-foreground">
+            <ListChecks className="h-4 w-4" />
+          </Button>
+          <Button variant="ghost" size="icon" onClick={deselectAll} title="Deselect all" className="h-8 w-8 text-muted-foreground hover:text-foreground">
+            <ListX className="h-4 w-4" />
+          </Button>
+          <Button variant="ghost" size="icon" onClick={expandAll} title="Expand all" className="h-8 w-8 text-muted-foreground hover:text-foreground">
+            <ChevronsDown className="h-4 w-4" />
+          </Button>
+          <Button variant="ghost" size="icon" onClick={collapseAll} title="Collapse all" className="h-8 w-8 text-muted-foreground hover:text-foreground">
+            <ChevronsUp className="h-4 w-4" />
+          </Button>
+        </div>
+      </div>
+      {filteredOptionTree.map(item => renderItem(item, 0))}
     </div>
   );
-});
-
-export default OutputOptions;
+};
 ```
 
 ## File: package.json
@@ -1008,9 +1046,9 @@ import { generateScn, initializeTokenizer, countTokens } from 'scn-ts-core';
 import { Button } from './components/ui/button';
 import { Textarea } from './components/ui/textarea';
 import LogViewer from './components/LogViewer';
-import OutputOptions, { type OutputOptionsHandle } from './components/OutputOptions';
+import { OutputOptions } from './components/OutputOptions';
 import { Legend } from './components/Legend';
-import { Play, Loader, Copy, Check, StopCircle, ChevronsDown, ChevronsUp, ZoomIn, ZoomOut, RefreshCw, ListChecks, ListX } from 'lucide-react';
+import { Play, Loader, Copy, Check, StopCircle, ZoomIn, ZoomOut, RefreshCw } from 'lucide-react';
 import { Accordion, AccordionContent, AccordionItem, AccordionHeader, AccordionTrigger } from './components/ui/accordion';
 import { useAnalysis } from './hooks/useAnalysis.hook';
 import { useClipboard } from './hooks/useClipboard.hook';
@@ -1041,8 +1079,6 @@ function App() {
     handleStop,
     onLogPartial,
   } = useAnalysis();
-
-  const outputOptionsRef = useRef<OutputOptionsHandle>(null);
 
   const [zoomLevel, setZoomLevel] = useState(1);
   const baseFontSizeRem = 0.75; // Corresponds to text-xs
@@ -1088,26 +1124,6 @@ function App() {
   const handleAnalyze = useCallback(async () => {
     performAnalysis(filesInput, formattingOptions);
   }, [performAnalysis, filesInput, formattingOptions]);
-
-  const handleExpandOptions = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    outputOptionsRef.current?.expandAll();
-  };
-
-  const handleCollapseOptions = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    outputOptionsRef.current?.collapseAll();
-  };
-
-  const handleSelectAllOptions = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    outputOptionsRef.current?.selectAll();
-  };
-
-  const handleDeselectAllOptions = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    outputOptionsRef.current?.deselectAll();
-  };
 
   const { totalSymbols, visibleSymbols } = useMemo(() => {
     if (!analysisResult) {
@@ -1184,23 +1200,9 @@ function App() {
                       )}
                   </div>
                 </AccordionTrigger>
-                <div className="flex items-center gap-1 pr-4">
-                  <Button variant="ghost" size="icon" onClick={handleSelectAllOptions} title="Select all" className="h-7 w-7 text-muted-foreground hover:text-foreground">
-                    <ListChecks className="h-4 w-4" />
-                  </Button>
-                  <Button variant="ghost" size="icon" onClick={handleDeselectAllOptions} title="Deselect all" className="h-7 w-7 text-muted-foreground hover:text-foreground">
-                    <ListX className="h-4 w-4" />
-                  </Button>
-                  <Button variant="ghost" size="icon" onClick={handleExpandOptions} title="Expand all" className="h-7 w-7 text-muted-foreground hover:text-foreground">
-                    <ChevronsDown className="h-4 w-4" />
-                  </Button>
-                  <Button variant="ghost" size="icon" onClick={handleCollapseOptions} title="Collapse all" className="h-7 w-7 text-muted-foreground hover:text-foreground">
-                    <ChevronsUp className="h-4 w-4" />
-                  </Button>
-                </div>
               </AccordionHeader>
               <AccordionContent className="px-4">
-                <OutputOptions ref={outputOptionsRef} options={formattingOptions} setOptions={setFormattingOptions} tokenImpact={tokenImpact} />
+                <OutputOptions options={formattingOptions} setOptions={setFormattingOptions} tokenImpact={tokenImpact} />
               </AccordionContent>
             </AccordionItem>
 

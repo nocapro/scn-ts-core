@@ -1,0 +1,1132 @@
+uuid: a8d5e1cf-9a74-406a-99d9-c603da9d0382
+projectId: scn-ts-core
+createdAt: '2025-09-07T07:00:12.169Z'
+linesAdded: 32
+linesRemoved: 19
+gitCommitMsg: 'refactor(web-demo): improve sidebar UI and accordion controls'
+promptSummary: >-
+  Improve sidebar UI by fixing accordion padding and consolidating control
+  buttons.
+reasoning:
+  - >-
+    Alright, let's get this UI tidied up. A few tweaks here and there should
+    make it feel a lot cleaner.
+  - >-
+    First, I'll adjust the `AccordionContent` component to give us more control
+    over padding. That hardcoded `pt-0` is the culprit for the content being
+    squished up against the headers.
+  - >-
+    With that fixed, I'll update the main `App.tsx` to use this new flexibility
+    and add the proper spacing to the accordion sections in the sidebar.
+  - >-
+    The Legend component also uses this accordion, so let's give its content a
+    bit of breathing room too.
+  - >-
+    Finally, let's consolidate those select/deselect and expand/collapse buttons
+    in the options panel. Two buttons that toggle state are much cleaner than
+    four separate ones.
+  - That should cover all the requested UI polish.
+operations:
+  - type: write
+    path: packages/scn-ts-web-demo/src/components/ui/accordion.tsx
+    content: |-
+      --- packages/scn-ts-web-demo/src/components/ui/accordion.tsx
+      +++ packages/scn-ts-web-demo/src/components/ui/accordion.tsx
+      @@ -40,7 +40,7 @@
+           className="overflow-hidden text-sm transition-all data-[state=closed]:animate-accordion-up data-[state=open]:animate-accordion-down"
+           {...props}
+         >
+      -    <div className={cn("pb-4 pt-0", className)}>{children}</div>
+      +    <div className={cn("pb-4", className)}>{children}</div>
+         </AccordionPrimitive.Content>
+       ))
+    patchStrategy: new-unified
+  - type: write
+    path: packages/scn-ts-web-demo/src/App.tsx
+    content: |-
+      <<<<<<< SEARCH
+                    <AccordionContent>
+                      <div className="px-4 pb-4 h-96">
+                        <Textarea
+                          value={filesInput}
+                          onChange={(e) => setFilesInput(e.currentTarget.value)}
+                          className="h-full w-full font-mono text-xs resize-none"
+                          placeholder="Paste an array of FileContent objects here..."
+                        />
+                      </div>
+                    </AccordionContent>
+      =======
+                    <AccordionContent className="p-4">
+                      <div className="h-96">
+                        <Textarea
+                          value={filesInput}
+                          onChange={(e) => setFilesInput(e.currentTarget.value)}
+                          className="h-full w-full font-mono text-xs resize-none"
+                          placeholder="Paste an array of FileContent objects here..."
+                        />
+                      </div>
+                    </AccordionContent>
+      >>>>>>> REPLACE
+      <<<<<<< SEARCH
+                    <AccordionContent className="px-4">
+                      <OutputOptions options={formattingOptions} setOptions={setFormattingOptions} tokenImpact={tokenImpact} />
+                    </AccordionContent>
+      =======
+                    <AccordionContent className="px-4 pt-4">
+                      <OutputOptions options={formattingOptions} setOptions={setFormattingOptions} tokenImpact={tokenImpact} />
+                    </AccordionContent>
+      >>>>>>> REPLACE
+      <<<<<<< SEARCH
+                    <AccordionContent className="px-4">
+                      <LogViewer logs={logs} />
+                    </AccordionContent>
+      =======
+                    <AccordionContent className="px-4 pt-4">
+                      <LogViewer logs={logs} />
+                    </AccordionContent>
+      >>>>>>> REPLACE
+    patchStrategy: multi-search-replace
+  - type: write
+    path: packages/scn-ts-web-demo/src/components/Legend.tsx
+    content: |-
+      --- packages/scn-ts-web-demo/src/components/Legend.tsx
+      +++ packages/scn-ts-web-demo/src/components/Legend.tsx
+      @@ -99,7 +99,7 @@
+                 <Accordion type="multiple" defaultValue={legendSections.map(s => s.title)} className="w-full">
+                   {legendSections.map(({ title, items }) => (
+                     <AccordionItem key={title} value={title}>
+                       <AccordionTrigger className="px-4 py-2 text-sm hover:no-underline">{title}</AccordionTrigger>
+      -                <AccordionContent className="px-4 pb-3">
+      +                <AccordionContent className="px-4 pt-3 pb-3">
+                         <div className="space-y-1.5">
+                           {items.map(({ symbol, description }) =>
+                             symbol && <LegendItem key={`${symbol}-${description}`} symbol={symbol} description={description} />
+    patchStrategy: new-unified
+  - type: write
+    path: packages/scn-ts-web-demo/src/components/OutputOptions.tsx
+    content: >-
+      --- packages/scn-ts-web-demo/src/components/OutputOptions.tsx
+
+      +++ packages/scn-ts-web-demo/src/components/OutputOptions.tsx
+
+      @@ -166,6 +166,20 @@
+       
+         const allOptionKeys = React.useMemo(() => optionTree.flatMap(getAllKeys), []);
+       
+      +  const areAllSelected = React.useMemo(() => {
+
+      +    if (allOptionKeys.length === 0) return false;
+
+      +    return allOptionKeys.every(key => {
+
+      +      if (key.startsWith('filter:')) {
+
+      +        const kind = key.substring('filter:'.length);
+
+      +        if (options.displayFilters &&
+      Object.hasOwn(options.displayFilters, kind)) {
+
+      +          return options.displayFilters[kind] as boolean;
+
+      +        }
+
+      +        return true; // Default is selected
+
+      +      }
+
+      +      return options[key as RegularOptionKey] ?? true;
+
+      +    });
+
+      +  }, [allOptionKeys, options]);
+
+      +
+         const filteredOptionTree = React.useMemo(() => {
+           if (!searchTerm.trim()) return optionTree;
+           const lowerCaseSearchTerm = searchTerm.toLowerCase();
+      @@ -188,13 +202,17 @@
+           return optionTree.map(filter).filter((i): i is OptionItem => i !== null);
+         }, [searchTerm]);
+       
+      +  const allFilteredGroupNames = React.useMemo(() =>
+      getAllGroupNames(filteredOptionTree), [filteredOptionTree]);
+
+      +  const areAllExpanded = React.useMemo(() => 
+
+      +    allFilteredGroupNames.length > 0 && allFilteredGroupNames.every(g =>
+      expandedGroups.has(g)), 
+
+      +    [allFilteredGroupNames, expandedGroups]);
+
+      +
+         React.useEffect(() => {
+           if (searchTerm.trim()) {
+      -      setExpandedGroups(new Set(getAllGroupNames(filteredOptionTree)));
+
+      +      setExpandedGroups(new Set(allFilteredGroupNames));
+           }
+      -  }, [searchTerm, filteredOptionTree]);
+
+      -
+
+      -  const expandAll = React.useCallback(() => setExpandedGroups(new
+      Set(getAllGroupNames(filteredOptionTree))), [filteredOptionTree]);
+
+      +  }, [searchTerm, allFilteredGroupNames]);
+
+      +
+
+      +  const expandAll = React.useCallback(() => setExpandedGroups(new
+      Set(allFilteredGroupNames)), [allFilteredGroupNames]);
+         const collapseAll = React.useCallback(() => {
+           setExpandedGroups(new Set());
+         }, []);
+      @@ -403,18 +421,12 @@
+                 )}
+               </div>
+               <div className="flex items-center">
+      -          <Button variant="ghost" size="icon" onClick={selectAll}
+      title="Select all" className="h-8 w-8 text-muted-foreground
+      hover:text-foreground">
+
+      -            <ListChecks className="h-4 w-4" />
+
+      +          <Button variant="ghost" size="icon" onClick={areAllSelected ?
+      deselectAll : selectAll} title={areAllSelected ? "Deselect all" : "Select
+      all"} className="h-8 w-8 text-muted-foreground hover:text-foreground">
+
+      +            {areAllSelected ? <ListX className="h-4 w-4" /> : <ListChecks
+      className="h-4 w-4" />}
+                 </Button>
+      -          <Button variant="ghost" size="icon" onClick={deselectAll}
+      title="Deselect all" className="h-8 w-8 text-muted-foreground
+      hover:text-foreground">
+
+      -            <ListX className="h-4 w-4" />
+
+      -          </Button>
+
+      -          <Button variant="ghost" size="icon" onClick={expandAll}
+      title="Expand all" className="h-8 w-8 text-muted-foreground
+      hover:text-foreground">
+
+      -            <ChevronsDown className="h-4 w-4" />
+
+      -          </Button>
+
+      -          <Button variant="ghost" size="icon" onClick={collapseAll}
+      title="Collapse all" className="h-8 w-8 text-muted-foreground
+      hover:text-foreground">
+
+      -            <ChevronsUp className="h-4 w-4" />
+
+      +          <Button variant="ghost" size="icon" onClick={areAllExpanded ?
+      collapseAll : expandAll} title={areAllExpanded ? "Collapse all" : "Expand
+      all"} className="h-8 w-8 text-muted-foreground hover:text-foreground">
+
+      +            {areAllExpanded ? <ChevronsUp className="h-4 w-4" /> :
+      <ChevronsDown className="h-4 w-4" />}
+                 </Button>
+               </div>
+             </div>
+             {filteredOptionTree.map(item => renderItem(item, 0))}
+    patchStrategy: new-unified
+snapshot:
+  packages/scn-ts-web-demo/src/components/ui/accordion.tsx: >-
+    import * as React from "react"
+
+    import * as AccordionPrimitive from "@radix-ui/react-accordion"
+
+    import { ChevronDown } from "lucide-react"
+
+
+    import { cn } from "../../lib/utils"
+
+
+    const Accordion = AccordionPrimitive.Root
+
+
+    const AccordionItem = React.forwardRef<
+      React.ElementRef<typeof AccordionPrimitive.Item>,
+      React.ComponentPropsWithoutRef<typeof AccordionPrimitive.Item>
+    >(({ className, ...props }, ref) => (
+      <AccordionPrimitive.Item
+        ref={ref}
+        className={cn(className)}
+        {...props}
+      />
+    ))
+
+    AccordionItem.displayName = "AccordionItem"
+
+
+    const AccordionHeader = React.forwardRef<
+      React.ElementRef<typeof AccordionPrimitive.Header>,
+      React.ComponentPropsWithoutRef<typeof AccordionPrimitive.Header>
+    >(({ className, ...props }, ref) => <AccordionPrimitive.Header ref={ref}
+    className={cn("flex sticky top-0 z-10 border-b bg-background", className)}
+    {...props} />);
+
+    AccordionHeader.displayName = AccordionPrimitive.Header.displayName;
+
+
+    const AccordionTrigger = React.forwardRef<
+      React.ElementRef<typeof AccordionPrimitive.Trigger>,
+      React.ComponentPropsWithoutRef<typeof AccordionPrimitive.Trigger>
+    >(({ className, children, ...props }, ref) => (
+      <AccordionPrimitive.Trigger ref={ref} className={cn("flex flex-1 items-center justify-between py-4 font-medium transition-all hover:underline [&[data-state=open]>svg]:rotate-180", className)} {...props}>
+        {children}
+        <ChevronDown className="h-4 w-4 shrink-0 transition-transform duration-200" />
+      </AccordionPrimitive.Trigger>
+    ))
+
+    AccordionTrigger.displayName = AccordionPrimitive.Trigger.displayName
+
+
+    const AccordionContent = React.forwardRef<
+      React.ElementRef<typeof AccordionPrimitive.Content>,
+      React.ComponentPropsWithoutRef<typeof AccordionPrimitive.Content>
+    >(({ className, children, ...props }, ref) => (
+      <AccordionPrimitive.Content
+        ref={ref}
+        className="overflow-hidden text-sm transition-all data-[state=closed]:animate-accordion-up data-[state=open]:animate-accordion-down"
+        {...props}
+      >
+        <div className={cn("pb-4 pt-0", className)}>{children}</div>
+      </AccordionPrimitive.Content>
+    ))
+
+
+    AccordionContent.displayName = AccordionPrimitive.Content.displayName
+
+
+    export { Accordion, AccordionItem, AccordionHeader, AccordionTrigger,
+    AccordionContent }
+  packages/scn-ts-web-demo/src/App.tsx: >
+    import { useEffect, useCallback, useMemo, useRef, useState } from 'react';
+
+    import { generateScn, initializeTokenizer, countTokens } from 'scn-ts-core';
+
+    import { Button } from './components/ui/button';
+
+    import { Textarea } from './components/ui/textarea';
+
+    import LogViewer from './components/LogViewer';
+
+    import { OutputOptions } from './components/OutputOptions';
+
+    import { Legend } from './components/Legend';
+
+    import { Play, Loader, Copy, Check, StopCircle, ZoomIn, ZoomOut, RefreshCw }
+    from 'lucide-react';
+
+    import { Accordion, AccordionContent, AccordionItem, AccordionHeader,
+    AccordionTrigger } from './components/ui/accordion';
+
+    import { useAnalysis } from './hooks/useAnalysis.hook';
+
+    import { useClipboard } from './hooks/useClipboard.hook';
+
+    import { useResizableSidebar } from './hooks/useResizableSidebar.hook';
+
+    import { useAppStore } from './stores/app.store';
+
+    import { cn } from './lib/utils';
+
+    import type { CodeSymbol } from 'scn-ts-core';
+
+
+    function App() {
+      const {
+        filesInput,
+        setFilesInput,
+        scnOutput,
+        setScnOutput,
+        formattingOptions,
+        setFormattingOptions,
+      } = useAppStore();
+
+      const {
+        isInitialized,
+        isLoading,
+        analysisResult,
+        progress,
+        logs,
+        analysisTime,
+        tokenImpact,
+        handleAnalyze: performAnalysis,
+        handleStop,
+        onLogPartial,
+      } = useAnalysis();
+
+      const [zoomLevel, setZoomLevel] = useState(1);
+      const baseFontSizeRem = 0.75; // Corresponds to text-xs
+
+      const handleZoomIn = () => setZoomLevel(z => Math.min(z * 1.2, 4));
+      const handleZoomOut = () => setZoomLevel(z => Math.max(z / 1.2, 0.25));
+      const handleZoomReset = () => setZoomLevel(1);
+
+      const { sidebarWidth, handleMouseDown } = useResizableSidebar(480);
+      const { isCopied, handleCopy: performCopy } = useClipboard();
+
+      useEffect(() => {
+        if (!initializeTokenizer()) {
+          onLogPartial({ level: 'error', message: 'Failed to initialize tokenizer.' });
+        }
+      }, [onLogPartial]);
+
+      useEffect(() => {
+        if (analysisResult) {
+          setScnOutput(generateScn(analysisResult, formattingOptions));
+        } else {
+          setScnOutput('');
+        }
+      }, [analysisResult, formattingOptions]);
+
+      const { tokenCounts, tokenReductionPercent } = useMemo(() => {
+        const input = countTokens(filesInput);
+        const output = countTokens(scnOutput);
+        let reductionPercent: number | null = null;
+        if (input > 0) {
+          reductionPercent = ((input - output) / input) * 100;
+        }
+        return {
+          tokenCounts: { input, output },
+          tokenReductionPercent: reductionPercent,
+        };
+      }, [filesInput, scnOutput]);
+
+      const handleCopy = useCallback(() => {
+        performCopy(scnOutput);
+      }, [performCopy, scnOutput]);
+
+      const handleAnalyze = useCallback(async () => {
+        performAnalysis(filesInput, formattingOptions);
+      }, [performAnalysis, filesInput, formattingOptions]);
+
+      const { totalSymbols, visibleSymbols } = useMemo(() => {
+        if (!analysisResult) {
+          return { totalSymbols: 0, visibleSymbols: 0 };
+        }
+        const allSymbols: CodeSymbol[] = analysisResult.flatMap(file => file.symbols);
+        const total = allSymbols.length;
+        const visible = allSymbols.filter(symbol => {
+          return formattingOptions.displayFilters?.[symbol.kind] !== false;
+        }).length;
+        return { totalSymbols: total, visibleSymbols: visible };
+      }, [analysisResult, formattingOptions.displayFilters]);
+
+      return (
+        <div className="h-screen w-screen flex bg-background text-foreground overflow-hidden">
+          {/* Sidebar */}
+          <aside style={{ width: `${sidebarWidth}px` }} className="max-w-[80%] min-w-[320px] flex-shrink-0 flex flex-col border-r">
+            <div className="flex-shrink-0 flex items-center justify-between p-4 border-b bg-background relative z-20">
+              <h1 className="text-xl font-bold tracking-tight">SCN-TS Web Demo</h1>
+              <div className="flex items-center space-x-2">
+                {isLoading ? (
+                  <>
+                    <Button disabled className="w-32 justify-center">
+                      <Loader className="mr-2 h-4 w-4 animate-spin" />
+                      <span>{progress ? `${Math.round(progress.percentage)}%` : 'Analyzing...'}</span>
+                    </Button>
+                    <Button onClick={handleStop} variant="outline" size="icon" title="Stop analysis">
+                      <StopCircle className="h-4 w-4" />
+                    </Button>
+                  </>
+                ) : (
+                  <Button onClick={handleAnalyze} disabled={!isInitialized} className="w-32 justify-center">
+                    <Play className="mr-2 h-4 w-4" />
+                    <span>Analyze</span>
+                  </Button>
+                )}
+              </div>
+            </div>
+
+            <div className="flex-grow overflow-y-auto">
+              <Accordion type="multiple" defaultValue={['input', 'options', 'logs']} className="w-full">
+                <AccordionItem value="input">
+                  <AccordionHeader>
+                    <AccordionTrigger className="px-4 text-sm font-semibold hover:no-underline">
+                      <div className="flex w-full justify-between items-center">
+                        <span>Input Files (JSON)</span>
+                        <span className="text-xs font-normal text-muted-foreground tabular-nums">
+                          {tokenCounts.input.toLocaleString()} tokens
+                        </span>
+                      </div>
+                    </AccordionTrigger>
+                  </AccordionHeader>
+                  <AccordionContent>
+                    <div className="px-4 pb-4 h-96">
+                      <Textarea
+                        value={filesInput}
+                        onChange={(e) => setFilesInput(e.currentTarget.value)}
+                        className="h-full w-full font-mono text-xs resize-none"
+                        placeholder="Paste an array of FileContent objects here..."
+                      />
+                    </div>
+                  </AccordionContent>
+                </AccordionItem>
+
+                <AccordionItem value="options">
+                  <AccordionHeader className="items-center">
+                    <AccordionTrigger className="px-4 text-sm font-semibold hover:no-underline">
+                      <div className="flex w-full items-center justify-between">
+                        <span>Formatting Options</span>
+                          {analysisResult && (
+                            <span className="text-xs font-normal text-muted-foreground tabular-nums">
+                              {visibleSymbols} / {totalSymbols} symbols
+                            </span>
+                          )}
+                      </div>
+                    </AccordionTrigger>
+                  </AccordionHeader>
+                  <AccordionContent className="px-4">
+                    <OutputOptions options={formattingOptions} setOptions={setFormattingOptions} tokenImpact={tokenImpact} />
+                  </AccordionContent>
+                </AccordionItem>
+
+                <AccordionItem value="logs">
+                  <AccordionHeader>
+                    <AccordionTrigger className="px-4 text-sm font-semibold hover:no-underline">Logs</AccordionTrigger>
+                  </AccordionHeader>
+                  <AccordionContent className="px-4">
+                    <LogViewer logs={logs} />
+                  </AccordionContent>
+                </AccordionItem>
+              </Accordion>
+            </div>
+          </aside>
+
+          {/* Resizer */}
+          <div
+            role="separator"
+            onMouseDown={handleMouseDown}
+            className="w-1.5 flex-shrink-0 cursor-col-resize hover:bg-primary/20 transition-colors duration-200"
+          />
+
+          {/* Main Content Area */}
+          <main className="flex-grow flex flex-col overflow-hidden relative group">
+            <div className="flex justify-between items-center p-4 border-b flex-shrink-0">
+              <h2 className="text-lg font-semibold leading-none tracking-tight">Output (SCN)</h2>
+              <div className="flex items-center gap-4">
+                {analysisTime !== null && (
+                  <span className="text-sm text-muted-foreground">
+                    Analyzed in {(analysisTime / 1000).toFixed(2)}s
+                  </span>
+                )}
+                <span className="text-sm font-normal text-muted-foreground tabular-nums">{tokenCounts.output.toLocaleString()} tokens</span>
+                {tokenReductionPercent !== null && analysisResult && (
+                  <span
+                    className={cn(
+                      "text-sm font-medium tabular-nums",
+                      tokenReductionPercent >= 0 ? "text-green-500" : "text-red-500"
+                    )}
+                    title="Token count change from input to output"
+                  >
+                    {tokenReductionPercent >= 0 ? '▼' : '▲'}{' '}
+                    {Math.abs(tokenReductionPercent).toFixed(0)}%
+                  </span>
+                )}
+                <Button variant="ghost" size="icon" onClick={handleCopy} disabled={!scnOutput} title="Copy to clipboard">
+                  {isCopied ? <Check className="h-4 w-4 text-green-500" /> : <Copy className="h-4 w-4" />}
+                </Button>
+              </div>
+            </div>
+            <div className="p-4 flex-grow overflow-auto font-mono text-xs relative group">
+              <Legend />
+              <pre
+                className="whitespace-pre-wrap"
+                style={{
+                  fontSize: `${baseFontSizeRem * zoomLevel}rem`,
+                  lineHeight: `${zoomLevel}rem`,
+                }}
+              >
+                {scnOutput || (isLoading ? "Generating..." : "Output will appear here.")}
+              </pre>
+            </div>
+            <div className="absolute bottom-4 right-4 z-10 flex items-center gap-1 rounded-md border bg-background/80 p-1 opacity-0 backdrop-blur-sm transition-opacity duration-200 group-hover:opacity-100">
+              <Button variant="ghost" size="icon" onClick={handleZoomOut} title="Zoom out" className="h-7 w-7">
+                <ZoomOut className="h-4 w-4" />
+              </Button>
+              <Button variant="ghost" size="icon" onClick={handleZoomReset} title="Reset zoom" className="h-7 w-7">
+                <RefreshCw className="h-4 w-4" />
+              </Button>
+              <Button variant="ghost" size="icon" onClick={handleZoomIn} title="Zoom in" className="h-7 w-7">
+                <ZoomIn className="h-4 w-4" />
+              </Button>
+            </div>
+          </main>
+        </div>
+      );
+    }
+
+
+    export default App;
+  packages/scn-ts-web-demo/src/components/Legend.tsx: >-
+    import * as React from 'react';
+
+    import { Button } from './ui/button';
+
+    import { HelpCircle, X } from 'lucide-react';
+
+    import { ICONS, SCN_SYMBOLS } from 'scn-ts-core';
+
+    import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
+
+    import {
+      Accordion,
+      AccordionContent,
+      AccordionItem,
+      AccordionTrigger,
+    } from "./ui/accordion"
+
+
+    const symbolIconGroups: Record<string, (keyof typeof ICONS)[]> = {
+      'Class or Component': ['class', 'react_component'],
+      'Interface or Trait': ['interface', 'rust_trait'],
+      'Function or Method': ['function', 'method', 'styled_component'],
+      'Variable or Property': ['variable', 'property'],
+      Enum: ['enum'],
+      'Type Alias': ['type_alias'],
+      'JSX Element': ['jsx_element'],
+      'CSS Selector': ['css_class'],
+    };
+
+
+    const symbolIcons = Object.entries(symbolIconGroups).flatMap(([description,
+    iconKeys]) =>
+      iconKeys.map(key => ({ symbol: ICONS[key], description }))
+    );
+
+
+    const legendSections = [
+      {
+        title: 'Prefixes',
+        items: [
+          { symbol: SCN_SYMBOLS.FILE_PREFIX, description: 'File path' },
+          { symbol: SCN_SYMBOLS.EXPORTED_PREFIX, description: 'Exported symbol' },
+          { symbol: SCN_SYMBOLS.PRIVATE_PREFIX, description: 'Private/unexported symbol' },
+        ],
+      },
+      {
+        title: 'Symbol Icons',
+        items: Array.from(new Map(symbolIcons.map(item => [item.symbol, item])).values()),
+      },
+      {
+        title: 'Relationships',
+        items: [
+          { symbol: SCN_SYMBOLS.OUTGOING_ARROW, description: 'Outgoing dependency' },
+          { symbol: SCN_SYMBOLS.INCOMING_ARROW, description: 'Incoming dependency' },
+        ],
+      },
+      {
+        title: 'Modifiers & Tags',
+        items: [
+          { symbol: SCN_SYMBOLS.ASYNC, description: 'Async' },
+          { symbol: SCN_SYMBOLS.THROWS, description: 'Throws error' },
+          { symbol: SCN_SYMBOLS.PURE, description: 'Pure (no side-effects)' },
+          { symbol: SCN_SYMBOLS.TAG_STYLED, description: 'Styled component' },
+          { symbol: SCN_SYMBOLS.TAG_DYNAMIC, description: 'Dynamic import' },
+          { symbol: SCN_SYMBOLS.TAG_GENERATED, description: 'Generated file' },
+        ],
+      },
+    ];
+
+
+    const LegendItem: React.FC<{ symbol: string; description: string }> = ({
+    symbol, description }) => (
+      <div className="grid grid-cols-[3rem_1fr] items-center gap-x-3 text-sm">
+        <code className="font-mono text-base font-bold text-foreground/90 justify-self-center">{symbol}</code>
+        <span className="text-muted-foreground">{description}</span>
+      </div>
+    );
+
+
+    export const Legend: React.FC = () => {
+      const [isOpen, setIsOpen] = React.useState(false);
+
+      if (!isOpen) {
+        return (
+          <div className="sticky top-4 right-4 z-30 float-right">
+            <Button
+              variant="secondary"
+              size="icon"
+              onClick={() => setIsOpen(true)}
+              title="Show Legend"
+              className="rounded-full shadow-lg"
+            >
+              <HelpCircle className="h-5 w-5" />
+            </Button>
+          </div>
+        );
+      }
+
+      return (
+        <div className="sticky top-4 right-4 z-30 float-right">
+          <Card className="w-80 max-h-[80vh] flex flex-col shadow-2xl bg-background/90 backdrop-blur-sm">
+            <CardHeader className="flex flex-row items-center justify-between py-3 px-4 border-b">
+              <CardTitle className="text-base">Legend</CardTitle>
+              <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setIsOpen(false)}>
+                <X className="h-4 w-4" />
+              </Button>
+            </CardHeader>
+            <CardContent className="p-0 overflow-y-auto">
+              <Accordion type="multiple" defaultValue={legendSections.map(s => s.title)} className="w-full">
+                {legendSections.map(({ title, items }) => (
+                  <AccordionItem key={title} value={title}>
+                    <AccordionTrigger className="px-4 py-2 text-sm hover:no-underline">{title}</AccordionTrigger>
+                    <AccordionContent className="px-4 pb-3">
+                      <div className="space-y-1.5">
+                        {items.map(({ symbol, description }) =>
+                          symbol && <LegendItem key={`${symbol}-${description}`} symbol={symbol} description={description} />
+                        )}
+                      </div>
+                    </AccordionContent>
+                  </AccordionItem>
+                ))}
+              </Accordion>
+            </CardContent>
+          </Card>
+        </div>
+      );
+    };
+  packages/scn-ts-web-demo/src/components/OutputOptions.tsx: >
+    import * as React from 'react';
+
+    import type { FormattingOptions } from '../types';
+
+    import { ChevronDown, ChevronRight, ListChecks, ListX, ChevronsDown,
+    ChevronsUp, X } from 'lucide-react';
+
+    import type { FormattingOptionsTokenImpact } from 'scn-ts-core';
+
+
+    import { Checkbox } from './ui/checkbox';
+
+    import { Label } from './ui/label';
+
+    import { Input } from './ui/input';
+
+    import { Button } from './ui/button';
+
+
+    interface OutputOptionsProps {
+      options: FormattingOptions;
+      setOptions: React.Dispatch<React.SetStateAction<FormattingOptions>>;
+      tokenImpact: FormattingOptionsTokenImpact | null;
+    }
+
+
+    type RegularOptionKey = keyof Omit<FormattingOptions, 'displayFilters'>;
+
+    type OptionItem = RegularOptionKey | string | { name: string; children:
+    OptionItem[] };
+
+
+    const symbolKindLabels: Record<string, string> = {
+      // TS/JS
+      class: 'Classes',
+      interface: 'Interfaces',
+      function: 'Functions',
+      method: 'Methods',
+      constructor: 'Constructors',
+      variable: 'Variables',
+      property: 'Properties',
+      enum: 'Enums',
+      enum_member: 'Enum Members',
+      type_alias: 'Type Aliases',
+      module: 'Modules',
+      // React
+      react_component: 'React Components',
+      styled_component: 'Styled Components',
+      jsx_element: 'JSX Elements',
+      // CSS
+      css_class: 'CSS Classes',
+      css_id: 'CSS IDs',
+      css_tag: 'CSS Tags',
+      css_at_rule: 'CSS At-Rules',
+      css_variable: 'CSS Variables',
+      // Go
+      go_package: 'Go Packages',
+      // Rust
+      rust_struct: 'Rust Structs',
+      rust_trait: 'Rust Traits',
+      rust_impl: 'Rust Impls',
+    };
+
+
+    const tsDeclarationKinds = ['class', 'interface', 'function', 'variable',
+    'enum', 'type_alias', 'module'];
+
+    const tsMemberKinds = ['method', 'constructor', 'property', 'enum_member'];
+
+    const reactKinds = ['react_component', 'styled_component', 'jsx_element'];
+
+    const cssKinds = ['css_class', 'css_id', 'css_tag', 'css_at_rule',
+    'css_variable'];
+
+    const goKinds = ['go_package'];
+
+    const rustKinds = ['rust_struct', 'rust_trait', 'rust_impl'];
+
+
+    const toFilter = (kind: string): string => `filter:${kind}`;
+
+
+    const symbolVisibilityTree: OptionItem = {
+      name: 'Symbol Visibility',
+      children: [
+        {
+          name: 'TypeScript/JavaScript',
+          children: [
+            { name: 'Declarations', children: tsDeclarationKinds.map(toFilter) },
+            { name: 'Members', children: tsMemberKinds.map(toFilter) },
+          ],
+        },
+        { name: 'React', children: reactKinds.map(toFilter) },
+        { name: 'CSS', children: cssKinds.map(toFilter) },
+        {
+          name: 'Other Languages',
+          children: [
+            { name: 'Go', children: goKinds.map(toFilter) },
+            { name: 'Rust', children: rustKinds.map(toFilter) },
+          ],
+        },
+      ],
+    };
+
+
+    const optionTree: OptionItem[] = [
+      {
+        name: 'Display Elements',
+        children: [
+          'showIcons',
+          {
+            name: 'Indicators',
+            children: ['showExportedIndicator', 'showPrivateIndicator'],
+          },
+          'showModifiers',
+          'showTags',
+          {
+            name: 'Identifiers',
+            children: ['showFilePrefix', 'showFileIds', 'showSymbolIds'],
+          },
+        ],
+      },
+      {
+        name: 'Relationships',
+        children: ['showOutgoing', 'showIncoming'],
+      },
+      {
+        name: 'Structure',
+        children: ['groupMembers'],
+      },
+      symbolVisibilityTree,
+    ];
+
+
+    const optionLabels: Record<RegularOptionKey, string> & Record<string,
+    string> = {
+      ...symbolKindLabels,
+      showIcons: 'Icons',
+      showExportedIndicator: 'Exported (+)',
+      showPrivateIndicator: 'Private (-)',
+      showModifiers: 'Modifiers',
+      showTags: 'Tags',
+      showSymbolIds: 'Symbol IDs',
+      showFilePrefix: 'File Prefix (§)',
+      showFileIds: 'File IDs',
+      showOutgoing: 'Outgoing',
+      showIncoming: 'Incoming',
+      groupMembers: 'Group Members',
+    };
+
+
+    function getAllKeys(item: OptionItem): string[] {
+      if (typeof item === 'string') {
+        return [item];
+      }
+      return item.children.flatMap(getAllKeys);
+    }
+
+
+    const getAllGroupNames = (items: OptionItem[]): string[] => {
+      return items.flatMap(item => {
+        if (typeof item === 'object' && 'name' in item) {
+          return [item.name, ...getAllGroupNames(item.children)];
+        }
+        return [];
+      });
+    }
+
+
+    export const OutputOptions: React.FC<OutputOptionsProps> = ({ options,
+    setOptions, tokenImpact }) => {
+      const [expandedGroups, setExpandedGroups] = React.useState<Set<string>>(
+        () =>
+          new Set([
+            'Display Elements', 'Indicators', 'Relationships', 'Structure',
+            'TypeScript/JavaScript',
+            'React', 'Identifiers',
+          ])
+      );
+
+      const [searchTerm, setSearchTerm] = React.useState('');
+
+      const allOptionKeys = React.useMemo(() => optionTree.flatMap(getAllKeys), []);
+
+      const filteredOptionTree = React.useMemo(() => {
+        if (!searchTerm.trim()) return optionTree;
+        const lowerCaseSearchTerm = searchTerm.toLowerCase();
+
+        function filter(item: OptionItem): OptionItem | null {
+          if (typeof item === 'string') {
+            const label = optionLabels[item as keyof typeof optionLabels] || item;
+            return label.toLowerCase().includes(lowerCaseSearchTerm) ? item : null;
+          }
+
+          if (item.name.toLowerCase().includes(lowerCaseSearchTerm)) {
+            return item; // Keep group and all its children if group name matches
+          }
+
+          const filteredChildren = item.children.map(filter).filter((c): c is OptionItem => c !== null);
+          if (filteredChildren.length > 0) {
+            return { ...item, children: filteredChildren };
+          }
+          return null;
+        }
+        return optionTree.map(filter).filter((i): i is OptionItem => i !== null);
+      }, [searchTerm]);
+
+      React.useEffect(() => {
+        if (searchTerm.trim()) {
+          setExpandedGroups(new Set(getAllGroupNames(filteredOptionTree)));
+        }
+      }, [searchTerm, filteredOptionTree]);
+
+      const expandAll = React.useCallback(() => setExpandedGroups(new Set(getAllGroupNames(filteredOptionTree))), [filteredOptionTree]);
+      const collapseAll = React.useCallback(() => {
+        setExpandedGroups(new Set());
+      }, []);
+      const selectAll = React.useCallback(() => {
+        setOptions(prev => {
+          const newOptions: FormattingOptions = { ...prev };
+          const newDisplayFilters = { ...(prev.displayFilters ?? {}) };
+
+          for (const key of allOptionKeys) {
+            if (key.startsWith('filter:')) {
+              newDisplayFilters[key.substring('filter:'.length)] = true;
+            } else {
+              newOptions[key as RegularOptionKey] = true;
+            }
+          }
+          newOptions.displayFilters = newDisplayFilters;
+          return newOptions;
+        });
+      }, [allOptionKeys]);
+      const deselectAll = React.useCallback(() => {
+        setOptions(prev => {
+          const newOptions: FormattingOptions = { ...prev };
+          const newDisplayFilters = { ...(prev.displayFilters ?? {}) };
+
+          for (const key of allOptionKeys) {
+            if (key.startsWith('filter:')) {
+              newDisplayFilters[key.substring('filter:'.length)] = false;
+            } else {
+              newOptions[key as RegularOptionKey] = false;
+            }
+          }
+          newOptions.displayFilters = newDisplayFilters;
+          return newOptions;
+        });
+      }, [allOptionKeys]);
+
+      const toggleGroup = (groupName: string) => {
+        setExpandedGroups(prev => {
+          const newSet = new Set(prev);
+          if (newSet.has(groupName)) {
+            newSet.delete(groupName);
+          } else {
+            newSet.add(groupName);
+          }
+          return newSet;
+        });
+      };
+
+      const handleChange = (optionKey: string) => (checked: boolean | 'indeterminate') => {
+        const isChecked = checked === true;
+        if (optionKey.startsWith('filter:')) {
+          const kind = optionKey.substring('filter:'.length);
+          setOptions(prev => ({
+            ...prev,
+            displayFilters: { ...(prev.displayFilters ?? {}), [kind]: isChecked },
+          }));
+        } else {
+          setOptions(prev => ({ ...prev, [optionKey]: isChecked }));
+        }
+      };
+
+      const handleGroupChange = (keys: ReadonlyArray<string>) => (checked: boolean | 'indeterminate') => {
+        const isChecked = checked === true;
+        setOptions(prev => {
+          const newOptions: FormattingOptions = { ...prev };
+          const newDisplayFilters = { ...(prev.displayFilters ?? {}) };
+
+          for (const key of keys) {
+            if (key.startsWith('filter:')) {
+              newDisplayFilters[key.substring('filter:'.length)] = isChecked;
+            } else {
+              newOptions[key as RegularOptionKey] = isChecked;
+            }
+          }
+          newOptions.displayFilters = newDisplayFilters;
+          return newOptions;
+        });
+      };
+
+      const renderItem = (item: OptionItem, level: number): React.ReactNode => {
+        if (typeof item === 'string') {
+          const key = item as string;
+          const isFilter = key.startsWith('filter:');
+          const filterKind = isFilter ? key.substring('filter:'.length) : null;
+          const labelKey = filterKind ?? key;
+
+          return (
+            <div key={key} style={{ paddingLeft: `${level * 1.5}rem` }} className="flex items-center space-x-1.5">
+              <Checkbox
+                id={key}
+                checked={isFilter
+                  ? (options.displayFilters && Object.hasOwn(options.displayFilters, filterKind!)
+                    ? options.displayFilters[filterKind!]
+                    : true)
+                  : (options[key as RegularOptionKey] ?? true)}
+                onCheckedChange={handleChange(key)}
+              />
+              <Label htmlFor={key} className="flex-1 cursor-pointer select-none text-sm text-muted-foreground font-normal">
+                <div className="flex justify-between items-center">
+                  <span>{optionLabels[labelKey as keyof typeof optionLabels] ?? labelKey}</span>
+                  {tokenImpact && (
+                    <span className="text-xs font-mono tabular-nums text-foreground/50">
+                      {(() => {
+                        let impact: number | undefined;
+                        if (isFilter) {
+                          if (tokenImpact.displayFilters && Object.hasOwn(tokenImpact.displayFilters, filterKind!)) {
+                            impact = tokenImpact.displayFilters[filterKind!];
+                          }
+                        } else {
+                          impact = tokenImpact.options?.[key as RegularOptionKey];
+                        }
+                        if (impact === undefined) return null;
+                        return `${impact > 0 ? '+' : ''}${impact}`;
+                      })()}
+                    </span>
+                  )}
+                </div>
+              </Label>
+            </div>
+          );
+        }
+
+        const { name, children } = item;
+        const isExpanded = expandedGroups.has(name);
+        const allKeys = getAllKeys(item);
+        const allChecked = allKeys.every(key => {
+          if (key.startsWith('filter:')) {
+            const kind = key.substring('filter:'.length);
+            return (options.displayFilters && Object.hasOwn(options.displayFilters, kind))
+              ? options.displayFilters[kind]
+              : true;
+          }
+          return options[key as RegularOptionKey] ?? true;
+        });
+        const groupTokenImpact = tokenImpact ? allKeys.reduce((sum, key) => {
+          let impact: number | undefined;
+          if (key.startsWith('filter:')) {
+            const kind = key.substring('filter:'.length);
+            if (tokenImpact.displayFilters && Object.hasOwn(tokenImpact.displayFilters, kind)) {
+              impact = tokenImpact.displayFilters[kind];
+            }
+          } else {
+            impact = tokenImpact.options?.[key as RegularOptionKey];
+          }
+          return sum + (impact ?? 0);
+        }, 0) : null;
+
+        const impactDisplay = tokenImpact && groupTokenImpact !== null ? (
+          <span className="text-xs font-mono tabular-nums text-foreground/50 ml-auto mr-2">
+            {(() => {
+              const impact = groupTokenImpact;
+              if (impact === undefined) return null;
+              return `${impact > 0 ? '+' : ''}${impact}`;
+            })()}
+          </span>
+        ) : null;
+
+        return (
+          <div key={name}>
+            <div
+              className="flex items-center space-x-1.5 py-1 rounded-md hover:bg-accent/50 cursor-pointer select-none -mx-2 px-2"
+              style={{ paddingLeft: `calc(${level * 1.5}rem + 0.5rem)` }}
+              onClick={() => toggleGroup(name)}
+            >
+              {isExpanded ? <ChevronDown className="h-4 w-4 flex-shrink-0" /> : <ChevronRight className="h-4 w-4 flex-shrink-0" />}
+              <Checkbox
+                id={`group-${name.replace(/\s+/g, '-')}`}
+                title={`Toggle all in ${name}`}
+                checked={allChecked}
+                onCheckedChange={handleGroupChange(allKeys)}
+                onClick={(e: React.MouseEvent) => e.stopPropagation()} // Prevent row click from firing
+              />
+              <Label
+                htmlFor={`group-${name.replace(/\s+/g, '-')}`} // The label itself is clickable
+                className="flex-1 font-semibold text-sm cursor-pointer select-none"
+              >
+                <div className="flex justify-between items-center">
+                  <span>{name}</span> {impactDisplay}</div>
+              </Label>
+            </div>
+            {isExpanded && (
+              <div className="pt-1.5 space-y-1.5">
+                {children.map(child => renderItem(child, level + 1))}
+              </div>
+            )}
+          </div>
+        );
+      };
+
+      return (
+        <div className="space-y-1">
+          <div className="flex gap-2 mb-3">
+            <div className="relative flex-grow">
+              <Input
+                placeholder="Search options..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="h-8 text-xs pr-8"
+              />
+              {searchTerm && (
+                <Button variant="ghost" size="icon" onClick={() => setSearchTerm('')} className="absolute right-0 top-0 h-8 w-8 text-muted-foreground hover:text-foreground">
+                  <X className="h-4 w-4" />
+                </Button>
+              )}
+            </div>
+            <div className="flex items-center">
+              <Button variant="ghost" size="icon" onClick={selectAll} title="Select all" className="h-8 w-8 text-muted-foreground hover:text-foreground">
+                <ListChecks className="h-4 w-4" />
+              </Button>
+              <Button variant="ghost" size="icon" onClick={deselectAll} title="Deselect all" className="h-8 w-8 text-muted-foreground hover:text-foreground">
+                <ListX className="h-4 w-4" />
+              </Button>
+              <Button variant="ghost" size="icon" onClick={expandAll} title="Expand all" className="h-8 w-8 text-muted-foreground hover:text-foreground">
+                <ChevronsDown className="h-4 w-4" />
+              </Button>
+              <Button variant="ghost" size="icon" onClick={collapseAll} title="Collapse all" className="h-8 w-8 text-muted-foreground hover:text-foreground">
+                <ChevronsUp className="h-4 w-4" />
+              </Button>
+            </div>
+          </div>
+          {filteredOptionTree.map(item => renderItem(item, 0))}
+        </div>
+      );
+    };
+approved: true

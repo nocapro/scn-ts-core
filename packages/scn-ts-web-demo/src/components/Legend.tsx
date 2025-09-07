@@ -98,7 +98,7 @@ export const Legend: React.FC = () => {
             {legendSections.map(({ title, items }) => (
               <AccordionItem key={title} value={title}>
                 <AccordionTrigger className="px-4 py-2 text-sm hover:no-underline">{title}</AccordionTrigger>
-                <AccordionContent className="px-4 pb-3">
+                <AccordionContent className="px-4 pt-3 pb-3">
                   <div className="space-y-1.5">
                     {items.map(({ symbol, description }) =>
                       symbol && <LegendItem key={`${symbol}-${description}`} symbol={symbol} description={description} />

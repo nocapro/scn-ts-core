@@ -1,3 +1,12 @@
+===
+
+sidebar
+
+1. fix top padding of accordion body contents(input,formatting options, log) where its too close to the accordion header
+2. de/select and de/expand iconbutton: we can make them two iconbuttons only with changing state
+
+=== DONE
+
 formatting options;
 
 1. add search feature
@@ -16,7 +25,7 @@ add glob include exclude feature
   "packages/scn-ts-web-demo/src/hooks/useAnalysis.hook.ts",
   "packages/scn-ts-web-demo/src/worker.ts"
 
-===
+=== ON
 
 add 5 level presets to formatting options;
 the behaviour should be provided by scn-ts-core level api if non exist then create

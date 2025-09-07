@@ -38,26 +38,11 @@
     "packages/scn-ts-web-demo/tsconfig.node.json",
     "packages/scn-ts-web-demo/vite.config.ts",
     // "packages/scn-ts-web-demo/scripts/prepare-wasm.cjs",
-    // "packages/scn-ts-web-demo/src"
+    "packages/scn-ts-web-demo/src"
     //
 
-      "src/main.ts",
-      "src/index.ts",
-      "src/formatter.ts",
-      "src/tokenizer.ts",
-      "src/constants.ts",
-      "src/types.ts",
-      "test/unit/calculateTokenImpact.test.ts",
-      // "test/test.util.ts",
-      // "test/ts/e2e/01-core.test.ts",
-      // "test/ts/fixtures/01.core-ts.fixture.yaml",
-      "packages/scn-ts-web-demo/src/worker.ts",
-      "packages/scn-ts-web-demo/src/services/analysis.service.ts",
-      "packages/scn-ts-web-demo/src/hooks/useAnalysis.hook.ts",
-      "packages/scn-ts-web-demo/src/App.tsx",
-      "packages/scn-ts-web-demo/src/components/OutputOptions.tsx",
-      "packages/scn-ts-web-demo/src/constants.ts",
-      "packages/scn-ts-web-demo/src/types.ts"
+
+
 
 
   ],

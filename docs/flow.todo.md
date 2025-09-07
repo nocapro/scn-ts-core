@@ -1,3 +1,55 @@
+glob include exclude feature
+
+===
+
+add 5 level presets
+the behaviour should be provided by scn-ts-core level api
+
+===
+
+input;
+
+beside json, we want also git repo url
+
+===
+
+analyzed timetook should including token impact timetook
+
+===
+
+add zoom control on the output. show only on output hover
+
+===
+
+formatting options;
+
+add de/select all iconbutton without text. the behaviour should be provided by scn-ts-core level api
+
+====
+
+formatting options;
+
+I want all item should has token cost
+
+currently no cost for;
+
+classes
+enums
+
+===
+formatting options;
+
+fix below problem where token cost impact showing invalid value
+
+<div class="flex justify-between items-center"><span>Symbol Visibility</span> <span class="text-xs font-mono tabular-nums text-foreground/50 ml-auto mr-2">-690function Object() { [native code] }-1850-114-21-390-1200000-110-17</span></div>
+
+<div class="flex justify-between items-center"><span>TypeScript/JavaScript</span> <span class="text-xs font-mono tabular-nums text-foreground/50 ml-auto mr-2">-690function Object() { [native code] }-1850</span></div>
+
+<div class="flex justify-between items-center"><span>Members</span> <span class="text-xs font-mono tabular-nums text-foreground/50 ml-auto mr-2">-31function Object() { [native code] }-1850</span></div>
+
+<div class="flex justify-between items-center"><span>Constructors</span><span class="text-xs font-mono tabular-nums text-foreground/50">function Object() { [native code] }</span></div>
+
+
 === DONE
 
 give cool stat of how many token difference between input and output, also should sensitive to formatting options change. should provided by scn-ts-core level api
@@ -8,7 +60,7 @@ token counter; js-tiktoken
 
 the feature should be provided by scn-ts-core instead as core api level so web demo can directly use it
 
-===
+=== DONE
 
 formatting options;
 

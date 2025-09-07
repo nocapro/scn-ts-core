@@ -1,11 +1,11 @@
-import { useEffect, useCallback, useMemo, useRef } from 'react';
+import { useEffect, useCallback, useMemo, useRef, useState } from 'react';
 import { generateScn, initializeTokenizer, countTokens } from 'scn-ts-core';
 import { Button } from './components/ui/button';
 import { Textarea } from './components/ui/textarea';
 import LogViewer from './components/LogViewer';
 import OutputOptions, { type OutputOptionsHandle } from './components/OutputOptions';
-import { Legend } from './components/Legend'; 
-import { Play, Loader, Copy, Check, StopCircle, ChevronsDown, ChevronsUp } from 'lucide-react';
+import { Legend } from './components/Legend';
+import { Play, Loader, Copy, Check, StopCircle, ChevronsDown, ChevronsUp, ZoomIn, ZoomOut, RefreshCw } from 'lucide-react';
 import { Accordion, AccordionContent, AccordionItem, AccordionHeader, AccordionTrigger } from './components/ui/accordion';
 import { useAnalysis } from './hooks/useAnalysis.hook';
 import { useClipboard } from './hooks/useClipboard.hook';
@@ -38,6 +38,13 @@ function App() {
   } = useAnalysis();
 
   const outputOptionsRef = useRef<OutputOptionsHandle>(null);
+
+  const [zoomLevel, setZoomLevel] = useState(1);
+  const baseFontSizeRem = 0.75; // Corresponds to text-xs
+
+  const handleZoomIn = () => setZoomLevel(z => Math.min(z * 1.2, 4));
+  const handleZoomOut = () => setZoomLevel(z => Math.max(z / 1.2, 0.25));
+  const handleZoomReset = () => setZoomLevel(1);
 
   const { sidebarWidth, handleMouseDown } = useResizableSidebar(480);
   const { isCopied, handleCopy: performCopy } = useClipboard();
@@ -196,7 +203,7 @@ function App() {
       />
 
       {/* Main Content Area */}
-      <main className="flex-grow flex flex-col overflow-hidden relative">
+      <main className="flex-grow flex flex-col overflow-hidden relative group">
         <div className="flex justify-between items-center p-4 border-b flex-shrink-0">
           <h2 className="text-lg font-semibold leading-none tracking-tight">Output (SCN)</h2>
           <div className="flex items-center gap-4">
@@ -223,11 +230,25 @@ function App() {
             </Button>
           </div>
         </div>
-        <div className="p-4 flex-grow overflow-auto font-mono text-xs relative">
+        <div className="p-4 flex-grow overflow-auto font-mono text-xs relative group">
           <Legend />
-          <pre className="whitespace-pre-wrap">
+          <pre
+            className="whitespace-pre-wrap"
+            style={{ fontSize: `${baseFontSizeRem * zoomLevel}rem` }}
+          >
             {scnOutput || (isLoading ? "Generating..." : "Output will appear here.")}
           </pre>
+        </div>
+        <div className="absolute bottom-4 right-4 z-10 flex items-center gap-1 rounded-md border bg-background/80 p-1 opacity-0 backdrop-blur-sm transition-opacity duration-200 group-hover:opacity-100">
+          <Button variant="ghost" size="icon" onClick={handleZoomOut} title="Zoom out" className="h-7 w-7">
+            <ZoomOut className="h-4 w-4" />
+          </Button>
+          <Button variant="ghost" size="icon" onClick={handleZoomReset} title="Reset zoom" className="h-7 w-7">
+            <RefreshCw className="h-4 w-4" />
+          </Button>
+          <Button variant="ghost" size="icon" onClick={handleZoomIn} title="Zoom in" className="h-7 w-7">
+            <ZoomIn className="h-4 w-4" />
+          </Button>
         </div>
       </main>
     </div>

@@ -1,3 +1,10 @@
+formatting options;
+
+1. add search feature
+2. move control from accordion header to proper area within tree
+
+===
+
 input
 
 add glob include exclude feature
@@ -58,7 +65,7 @@ add zoom control on the output. show only on output hover
 
 zoom feature: only affecting the font size, not the line
 
-===
+=== DONE
 
 formatting options;
 
@@ -83,7 +90,18 @@ classes
 enums
 etc
 
-===
+  "packages/scn-ts-web-demo/src/components/OutputOptions.tsx",
+  "packages/scn-ts-web-demo/src/App.tsx",
+  "packages/scn-ts-web-demo/src/hooks/useAnalysis.hook.ts",
+  "packages/scn-ts-web-demo/src/worker.ts",
+  "src/main.ts",
+  "src/formatter.ts",
+  "src/analyzer.ts",
+  "src/types.ts",
+  "src/queries/typescript.ts"
+
+=== DONE
+
 formatting options;
 
 fix below problem where token cost impact showing invalid value

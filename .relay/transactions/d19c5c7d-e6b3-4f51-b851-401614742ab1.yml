@@ -1,0 +1,72 @@
+uuid: d19c5c7d-e6b3-4f51-b851-401614742ab1
+projectId: scn-ts-core
+createdAt: '2025-09-07T06:38:40.803Z'
+linesAdded: 2
+linesRemoved: 2
+gitCommitMsg: 'fix(web-demo): update tsconfig target to support Object.hasOwn'
+promptSummary: >-
+  Fix TypeScript errors related to Object.hasOwn by updating the compiler
+  options.
+reasoning:
+  - >-
+    yo, what's up. looks like you've got a classic tsconfig issue.
+    `Object.hasOwn` is shiny and new (ES2022), but your `tsconfig.json` for the
+    web demo is stuck in the past with `target: "ES2020"`. The typescript
+    compiler is basically saying 'i dunno what this `hasOwn` thing is'.
+  - >-
+    the fix is simple, just gotta tell typescript to use a more recent version
+    of javascript. i'll bump `target` and `lib` in
+    `packages/scn-ts-web-demo/tsconfig.json` to `ESNext`. this aligns it with
+    your root tsconfig and brings it into the modern era. should clear up those
+    errors for you. peace.
+operations:
+  - type: write
+    path: packages/scn-ts-web-demo/tsconfig.json
+    content: |-
+      --- packages/scn-ts-web-demo/tsconfig.json
+      +++ packages/scn-ts-web-demo/tsconfig.json
+      @@ -1,8 +1,8 @@
+       {
+         "compilerOptions": {
+      -    "target": "ES2020",
+      +    "target": "ESNext",
+           "useDefineForClassFields": true,
+      -    "lib": ["ES2020", "DOM", "DOM.Iterable"],
+      +    "lib": ["ESNext", "DOM", "DOM.Iterable"],
+           "module": "ESNext",
+           "skipLibCheck": true,
+           "noEmit": true,
+    patchStrategy: new-unified
+snapshot:
+  packages/scn-ts-web-demo/tsconfig.json: |
+    {
+      "compilerOptions": {
+        "target": "ES2020",
+        "useDefineForClassFields": true,
+        "lib": ["ES2020", "DOM", "DOM.Iterable"],
+        "module": "ESNext",
+        "skipLibCheck": true,
+        "noEmit": true,
+
+        /* Bundler mode */
+        "moduleResolution": "bundler",
+        "resolveJsonModule": true,
+        "isolatedModules": true,
+        "outDir": "dist",
+        "jsx": "react-jsx",
+        "baseUrl": ".",
+        "paths": {
+          "@/*": ["src/*"],
+          "scn-ts-core": ["../../src/index.ts"],
+          "scn-ts-core/*": ["../../src/*"]
+        },
+
+        /* Linting */
+        "strict": true,
+        "noUnusedLocals": true,
+        "noUnusedParameters": true,
+        "noFallthroughCasesInSwitch": true
+      },
+      "include": ["src"]
+    }
+approved: true

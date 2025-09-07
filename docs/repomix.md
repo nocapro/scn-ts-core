@@ -3,11 +3,14 @@
 packages/
   scn-ts-web-demo/
     src/
+      components/
+        OutputOptions.tsx
       hooks/
         useAnalysis.hook.ts
-      services/
-        analysis.service.ts
+      stores/
+        app.store.ts
       App.tsx
+      types.ts
       worker.ts
     index.html
     package.json
@@ -17,6 +20,8 @@ packages/
     tsconfig.node.json
     vite.config.ts
 src/
+  formatter.ts
+  index.ts
   main.ts
   types.ts
 package.json
@@ -24,6 +29,72 @@ tsconfig.json
 ```
 
 # Files
+
+## File: packages/scn-ts-web-demo/src/stores/app.store.ts
+```typescript
+import { useState } from 'react';
+import { defaultFilesJSON } from '../default-files';
+import type { FormattingOptions } from '../types';
+
+export function useAppStore() {
+  const [filesInput, setFilesInput] = useState(defaultFilesJSON);
+  const [scnOutput, setScnOutput] = useState('');
+  const [formattingOptions, setFormattingOptions] = useState<FormattingOptions>({
+    showOutgoing: true,
+    showIncoming: true,
+    showIcons: true,
+    showExportedIndicator: true,
+    showPrivateIndicator: true,
+    showModifiers: true,
+    showTags: true,
+    showSymbolIds: true,
+    groupMembers: true,
+    displayFilters: {},
+    showFilePrefix: true,
+    showFileIds: true,
+  });
+
+  return {
+    filesInput,
+    setFilesInput,
+    scnOutput,
+    setScnOutput,
+    formattingOptions,
+    setFormattingOptions,
+  };
+}
+```
+
+## File: packages/scn-ts-web-demo/src/types.ts
+```typescript
+import type { LogLevel } from 'scn-ts-core';
+
+export interface LogEntry {
+  level: Exclude<LogLevel, 'silent'>;
+  message: string;
+  timestamp: number;
+}
+
+export interface ProgressData {
+  percentage: number;
+  message: string;
+}
+
+export interface FormattingOptions {
+  showOutgoing?: boolean;
+  showIncoming?: boolean;
+  showIcons?: boolean;
+  showExportedIndicator?: boolean;
+  showPrivateIndicator?: boolean;
+  showModifiers?: boolean;
+  showTags?: boolean;
+  showSymbolIds?: boolean;
+  groupMembers?: boolean;
+  displayFilters?: Partial<Record<string, boolean>>;
+  showFilePrefix?: boolean;
+  showFileIds?: boolean;
+}
+```
 
 ## File: packages/scn-ts-web-demo/index.html
 ```html
@@ -209,62 +280,6 @@ export default {
     "vite-plugin-top-level-await": "^1.4.1",
     "vite-plugin-wasm": "^3.3.0"
   }
-}
-```
-
-## File: packages/scn-ts-web-demo/src/services/analysis.service.ts
-```typescript
-import * as Comlink from 'comlink';
-import type { WorkerApi } from '../worker';
-import type { LogEntry, ProgressData } from '../types';
-import type { LogLevel, SourceFile, FormattingOptions, FormattingOptionsTokenImpact } from 'scn-ts-core';
-
-export type AnalysisServiceAPI = {
-  init: () => Promise<void>;
-  analyze: (
-    filesInput: string,
-    logLevel: LogLevel,
-    formattingOptions: FormattingOptions,
-    onProgress: (progress: ProgressData) => void,
-    onLog: (log: LogEntry) => void,
-  ) => Promise<{ result: SourceFile[]; analysisTime: number, tokenImpact: FormattingOptionsTokenImpact }>;
-  cancel: () => Promise<void>;
-  cleanup: () => void;
-};
-
-export function createAnalysisService(): AnalysisServiceAPI {
-  const worker = new Worker(new URL('../worker.ts', import.meta.url), { type: 'module' });
-  const workerApi = Comlink.wrap<WorkerApi>(worker);
-
-  const init = async (): Promise<void> => {
-    return workerApi.init();
-  };
-
-  const analyze = async (
-    filesInput: string,
-    logLevel: LogLevel,
-    formattingOptions: FormattingOptions,
-    onProgress: (progress: ProgressData) => void,
-    onLog: (log: LogEntry) => void,
-  ): Promise<{ result: SourceFile[]; analysisTime: number, tokenImpact: FormattingOptionsTokenImpact }> => {
-    return workerApi.analyze({ filesInput, logLevel, formattingOptions }, Comlink.proxy(onProgress), Comlink.proxy(onLog));
-  };
-
-  const cancel = async (): Promise<void> => {
-    return workerApi.cancel();
-  };
-
-  const cleanup = (): void => {
-    workerApi[Comlink.releaseProxy]();
-    worker.terminate();
-  };
-
-  return {
-    init,
-    analyze,
-    cancel,
-    cleanup,
-  };
 }
 ```
 
@@ -555,6 +570,437 @@ export default defineConfig({
 }
 ```
 
+## File: src/index.ts
+```typescript
+export {
+    initializeParser,
+    generateScn,
+    generateScnFromConfig,
+    calculateTokenImpact,
+    analyzeProject,
+    logger,
+    initializeTokenizer,
+    countTokens,
+} from './main';
+
+export { ICONS, SCN_SYMBOLS } from './constants';
+
+export type {
+    ParserInitOptions,
+    SourceFile,
+    LogLevel,
+    InputFile,
+    TsConfig,
+    ScnTsConfig,
+    AnalyzeProjectOptions,
+    LogHandler,
+    FormattingOptions,
+    FormattingOptionsTokenImpact,
+    FileContent,
+    CodeSymbol,
+    SymbolKind
+} from './main';
+```
+
+## File: packages/scn-ts-web-demo/src/components/OutputOptions.tsx
+```typescript
+import * as React from 'react';
+import type { FormattingOptions } from '../types';
+import { ChevronDown, ChevronRight } from 'lucide-react';
+import type { FormattingOptionsTokenImpact } from 'scn-ts-core';
+
+import { Checkbox } from './ui/checkbox';
+import { Label } from './ui/label';
+
+interface OutputOptionsProps {
+  options: FormattingOptions;
+  setOptions: React.Dispatch<React.SetStateAction<FormattingOptions>>;
+  tokenImpact: FormattingOptionsTokenImpact | null;
+}
+
+
+export interface OutputOptionsHandle {
+  expandAll: () => void;
+  collapseAll: () => void;
+  selectAll: () => void;
+  deselectAll: () => void;
+}
+
+type RegularOptionKey = keyof Omit<FormattingOptions, 'displayFilters'>;
+type OptionItem = RegularOptionKey | string | { name: string; children: OptionItem[] };
+
+const symbolKindLabels: Record<string, string> = {
+  // TS/JS
+  class: 'Classes',
+  interface: 'Interfaces',
+  function: 'Functions',
+  method: 'Methods',
+  constructor: 'Constructors',
+  variable: 'Variables',
+  property: 'Properties',
+  enum: 'Enums',
+  enum_member: 'Enum Members',
+  type_alias: 'Type Aliases',
+  module: 'Modules',
+  // React
+  react_component: 'React Components',
+  styled_component: 'Styled Components',
+  jsx_element: 'JSX Elements',
+  // CSS
+  css_class: 'CSS Classes',
+  css_id: 'CSS IDs',
+  css_tag: 'CSS Tags',
+  css_at_rule: 'CSS At-Rules',
+  css_variable: 'CSS Variables',
+  // Go
+  go_package: 'Go Packages',
+  // Rust
+  rust_struct: 'Rust Structs',
+  rust_trait: 'Rust Traits',
+  rust_impl: 'Rust Impls',
+};
+
+const tsDeclarationKinds = ['class', 'interface', 'function', 'variable', 'enum', 'type_alias', 'module'];
+const tsMemberKinds = ['method', 'constructor', 'property', 'enum_member'];
+const reactKinds = ['react_component', 'styled_component', 'jsx_element'];
+const cssKinds = ['css_class', 'css_id', 'css_tag', 'css_at_rule', 'css_variable'];
+const goKinds = ['go_package'];
+const rustKinds = ['rust_struct', 'rust_trait', 'rust_impl'];
+
+const toFilter = (kind: string): string => `filter:${kind}`;
+
+const symbolVisibilityTree: OptionItem = {
+  name: 'Symbol Visibility',
+  children: [
+    {
+      name: 'TypeScript/JavaScript',
+      children: [
+        { name: 'Declarations', children: tsDeclarationKinds.map(toFilter) },
+        { name: 'Members', children: tsMemberKinds.map(toFilter) },
+      ],
+    },
+    { name: 'React', children: reactKinds.map(toFilter) },
+    { name: 'CSS', children: cssKinds.map(toFilter) },
+    {
+      name: 'Other Languages',
+      children: [
+        { name: 'Go', children: goKinds.map(toFilter) },
+        { name: 'Rust', children: rustKinds.map(toFilter) },
+      ],
+    },
+  ],
+};
+
+const optionTree: OptionItem[] = [
+  {
+    name: 'Display Elements',
+    children: [
+      'showIcons',
+      {
+        name: 'Indicators',
+        children: ['showExportedIndicator', 'showPrivateIndicator'],
+      },
+      'showModifiers',
+      'showTags',
+      {
+        name: 'Identifiers',
+        children: ['showFilePrefix', 'showFileIds', 'showSymbolIds'],
+      },
+    ],
+  },
+  {
+    name: 'Relationships',
+    children: ['showOutgoing', 'showIncoming'],
+  },
+  {
+    name: 'Structure',
+    children: ['groupMembers'],
+  },
+  symbolVisibilityTree,
+];
+
+const optionLabels: Record<RegularOptionKey, string> & Record<string, string> = {
+  ...symbolKindLabels,
+  showIcons: 'Icons',
+  showExportedIndicator: 'Exported (+)',
+  showPrivateIndicator: 'Private (-)',
+  showModifiers: 'Modifiers',
+  showTags: 'Tags',
+  showSymbolIds: 'Symbol IDs',
+  showFilePrefix: 'File Prefix (§)',
+  showFileIds: 'File IDs',
+  showOutgoing: 'Outgoing',
+  showIncoming: 'Incoming',
+  groupMembers: 'Group Members',
+};
+
+function getAllKeys(item: OptionItem): string[] {
+  if (typeof item === 'string') {
+    return [item];
+  }
+  return item.children.flatMap(getAllKeys);
+}
+
+const getAllGroupNames = (items: OptionItem[]): string[] => {
+  return items.flatMap(item => {
+    if (typeof item === 'object' && 'name' in item) {
+      return [item.name, ...getAllGroupNames(item.children)];
+    }
+    return [];
+  });
+}
+
+const OutputOptions = React.forwardRef<OutputOptionsHandle, OutputOptionsProps>(({ options, setOptions, tokenImpact }, ref) => {
+  const [expandedGroups, setExpandedGroups] = React.useState<Set<string>>(
+    () =>
+      new Set([
+        'Display Elements', 'Indicators', 'Relationships', 'Structure',
+        'TypeScript/JavaScript',
+        'React', 'Identifiers',
+      ])
+  );
+
+  const allGroupNames = React.useMemo(() => getAllGroupNames(optionTree), []);
+
+  const expandAll = React.useCallback(() => {
+    setExpandedGroups(new Set(allGroupNames));
+  }, [allGroupNames]);
+
+  const collapseAll = React.useCallback(() => {
+    setExpandedGroups(new Set());
+  }, []);
+
+  const allOptionKeys = React.useMemo(() => optionTree.flatMap(getAllKeys), []);
+
+  const selectAll = React.useCallback(() => {
+    setOptions(prev => {
+      const newOptions: FormattingOptions = { ...prev };
+      const newDisplayFilters = { ...(prev.displayFilters ?? {}) };
+
+      for (const key of allOptionKeys) {
+        if (key.startsWith('filter:')) {
+          newDisplayFilters[key.substring('filter:'.length)] = true;
+        } else {
+          newOptions[key as RegularOptionKey] = true;
+        }
+      }
+      newOptions.displayFilters = newDisplayFilters;
+      return newOptions;
+    });
+  }, [setOptions, allOptionKeys]);
+
+  const deselectAll = React.useCallback(() => {
+    setOptions(prev => {
+      const newOptions: FormattingOptions = { ...prev };
+      const newDisplayFilters = { ...(prev.displayFilters ?? {}) };
+
+      for (const key of allOptionKeys) {
+        if (key.startsWith('filter:')) {
+          newDisplayFilters[key.substring('filter:'.length)] = false;
+        } else {
+          newOptions[key as RegularOptionKey] = false;
+        }
+      }
+      newOptions.displayFilters = newDisplayFilters;
+      return newOptions;
+    });
+  }, [setOptions, allOptionKeys]);
+
+  React.useImperativeHandle(ref, () => ({
+    expandAll,
+    collapseAll,
+    selectAll,
+    deselectAll,
+  }), [expandAll, collapseAll, selectAll, deselectAll]);
+
+  const toggleGroup = (groupName: string) => {
+    setExpandedGroups(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(groupName)) {
+        newSet.delete(groupName);
+      } else {
+        newSet.add(groupName);
+      }
+      return newSet;
+    });
+  };
+
+  const handleChange = (optionKey: string) => (checked: boolean | 'indeterminate') => {
+    const isChecked = checked === true;
+    if (optionKey.startsWith('filter:')) {
+      const kind = optionKey.substring('filter:'.length);
+      setOptions(prev => ({
+        ...prev,
+        displayFilters: { ...(prev.displayFilters ?? {}), [kind]: isChecked },
+      }));
+    } else {
+      setOptions(prev => ({ ...prev, [optionKey]: isChecked }));
+    }
+  };
+
+  const handleGroupChange = (keys: ReadonlyArray<string>) => (checked: boolean | 'indeterminate') => {
+    const isChecked = checked === true;
+    setOptions(prev => {
+      const newOptions: FormattingOptions = { ...prev };
+      const newDisplayFilters = { ...(prev.displayFilters ?? {}) };
+
+      for (const key of keys) {
+        if (key.startsWith('filter:')) {
+          newDisplayFilters[key.substring('filter:'.length)] = isChecked;
+        } else {
+          newOptions[key as RegularOptionKey] = isChecked;
+        }
+      }
+      newOptions.displayFilters = newDisplayFilters;
+      return newOptions;
+    });
+  };
+
+  const renderItem = (item: OptionItem, level: number): React.ReactNode => {
+    if (typeof item === 'string') {
+      const key = item as string;
+      const isFilter = key.startsWith('filter:');
+      const filterKind = isFilter ? key.substring('filter:'.length) : null;
+      const labelKey = filterKind ?? key;
+
+      return (
+        <div key={key} style={{ paddingLeft: `${level * 1.5}rem` }} className="flex items-center space-x-1.5">
+          <Checkbox
+            id={key}
+            checked={isFilter
+              ? (options.displayFilters && Object.hasOwn(options.displayFilters, filterKind!)
+                ? options.displayFilters[filterKind!]
+                : true)
+              : (options[key as RegularOptionKey] ?? true)}
+            onCheckedChange={handleChange(key)}
+          />
+          <Label htmlFor={key} className="flex-1 cursor-pointer select-none text-sm text-muted-foreground font-normal">
+            <div className="flex justify-between items-center">
+              <span>{optionLabels[labelKey as keyof typeof optionLabels] ?? labelKey}</span>
+              {tokenImpact && (
+                <span className="text-xs font-mono tabular-nums text-foreground/50">
+                  {(() => {
+                    let impact: number | undefined;
+                    if (isFilter) {
+                      if (tokenImpact.displayFilters && Object.hasOwn(tokenImpact.displayFilters, filterKind!)) {
+                        impact = tokenImpact.displayFilters[filterKind!];
+                      }
+                    } else {
+                      impact = tokenImpact.options?.[key as RegularOptionKey];
+                    }
+                    if (impact === undefined) return null;
+                    return `${impact > 0 ? '+' : ''}${impact}`;
+                  })()}
+                </span>
+              )}
+            </div>
+          </Label>
+        </div>
+      );
+    }
+
+    const { name, children } = item;
+    const isExpanded = expandedGroups.has(name);
+    const allKeys = getAllKeys(item);
+    const allChecked = allKeys.every(key => {
+      if (key.startsWith('filter:')) {
+        const kind = key.substring('filter:'.length);
+        return (options.displayFilters && Object.hasOwn(options.displayFilters, kind))
+          ? options.displayFilters[kind]
+          : true;
+      }
+      return options[key as RegularOptionKey] ?? true;
+    });
+    const groupTokenImpact = tokenImpact ? allKeys.reduce((sum, key) => {
+      let impact: number | undefined;
+      if (key.startsWith('filter:')) {
+        const kind = key.substring('filter:'.length);
+        if (tokenImpact.displayFilters && Object.hasOwn(tokenImpact.displayFilters, kind)) {
+          impact = tokenImpact.displayFilters[kind];
+        }
+      } else {
+        impact = tokenImpact.options?.[key as RegularOptionKey];
+      }
+      return sum + (impact ?? 0);
+    }, 0) : null;
+
+    const impactDisplay = tokenImpact && groupTokenImpact !== null ? (
+      <span className="text-xs font-mono tabular-nums text-foreground/50 ml-auto mr-2">
+        {(() => {
+          const impact = groupTokenImpact;
+          if (impact === undefined) return null;
+          return `${impact > 0 ? '+' : ''}${impact}`;
+        })()}
+      </span>
+    ) : null;
+
+    return (
+      <div key={name}>
+        <div
+          className="flex items-center space-x-1.5 py-1 rounded-md hover:bg-accent/50 cursor-pointer select-none -mx-2 px-2"
+          style={{ paddingLeft: `calc(${level * 1.5}rem + 0.5rem)` }}
+          onClick={() => toggleGroup(name)}
+        >
+          {isExpanded ? <ChevronDown className="h-4 w-4 flex-shrink-0" /> : <ChevronRight className="h-4 w-4 flex-shrink-0" />}
+          <Checkbox
+            id={`group-${name.replace(/\s+/g, '-')}`}
+            title={`Toggle all in ${name}`}
+            checked={allChecked}
+            onCheckedChange={handleGroupChange(allKeys)}
+            onClick={(e: React.MouseEvent) => e.stopPropagation()} // Prevent row click from firing
+          />
+          <Label
+            htmlFor={`group-${name.replace(/\s+/g, '-')}`} // The label itself is clickable
+            className="flex-1 font-semibold text-sm cursor-pointer select-none"
+          >
+            <div className="flex justify-between items-center">
+              <span>{name}</span> {impactDisplay}</div>
+          </Label>
+        </div>
+        {isExpanded && (
+          <div className="pt-1.5 space-y-1.5">
+            {children.map(child => renderItem(child, level + 1))}
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  return (
+    <div className="space-y-1">
+      {optionTree.map(item => renderItem(item, 0))}
+    </div>
+  );
+});
+
+export default OutputOptions;
+```
+
+## File: package.json
+```json
+{
+  "name": "scn-ts-core",
+  "module": "src/index.ts",
+  "type": "module",
+  "private": true,
+  "dependencies": {
+    "js-tiktoken": "^1.0.21"
+  },
+  "scripts": {
+    "check": "tsc --build",
+    "test": "bun test"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "web-tree-sitter": "0.25.6",
+    "typescript": "^5.4.5"
+  },
+  "peerDependencies": {
+    "typescript": "^5"
+  }
+}
+```
+
 ## File: packages/scn-ts-web-demo/src/App.tsx
 ```typescript
 import { useEffect, useCallback, useMemo, useRef, useState } from 'react';
@@ -564,7 +1010,7 @@ import { Textarea } from './components/ui/textarea';
 import LogViewer from './components/LogViewer';
 import OutputOptions, { type OutputOptionsHandle } from './components/OutputOptions';
 import { Legend } from './components/Legend';
-import { Play, Loader, Copy, Check, StopCircle, ChevronsDown, ChevronsUp, ZoomIn, ZoomOut, RefreshCw } from 'lucide-react';
+import { Play, Loader, Copy, Check, StopCircle, ChevronsDown, ChevronsUp, ZoomIn, ZoomOut, RefreshCw, ListChecks, ListX } from 'lucide-react';
 import { Accordion, AccordionContent, AccordionItem, AccordionHeader, AccordionTrigger } from './components/ui/accordion';
 import { useAnalysis } from './hooks/useAnalysis.hook';
 import { useClipboard } from './hooks/useClipboard.hook';
@@ -653,6 +1099,16 @@ function App() {
     outputOptionsRef.current?.collapseAll();
   };
 
+  const handleSelectAllOptions = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    outputOptionsRef.current?.selectAll();
+  };
+
+  const handleDeselectAllOptions = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    outputOptionsRef.current?.deselectAll();
+  };
+
   const { totalSymbols, visibleSymbols } = useMemo(() => {
     if (!analysisResult) {
       return { totalSymbols: 0, visibleSymbols: 0 };
@@ -728,7 +1184,13 @@ function App() {
                       )}
                   </div>
                 </AccordionTrigger>
-                <div className="flex items-center gap-2 pr-4">
+                <div className="flex items-center gap-1 pr-4">
+                  <Button variant="ghost" size="icon" onClick={handleSelectAllOptions} title="Select all" className="h-7 w-7 text-muted-foreground hover:text-foreground">
+                    <ListChecks className="h-4 w-4" />
+                  </Button>
+                  <Button variant="ghost" size="icon" onClick={handleDeselectAllOptions} title="Deselect all" className="h-7 w-7 text-muted-foreground hover:text-foreground">
+                    <ListX className="h-4 w-4" />
+                  </Button>
                   <Button variant="ghost" size="icon" onClick={handleExpandOptions} title="Expand all" className="h-7 w-7 text-muted-foreground hover:text-foreground">
                     <ChevronsDown className="h-4 w-4" />
                   </Button>
@@ -818,31 +1280,6 @@ function App() {
 }
 
 export default App;
-```
-
-## File: package.json
-```json
-{
-  "name": "scn-ts-core",
-  "module": "src/index.ts",
-  "type": "module",
-  "private": true,
-  "dependencies": {
-    "js-tiktoken": "^1.0.21"
-  },
-  "scripts": {
-    "check": "tsc --build",
-    "test": "bun test"
-  },
-  "devDependencies": {
-    "@types/bun": "latest",
-    "web-tree-sitter": "0.25.6",
-    "typescript": "^5.4.5"
-  },
-  "peerDependencies": {
-    "typescript": "^5"
-  }
-}
 ```
 
 ## File: src/main.ts
@@ -1242,4 +1679,353 @@ export interface AnalysisContext {
     sourceFiles: SourceFile[];
     pathResolver: PathResolver;
 }
+```
+
+## File: src/formatter.ts
+```typescript
+import type { CodeSymbol, SourceFile, FormattingOptions } from './types';
+import { topologicalSort } from './utils/graph';
+import { ICONS, SCN_SYMBOLS } from './constants';
+
+// Compute display index per file based on eligible symbols (exclude properties and constructors)
+const isIdEligible = (symbol: CodeSymbol): boolean => {
+    if (symbol.kind === 'property' || symbol.kind === 'constructor') return false;
+    if (symbol.kind === 'variable') return symbol.isExported || symbol.name === 'module.exports' || symbol.name === 'default';
+    if (symbol.kind === 'method') return !!symbol.isExported;
+    return true;
+};
+
+const getDisplayIndex = (file: SourceFile, symbol: CodeSymbol): number | null => {
+    const ordered = file.symbols
+        .filter(isIdEligible)
+        .sort((a, b) => a.range.start.line - b.range.start.line || a.range.start.column - b.range.start.column);
+    const index = ordered.findIndex(s => s === symbol);
+    return index === -1 ? null : index + 1;
+};
+
+const formatFileIdDisplay = (fileId: number, options: FormattingOptions): string => {
+    const { showFileIds = true } = options;
+    const fileIdPart = showFileIds ? fileId : '';
+    return `(${fileIdPart}.0)`;
+};
+
+const formatSymbolIdDisplay = (file: SourceFile, symbol: CodeSymbol, options: FormattingOptions): string | null => {
+    const { showFileIds = true } = options;
+    const idx = getDisplayIndex(file, symbol);
+    if (idx == null) return null;
+    const fileIdPart = showFileIds ? file.id : '';
+    return `(${fileIdPart}.${idx})`;
+};
+
+const formatSymbol = (symbol: CodeSymbol, allFiles: SourceFile[], options: FormattingOptions): string[] => {
+    const {
+        showOutgoing = true,
+        showIncoming = true,
+        showIcons = true,
+        showExportedIndicator = true,
+        showPrivateIndicator = true,
+        showModifiers = true,
+        showTags = true,
+        showSymbolIds = true,
+    } = options;
+    let icon = showIcons ? (ICONS[symbol.kind] || ICONS.default || '?') : '';
+    let prefix = '';
+    if (symbol.isExported && showExportedIndicator) {
+        prefix = SCN_SYMBOLS.EXPORTED_PREFIX;
+    } else if (!symbol.isExported && showPrivateIndicator) {
+        prefix = SCN_SYMBOLS.PRIVATE_PREFIX;
+    }
+    let name = symbol.name === '<anonymous>' ? '' : symbol.name;
+    if (symbol.kind === 'variable' && name.trim() === 'default') name = '';
+    
+    // Handle styled components: ~div ComponentName, ~h1 ComponentName, etc.
+    if (showIcons && symbol.kind === 'styled_component' && (symbol as any)._styledTag) {
+        const tagName = (symbol as any)._styledTag;
+        icon = `~${tagName}`;
+    }
+
+    const mods: string[] = [];
+    if (showTags) {
+        if (symbol.isAbstract) mods.push(SCN_SYMBOLS.TAG_ABSTRACT.slice(1, -1));
+        if (symbol.isStatic) mods.push(SCN_SYMBOLS.TAG_STATIC.slice(1, -1));
+    }
+    const modStr = mods.length > 0 ? ` [${mods.join(' ')}]` : '';
+
+    const suffixParts: string[] = [];
+    if (symbol.signature) name += symbol.name === '<anonymous>' ? symbol.signature : `${symbol.signature}`;
+    if (symbol.typeAnnotation) name += `: ${symbol.typeAnnotation}`;
+    if (symbol.typeAliasValue) name += ` ${symbol.typeAliasValue}`;
+    // Merge async + throws into a single token
+    if (showModifiers) {
+        const asyncToken = symbol.isAsync ? SCN_SYMBOLS.ASYNC : '';
+        const throwsToken = symbol.throws ? SCN_SYMBOLS.THROWS : '';
+        const asyncThrows = (asyncToken + throwsToken) || '';
+        if (asyncThrows) suffixParts.push(asyncThrows);
+        if (symbol.isPure) suffixParts.push(SCN_SYMBOLS.PURE);
+    }
+    if (showTags && symbol.labels && symbol.labels.length > 0) suffixParts.push(...symbol.labels.map(l => `[${l}]`));
+    const suffix = suffixParts.join(' ');
+
+    // Build ID portion conditionally
+    const file = allFiles.find(f => f.id === symbol.fileId)!;
+    const idPart = showSymbolIds ? formatSymbolIdDisplay(file, symbol, options) : null;
+    const idText = (symbol.kind === 'property' || symbol.kind === 'constructor') ? null : (idPart ?? null);
+    const segments: string[] = [prefix, icon];
+    if (idText) segments.push(idText);
+    if (name) segments.push(name.trim());
+    if (modStr) segments.push(modStr);
+    if (suffix) segments.push(suffix);
+    const line = `  ${segments.filter(Boolean).join(' ')}`;
+    const result = [line];
+
+    const outgoing = new Map<number, Set<string>>();
+    const unresolvedDeps: string[] = [];
+    symbol.dependencies.forEach(dep => {
+        if (dep.resolvedFileId !== undefined && dep.resolvedFileId !== symbol.fileId) {
+            if (!outgoing.has(dep.resolvedFileId)) outgoing.set(dep.resolvedFileId, new Set());
+            if (dep.resolvedSymbolId) {
+                const targetFile = allFiles.find(f => f.id === dep.resolvedFileId);
+                const targetSymbol = targetFile?.symbols.find(s => s.id === dep.resolvedSymbolId);
+                if (targetSymbol) {
+                    const displayId = showSymbolIds ? formatSymbolIdDisplay(targetFile!, targetSymbol, options) : null;
+                    let text = displayId ?? formatFileIdDisplay(targetFile!.id, options);
+                    if (dep.kind === 'goroutine') {
+                        text += ` ${SCN_SYMBOLS.TAG_GOROUTINE}`;
+                    }
+                    outgoing.get(dep.resolvedFileId)!.add(text);
+                }
+            } else {
+                let text = formatFileIdDisplay(dep.resolvedFileId, options);
+                if (dep.kind === 'dynamic_import') text += ` ${SCN_SYMBOLS.TAG_DYNAMIC}`;
+                outgoing.get(dep.resolvedFileId)!.add(text);
+            }
+        } else if (dep.resolvedFileId === undefined) {
+            if (dep.kind === 'macro') {
+                unresolvedDeps.push(`${dep.targetName} ${SCN_SYMBOLS.TAG_MACRO}`);
+            }
+        }
+    });
+
+    const outgoingParts: string[] = [];
+    if (outgoing.size > 0) {
+        const resolvedParts = Array.from(outgoing.entries())
+            .sort((a, b) => a[0] - b[0])
+            .map(([fileId, symbolIds]) => {
+                const items = Array.from(symbolIds).sort();
+                return items.length > 0 ? `${items.join(', ')}` : formatFileIdDisplay(fileId, options);
+            });
+        outgoingParts.push(...resolvedParts);
+    }
+    outgoingParts.push(...unresolvedDeps);
+
+    if (showOutgoing && outgoingParts.length > 0) {
+        result.push(`    ${SCN_SYMBOLS.OUTGOING_ARROW} ${outgoingParts.join(', ')}`);
+    }
+    
+    if (!showIncoming) {
+        return result;
+    }
+
+    const incoming = new Map<number, Set<string>>();
+    allFiles.forEach(file => {
+        file.symbols.forEach(s => {
+            s.dependencies.forEach(d => {
+                if (d.resolvedFileId === symbol.fileId && d.resolvedSymbolId === symbol.id && s !== symbol) {
+                    if(!incoming.has(file.id)) incoming.set(file.id, new Set());
+                    // Suppress same-file incoming for properties
+                    if (file.id === symbol.fileId && symbol.kind === 'property') return;
+                    const disp = showSymbolIds ? (formatSymbolIdDisplay(file, s, options) ?? formatFileIdDisplay(file.id, options)) : formatFileIdDisplay(file.id, options);
+                    incoming.get(file.id)!.add(disp);
+                }
+            });
+        });
+        // Include file-level imports to this file as incoming for exported symbols
+        // but only if there is no symbol-level incoming from that file already
+        if (file.id !== symbol.fileId && symbol.isExported) {
+            file.fileRelationships?.forEach(rel => {
+                if (rel.resolvedFileId === symbol.fileId) {
+                    const already = incoming.get(file.id);
+                    if (!already || already.size === 0) {
+                        if(!incoming.has(file.id)) incoming.set(file.id, new Set());
+                        incoming.get(file.id)!.add(formatFileIdDisplay(file.id, options));
+                    }
+                }
+            });
+        }
+    });
+
+    if (incoming.size > 0) {
+        const parts = Array.from(incoming.entries()).map(([_fileId, symbolIds]) => Array.from(symbolIds).join(', '));
+        result.push(`    ${SCN_SYMBOLS.INCOMING_ARROW} ${parts.join(', ')}`);
+    }
+
+    return result;
+};
+
+
+const isWithin = (inner: CodeSymbol, outer: CodeSymbol): boolean => {
+    const a = inner.range;
+    const b = outer.scopeRange;
+    return (
+        (a.start.line > b.start.line || (a.start.line === b.start.line && a.start.column >= b.start.column)) &&
+        (a.end.line < b.end.line || (a.end.line === b.end.line && a.end.column <= b.end.column))
+    );
+};
+
+const buildChildrenMap = (symbols: CodeSymbol[]): Map<string, CodeSymbol[]> => {
+    const parents = symbols.filter(s => s.kind === 'class' || s.kind === 'interface' || s.kind === 'react_component');
+    const map = new Map<string, CodeSymbol[]>();
+    for (const parent of parents) map.set(parent.id, []);
+    for (const sym of symbols) {
+        if (sym.kind === 'class' || sym.kind === 'interface' || sym.kind === 'react_component') continue;
+        const parent = parents
+            .filter(p => isWithin(sym, p))
+            .sort((a, b) => (a.scopeRange.end.line - a.scopeRange.start.line) - (b.scopeRange.end.line - b.scopeRange.start.line))[0];
+        if (parent) {
+            map.get(parent.id)!.push(sym);
+        }
+    }
+    // Sort children by position
+    for (const [, arr] of map.entries()) {
+        arr.sort((a, b) => a.range.start.line - b.range.start.line || a.range.start.column - b.range.start.column);
+    }
+    return map;
+};
+
+const formatFile = (file: SourceFile, allFiles: SourceFile[], options: FormattingOptions): string => {
+    const {
+        showOutgoing = true,
+        showIncoming = true,
+        showTags = true,
+        showFilePrefix = true,
+        showFileIds = true,
+    } = options;
+
+    const headerParts: string[] = [];
+    if (showFilePrefix) headerParts.push(SCN_SYMBOLS.FILE_PREFIX);
+    if (showFileIds) headerParts.push(`(${file.id})`);
+    headerParts.push(file.relativePath);
+
+    if (file.parseError) return `${headerParts.join(' ')} [error]`;
+    if (!file.sourceCode.trim()) return headerParts.join(' ');
+
+    const directives = showTags ? [
+        file.isGenerated && SCN_SYMBOLS.TAG_GENERATED.slice(1, -1),
+        ...(file.languageDirectives || [])
+    ].filter(Boolean) : [];
+    const directiveStr = directives.length > 0 ? ` [${directives.join(' ')}]` : '';
+    const header = `${headerParts.join(' ')}${directiveStr}`;
+    const headerLines: string[] = [header];
+
+    // File-level outgoing/incoming dependencies
+    const outgoing: string[] = [];
+    if (file.fileRelationships) {
+        const outgoingFiles = new Set<number>();
+        file.fileRelationships.forEach(rel => {
+            // Only show true file-level imports on the header
+            if ((rel.kind === 'import' || rel.kind === 'dynamic_import') && rel.resolvedFileId && rel.resolvedFileId !== file.id) {
+                let text = formatFileIdDisplay(rel.resolvedFileId, options);
+                if (rel.kind === 'dynamic_import') text += ` ${SCN_SYMBOLS.TAG_DYNAMIC}`;
+                outgoingFiles.add(rel.resolvedFileId);
+                outgoing.push(text);
+            }
+        });
+        if (showOutgoing && outgoing.length > 0) {
+            headerLines.push(`  ${SCN_SYMBOLS.OUTGOING_ARROW} ${Array.from(new Set(outgoing)).sort().join(', ')}`);
+        }
+    }
+
+    // Incoming: any other file that has a file-level relationship pointing here
+    const incoming: string[] = [];
+    if (showIncoming) {
+        allFiles.forEach(other => {
+            if (other.id === file.id) return;
+            other.fileRelationships?.forEach(rel => {
+                if (rel.resolvedFileId === file.id) incoming.push(formatFileIdDisplay(other.id, options));
+            });
+        });
+        if (incoming.length > 0) headerLines.push(`  ${SCN_SYMBOLS.INCOMING_ARROW} ${Array.from(new Set(incoming)).sort().join(', ')}`);
+    }
+    // If file has no exported symbols, only show symbols that are "entry points" for analysis,
+    // which we define as having outgoing dependencies.
+    const hasExports = file.symbols.some(s => s.isExported);
+    let symbolsToPrint = hasExports
+        ? file.symbols.slice()
+        : file.symbols.filter(s => s.dependencies.length > 0);
+
+    // Apply AST-based display filters
+    if (options.displayFilters) {
+        symbolsToPrint = symbolsToPrint.filter(s => options.displayFilters![s.kind] !== false);
+    }
+
+    // Group properties/methods under their class/interface parent if option is enabled
+    const groupMembers = options.groupMembers ?? true;
+    const childrenMap = groupMembers ? buildChildrenMap(symbolsToPrint) : new Map();
+    const childIds = new Set<string>(Array.from(childrenMap.values()).flat().map(s => s.id));
+    const topLevel = symbolsToPrint.filter(s => !childIds.has(s.id));
+
+    const symbolLines: string[] = [];
+    for (const sym of topLevel) {
+        const lines = formatSymbol(sym, allFiles, options);
+        symbolLines.push(...lines);
+        if (childrenMap.has(sym.id)) {
+            const kids = childrenMap.get(sym.id)!;
+            for (const kid of kids) {
+                const kLines = formatSymbol(kid, allFiles, options).map(l => `  ${l}`);
+                symbolLines.push(...kLines);
+            }
+        }
+    }
+
+    // If we hid symbols (or there were none to begin with for an entry file),
+    // aggregate outgoing dependencies from all symbols onto the file header
+    if (showOutgoing && symbolLines.length === 0 && (file.symbols.length > 0 || (file.fileRelationships && file.fileRelationships.length > 0))) {
+        const aggOutgoing = new Map<number, Set<string>>();
+        const unresolvedDeps: string[] = [];
+
+        const processDep = (dep: import('./types').Relationship) => {
+            if (dep.resolvedFileId && dep.resolvedFileId !== file.id) {
+                if (!aggOutgoing.has(dep.resolvedFileId)) aggOutgoing.set(dep.resolvedFileId, new Set());
+                let text = formatFileIdDisplay(dep.resolvedFileId, options); // Default to file-level
+                if (dep.resolvedSymbolId) {
+                    const targetFile = allFiles.find(f => f.id === dep.resolvedFileId)!;
+                    const targetSymbol = targetFile.symbols.find(ts => ts.id === dep.resolvedSymbolId);
+                    if (targetSymbol) {
+                        text = options.showSymbolIds ? (formatSymbolIdDisplay(targetFile, targetSymbol, options) ?? formatFileIdDisplay(dep.resolvedFileId, options)) : formatFileIdDisplay(dep.resolvedFileId, options);
+                    }
+                }
+                if (dep.kind === 'dynamic_import') text += ` ${SCN_SYMBOLS.TAG_DYNAMIC}`;
+                aggOutgoing.get(dep.resolvedFileId)!.add(text);
+            } else if (dep.resolvedFileId === undefined && dep.kind === 'macro') {
+                unresolvedDeps.push(`${dep.targetName} ${SCN_SYMBOLS.TAG_MACRO}`);
+            }
+        };
+
+        file.symbols.forEach(s => s.dependencies.forEach(processDep));
+        file.fileRelationships?.forEach(processDep);
+
+        const outgoingParts: string[] = [];
+        if (aggOutgoing.size > 0) {
+            const resolvedParts = Array.from(aggOutgoing.entries())
+                .sort((a, b) => a[0] - b[0])
+                .flatMap(([, symbolIds]) => Array.from(symbolIds).sort());
+            outgoingParts.push(...resolvedParts);
+        }
+        outgoingParts.push(...unresolvedDeps);
+
+        if (outgoingParts.length > 0) {
+            // Some fixtures expect separate -> lines per dependency.
+            // This preserves that behavior.
+            for (const part of outgoingParts) {
+                headerLines.push(`  ${SCN_SYMBOLS.OUTGOING_ARROW} ${part}`);
+            }
+        }
+    }
+    return [...headerLines, ...symbolLines].join('\n');
+};
+
+export const formatScn = (analyzedFiles: SourceFile[], options: FormattingOptions = {}): string => {
+    const sortedFiles = topologicalSort(analyzedFiles);
+    return sortedFiles.map(file => formatFile(file, analyzedFiles, options)).join('\n\n');
+};
 ```

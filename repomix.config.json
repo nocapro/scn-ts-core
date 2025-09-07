@@ -41,12 +41,12 @@
     // "packages/scn-ts-web-demo/scripts/prepare-wasm.cjs",
     // "packages/scn-ts-web-demo/src"
     //
-    "packages/scn-ts-web-demo/src/components/OutputOptions.tsx",
-     "src/main.ts",
-     "src/types.ts",
-     "packages/scn-ts-web-demo/src/App.tsx",
-     "packages/scn-ts-web-demo/src/hooks/useAnalysis.hook.ts",
-     "packages/scn-ts-web-demo/src/worker.ts"
+    "src/main.ts",
+    "src/types.ts",
+    "packages/scn-ts-web-demo/src/worker.ts",
+    "packages/scn-ts-web-demo/src/hooks/useAnalysis.hook.ts",
+    "packages/scn-ts-web-demo/src/services/analysis.service.ts",
+    "packages/scn-ts-web-demo/src/App.tsx"
 
 
 

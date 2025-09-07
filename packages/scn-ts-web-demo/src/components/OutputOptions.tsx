@@ -16,6 +16,8 @@ interface OutputOptionsProps {
 export interface OutputOptionsHandle {
   expandAll: () => void;
   collapseAll: () => void;
+  selectAll: () => void;
+  deselectAll: () => void;
 }
 
 type RegularOptionKey = keyof Omit<FormattingOptions, 'displayFilters'>;
@@ -162,10 +164,48 @@ const OutputOptions = React.forwardRef<OutputOptionsHandle, OutputOptionsProps>(
     setExpandedGroups(new Set());
   }, []);
 
+  const allOptionKeys = React.useMemo(() => optionTree.flatMap(getAllKeys), []);
+
+  const selectAll = React.useCallback(() => {
+    setOptions(prev => {
+      const newOptions: FormattingOptions = { ...prev };
+      const newDisplayFilters = { ...(prev.displayFilters ?? {}) };
+
+      for (const key of allOptionKeys) {
+        if (key.startsWith('filter:')) {
+          newDisplayFilters[key.substring('filter:'.length)] = true;
+        } else {
+          newOptions[key as RegularOptionKey] = true;
+        }
+      }
+      newOptions.displayFilters = newDisplayFilters;
+      return newOptions;
+    });
+  }, [setOptions, allOptionKeys]);
+
+  const deselectAll = React.useCallback(() => {
+    setOptions(prev => {
+      const newOptions: FormattingOptions = { ...prev };
+      const newDisplayFilters = { ...(prev.displayFilters ?? {}) };
+
+      for (const key of allOptionKeys) {
+        if (key.startsWith('filter:')) {
+          newDisplayFilters[key.substring('filter:'.length)] = false;
+        } else {
+          newOptions[key as RegularOptionKey] = false;
+        }
+      }
+      newOptions.displayFilters = newDisplayFilters;
+      return newOptions;
+    });
+  }, [setOptions, allOptionKeys]);
+
   React.useImperativeHandle(ref, () => ({
     expandAll,
     collapseAll,
-  }), [expandAll, collapseAll]);
+    selectAll,
+    deselectAll,
+  }), [expandAll, collapseAll, selectAll, deselectAll]);
 
   const toggleGroup = (groupName: string) => {
     setExpandedGroups(prev => {

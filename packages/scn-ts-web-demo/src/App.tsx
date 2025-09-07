@@ -5,7 +5,7 @@ import { Textarea } from './components/ui/textarea';
 import LogViewer from './components/LogViewer';
 import OutputOptions, { type OutputOptionsHandle } from './components/OutputOptions';
 import { Legend } from './components/Legend';
-import { Play, Loader, Copy, Check, StopCircle, ChevronsDown, ChevronsUp, ZoomIn, ZoomOut, RefreshCw } from 'lucide-react';
+import { Play, Loader, Copy, Check, StopCircle, ChevronsDown, ChevronsUp, ZoomIn, ZoomOut, RefreshCw, ListChecks, ListX } from 'lucide-react';
 import { Accordion, AccordionContent, AccordionItem, AccordionHeader, AccordionTrigger } from './components/ui/accordion';
 import { useAnalysis } from './hooks/useAnalysis.hook';
 import { useClipboard } from './hooks/useClipboard.hook';
@@ -94,6 +94,16 @@ function App() {
     outputOptionsRef.current?.collapseAll();
   };
 
+  const handleSelectAllOptions = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    outputOptionsRef.current?.selectAll();
+  };
+
+  const handleDeselectAllOptions = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    outputOptionsRef.current?.deselectAll();
+  };
+
   const { totalSymbols, visibleSymbols } = useMemo(() => {
     if (!analysisResult) {
       return { totalSymbols: 0, visibleSymbols: 0 };
@@ -169,7 +179,13 @@ function App() {
                       )}
                   </div>
                 </AccordionTrigger>
-                <div className="flex items-center gap-2 pr-4">
+                <div className="flex items-center gap-1 pr-4">
+                  <Button variant="ghost" size="icon" onClick={handleSelectAllOptions} title="Select all" className="h-7 w-7 text-muted-foreground hover:text-foreground">
+                    <ListChecks className="h-4 w-4" />
+                  </Button>
+                  <Button variant="ghost" size="icon" onClick={handleDeselectAllOptions} title="Deselect all" className="h-7 w-7 text-muted-foreground hover:text-foreground">
+                    <ListX className="h-4 w-4" />
+                  </Button>
                   <Button variant="ghost" size="icon" onClick={handleExpandOptions} title="Expand all" className="h-7 w-7 text-muted-foreground hover:text-foreground">
                     <ChevronsDown className="h-4 w-4" />
                   </Button>

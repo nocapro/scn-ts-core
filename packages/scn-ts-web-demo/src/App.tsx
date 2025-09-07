@@ -234,7 +234,10 @@ function App() {
           <Legend />
           <pre
             className="whitespace-pre-wrap"
-            style={{ fontSize: `${baseFontSizeRem * zoomLevel}rem` }}
+            style={{
+              fontSize: `${baseFontSizeRem * zoomLevel}rem`,
+              lineHeight: `${zoomLevel}rem`,
+            }}
           >
             {scnOutput || (isLoading ? "Generating..." : "Output will appear here.")}
           </pre>

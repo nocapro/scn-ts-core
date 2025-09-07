@@ -15,15 +15,24 @@ beside json, we want also git repo url
 
 analyzed timetook should including token impact timetook
 
-===
+=== DONE
 
 add zoom control on the output. show only on output hover
+
+zoom feature: only affecting the font size, not the line
 
 ===
 
 formatting options;
 
 add de/select all iconbutton without text. the behaviour should be provided by scn-ts-core level api
+
+  "packages/scn-ts-web-demo/src/App.tsx",
+  "packages/scn-ts-web-demo/src/components/OutputOptions.tsx",
+  "packages/scn-ts-web-demo/src/stores/app.store.ts",
+  "src/main.ts",
+  "src/types.ts",
+  "src/index.ts"
 
 ====
 

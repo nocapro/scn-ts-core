@@ -13,6 +13,7 @@
     "removeComments": false,
     "removeEmptyLines": false,
     "compress": false,
+    // "compress": true,
     "topFilesLength": 5,
     "showLineNumbers": false,
     "copyToClipboard": true,

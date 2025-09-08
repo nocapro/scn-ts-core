@@ -1,6 +1,8 @@
 uuid: a69700f1-01f1-47fa-80b6-19349c25f617
 projectId: scn-ts-core
 createdAt: '2025-09-08T01:10:46.441Z'
+linesAdded: 70
+linesRemoved: 6
 gitCommitMsg: 'feat(web-demo): add UI and plumbing for glob filtering'
 promptSummary: 'Add glob include/exclude feature to the UI, phase 1: plumbing.'
 reasoning:
@@ -1363,4 +1365,4 @@ snapshot:
         const analysisTime = performance.now() - startTime;
         return { sourceFiles: resolvedGraph, analysisTime };
     };
-approved: false
+approved: true

@@ -1,7 +1,19 @@
 ===
 
+parallel parsing & analyzing & scn generation
+
+===
+
+token cost on preset
+
+===
+
 auto detect non support files
 isSCNable
+
+===
+
+DRY: split src/main to multiple files without regression
 
 === DONE
 

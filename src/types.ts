@@ -20,6 +20,8 @@ export interface AnalyzeProjectOptions {
     onProgress?: (progress: { percentage: number; message: string }) => void;
     logLevel?: LogLevel;
     signal?: AbortSignal;
+    include?: string[];
+    exclude?: string[];
 }
 
 export type FormattingPreset = 'minimal' | 'compact' | 'default' | 'detailed' | 'verbose';

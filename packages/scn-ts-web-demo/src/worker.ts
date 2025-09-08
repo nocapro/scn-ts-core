@@ -32,7 +32,13 @@ function createWorkerApi() {
   }
 
   async function analyze(
-    { filesInput, logLevel, formattingOptions }: { filesInput: string; logLevel: LogLevel, formattingOptions: FormattingOptions },
+    { filesInput, logLevel, formattingOptions, includePattern, excludePattern }: {
+      filesInput: string;
+      logLevel: LogLevel;
+      formattingOptions: FormattingOptions;
+      includePattern?: string;
+      excludePattern?: string;
+    },
     onProgress: (progress: ProgressData) => void,
     onLog: (log: LogEntry) => void
   ): Promise<{ result: SourceFile[], analysisTime: number, tokenImpact: FormattingOptionsTokenImpact }> {
@@ -57,11 +63,16 @@ function createWorkerApi() {
         throw new Error(`Invalid JSON input: ${error instanceof Error ? error.message : String(error)}`);
       }
 
+      const include = includePattern?.split('\n').filter(p => p.trim() !== '');
+      const exclude = excludePattern?.split('\n').filter(p => p.trim() !== '');
+
       const { sourceFiles: analysisResult, analysisTime } = await analyzeProject({
         files,
         onProgress,
         logLevel,
         signal: abortController.signal,
+        include,
+        exclude,
       });
 
       const tokenImpact = calculateTokenImpact(analysisResult, formattingOptions);

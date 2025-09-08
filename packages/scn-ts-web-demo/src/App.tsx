@@ -22,6 +22,10 @@ function App() {
     setScnOutput,
     formattingOptions,
     setFormattingOptions,
+    includePattern,
+    setIncludePattern,
+    excludePattern,
+    setExcludePattern,
   } = useAppStore();
 
   const {
@@ -79,8 +83,8 @@ function App() {
   }, [performCopy, scnOutput]);
 
   const handleAnalyze = useCallback(async () => {
-    performAnalysis(filesInput, formattingOptions);
-  }, [performAnalysis, filesInput, formattingOptions]);
+    performAnalysis(filesInput, formattingOptions, includePattern, excludePattern);
+  }, [performAnalysis, filesInput, formattingOptions, includePattern, excludePattern]);
 
   const { totalSymbols, visibleSymbols } = useMemo(() => {
     if (!analysisResult) {
@@ -128,7 +132,7 @@ function App() {
         </div>
 
         <div className="flex-grow overflow-y-auto">
-          <Accordion type="multiple" defaultValue={['input', 'options', 'logs']} className="w-full">
+          <Accordion type="multiple" defaultValue={['input', 'filtering', 'options', 'logs']} className="w-full">
             <AccordionItem value="input">
               <AccordionHeader>
                 <AccordionTrigger className="px-4 text-sm font-semibold hover:no-underline">
@@ -148,6 +152,38 @@ function App() {
                     className="h-full w-full font-mono text-xs resize-none"
                     placeholder="Paste an array of FileContent objects here..."
                   />
+                </div>
+              </AccordionContent>
+            </AccordionItem>
+
+            <AccordionItem value="filtering">
+              <AccordionHeader>
+                <AccordionTrigger className="px-4 text-sm font-semibold hover:no-underline">
+                  File Filtering (Globs)
+                </AccordionTrigger>
+              </AccordionHeader>
+              <AccordionContent className="p-4 space-y-4">
+                <div>
+                  <label htmlFor="include-glob" className="text-xs font-medium">Include</label>
+                  <Textarea
+                    id="include-glob"
+                    value={includePattern}
+                    onChange={(e) => setIncludePattern(e.currentTarget.value)}
+                    className="h-24 w-full font-mono text-xs resize-y mt-1"
+                    placeholder="e.g. src/**/*.ts"
+                  />
+                  <p className="text-xs text-muted-foreground mt-1">One pattern per line. Matches against file paths.</p>
+                </div>
+                <div>
+                  <label htmlFor="exclude-glob" className="text-xs font-medium">Exclude</label>
+                  <Textarea
+                    id="exclude-glob"
+                    value={excludePattern}
+                    onChange={(e) => setExcludePattern(e.currentTarget.value)}
+                    className="h-24 w-full font-mono text-xs resize-y mt-1"
+                    placeholder="e.g. **/*.spec.ts&#10;**/node_modules/**"
+                  />
+                  <p className="text-xs text-muted-foreground mt-1">One pattern per line. Exclude takes precedence.</p>
                 </div>
               </AccordionContent>
             </AccordionItem>

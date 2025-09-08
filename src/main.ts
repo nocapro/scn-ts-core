@@ -7,6 +7,7 @@ import path from './utils/path';
 import { getPathResolver } from './utils/tsconfig';
 import { resolveGraph } from './graph-resolver';
 import { logger } from './logger';
+import picomatch from 'picomatch';
 import { initializeTokenizer as initTokenizer, countTokens as countTokensInternal } from './tokenizer';
 
 import type { FormattingPreset } from './types';
@@ -197,6 +198,8 @@ export const analyzeProject = async (
         onProgress,
         logLevel,
         signal,
+        include,
+        exclude,
     }: AnalyzeProjectOptions
 ): Promise<{ sourceFiles: SourceFile[], analysisTime: number }> => {
     const startTime = performance.now();
@@ -212,7 +215,7 @@ export const analyzeProject = async (
     onProgress?.({ percentage: 0, message: 'Creating source files...' });
 
     // Step 1: Create SourceFile objects for all files
-    const sourceFiles = files.map((file) => {
+    let sourceFiles = files.map((file) => {
         checkAborted();
         const absolutePath = path.join(root, file.path);
         const sourceFile: SourceFile = {
@@ -227,7 +230,21 @@ export const analyzeProject = async (
         return sourceFile;
     });
 
-    logger.debug(`Created ${sourceFiles.length} SourceFile objects.`);
+    if (include?.length || exclude?.length) {
+        const originalCount = sourceFiles.length;
+        logger.info(`Applying glob filters. Initial file count: ${originalCount}`);
+        const isIncluded = include?.length ? picomatch(include, { dot: true }) : () => true;
+        const isExcluded = exclude?.length ? picomatch(exclude, { dot: true }) : () => false;
+
+        sourceFiles = sourceFiles.filter(file => {
+            const included = isIncluded(file.relativePath);
+            const excluded = isExcluded(file.relativePath);
+            return included && !excluded;
+        });
+        logger.info(`Files after filtering: ${sourceFiles.length} (${originalCount - sourceFiles.length} removed)`);
+    }
+
+    logger.debug(`Processing ${sourceFiles.length} files.`);
     onProgress?.({ percentage: 10, message: `Parsing ${sourceFiles.length} files...` });
 
     // Step 2: Parse all files

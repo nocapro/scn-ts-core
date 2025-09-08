@@ -52,7 +52,12 @@ export function useAnalysis() {
     setLogs([]);
   }, []);
 
-  const handleAnalyze = useCallback(async (filesInput: string, formattingOptions: FormattingOptions) => {
+  const handleAnalyze = useCallback(async (
+    filesInput: string,
+    formattingOptions: FormattingOptions,
+    includePattern: string,
+    excludePattern: string,
+  ) => {
     if (!isInitialized || !serviceRef.current) {
       onLogPartial({ level: 'warn', message: 'Analysis worker not ready.' });
       return;
@@ -71,7 +76,9 @@ export function useAnalysis() {
         'debug',
         formattingOptions,
         setProgress,
-        onLog
+        onLog,
+        includePattern,
+        excludePattern,
       );
       setAnalysisResult(result);
       setAnalysisTime(analysisTime);

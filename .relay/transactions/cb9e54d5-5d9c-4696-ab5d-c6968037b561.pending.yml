@@ -1,0 +1,517 @@
+uuid: cb9e54d5-5d9c-4696-ab5d-c6968037b561
+projectId: scn-ts-core
+createdAt: '2025-09-08T01:10:52.443Z'
+gitCommitMsg: 'feat(core): implement glob filtering for file analysis'
+promptSummary: Implement the logic for glob filtering, phase 2.
+reasoning:
+  - >-
+    alright, phase two. let's make those glob patterns actually do something.
+    i'll pull in `picomatch`, a solid, lightweight globber, and wire up the
+    filtering logic in the core `analyzeProject` function.
+  - '### 1. Add `picomatch` Dependency'
+  - first, we need to add `picomatch` to the core package's dependencies.
+  - '### 2. Update Vite Config'
+  - >-
+    next, let's give vite a heads-up about the new dependency to make sure it
+    gets pre-bundled correctly for the dev server. this helps avoid any weird
+    module resolution issues.
+  - '### 3. Implement Filtering Logic'
+  - >-
+    and now for the main event. i'll update `analyzeProject` to use `picomatch`.
+    the filtering happens right after the initial file list is created, so we
+    don't waste time parsing files that are just going to be thrown away. i've
+    added some logging too, so it's clear what's being filtered.
+  - >-
+    and we're done. the glob filtering is now fully functional. let me know
+    what's next.
+operations:
+  - type: write
+    path: package.json
+    content: |-
+      --- package.json
+      +++ package.json
+      @@ -5,7 +5,8 @@
+         "type": "module",
+         "private": true,
+         "dependencies": {
+      -    "js-tiktoken": "^1.0.21"
+      +    "js-tiktoken": "^1.0.21",
+      +    "picomatch": "^4.0.1"
+         },
+         "scripts": {
+           "check": "tsc --build",
+    patchStrategy: new-unified
+  - type: write
+    path: packages/scn-ts-web-demo/vite.config.ts
+    content: |-
+      --- packages/scn-ts-web-demo/vite.config.ts
+      +++ packages/scn-ts-web-demo/vite.config.ts
+      @@ -21,7 +21,7 @@
+           // them to ESM for the dev server. We specifically `exclude` 'web-tree-sitter'
+           // above to prevent Vite from interfering with its unique WASM loading mechanism.
+           // `js-tiktoken` is another CJS-like dependency that needs to be pre-bundled.
+      -    include: ['scn-ts-core', 'js-tiktoken'],
+      +    include: ['scn-ts-core', 'js-tiktoken', 'picomatch'],
+         },
+         server: {
+           headers: {
+    patchStrategy: new-unified
+  - type: write
+    path: src/main.ts
+    content: >-
+      --- src/main.ts
+
+      +++ src/main.ts
+
+      @@ -5,6 +5,7 @@
+       import { getPathResolver } from './utils/tsconfig';
+       import { resolveGraph } from './graph-resolver';
+       import { logger } from './logger';
+      +import picomatch from 'picomatch';
+       import { initializeTokenizer as initTokenizer, countTokens as countTokensInternal } from './tokenizer';
+       
+       import type { FormattingPreset } from './types';
+      @@ -204,6 +205,8 @@
+               logLevel,
+               signal,
+               include,
+               exclude,
+           }: AnalyzeProjectOptions
+       ): Promise<{ sourceFiles: SourceFile[], analysisTime: number }> => {
+           const startTime = performance.now();
+      @@ ... @@
+           onProgress?.({ percentage: 0, message: 'Creating source files...' });
+       
+           // Step 1: Create SourceFile objects for all files
+      -    const sourceFiles = files.map((file) => {
+
+      +    let sourceFiles = files.map((file) => {
+               checkAborted();
+               const absolutePath = path.join(root, file.path);
+               const sourceFile: SourceFile = {
+      @@ -218,7 +221,21 @@
+               return sourceFile;
+           });
+       
+      -    logger.debug(`Created ${sourceFiles.length} SourceFile objects.`);
+
+      +    if (include?.length || exclude?.length) {
+
+      +        const originalCount = sourceFiles.length;
+
+      +        logger.info(`Applying glob filters. Initial file count:
+      ${originalCount}`);
+
+      +        const isIncluded = include?.length ? picomatch(include, { dot:
+      true }) : () => true;
+
+      +        const isExcluded = exclude?.length ? picomatch(exclude, { dot:
+      true }) : () => false;
+
+      +
+
+      +        sourceFiles = sourceFiles.filter(file => {
+
+      +            const included = isIncluded(file.relativePath);
+
+      +            const excluded = isExcluded(file.relativePath);
+
+      +            return included && !excluded;
+
+      +        });
+
+      +        logger.info(`Files after filtering: ${sourceFiles.length}
+      (${originalCount - sourceFiles.length} removed)`);
+
+      +    }
+
+      +
+
+      +    logger.debug(`Processing ${sourceFiles.length} files.`);
+           onProgress?.({ percentage: 10, message: `Parsing ${sourceFiles.length} files...` });
+       
+           // Step 2: Parse all files
+    patchStrategy: new-unified
+snapshot:
+  package.json: |
+    {
+      "name": "scn-ts-core",
+      "module": "src/index.ts",
+      "type": "module",
+      "private": true,
+      "dependencies": {
+        "js-tiktoken": "^1.0.21"
+      },
+      "scripts": {
+        "check": "tsc --build",
+        "test": "bun test"
+      },
+      "devDependencies": {
+        "@types/bun": "latest",
+        "web-tree-sitter": "0.25.6",
+        "typescript": "^5.4.5"
+      },
+      "peerDependencies": {
+        "typescript": "^5"
+      }
+    }
+  packages/scn-ts-web-demo/vite.config.ts: |
+    import { defineConfig } from 'vite'
+    import react from '@vitejs/plugin-react'
+    import path from 'path'
+    import wasm from 'vite-plugin-wasm'
+    import topLevelAwait from 'vite-plugin-top-level-await'
+
+    // https://vitejs.dev/config/
+    export default defineConfig({
+      plugins: [
+        wasm(),
+        topLevelAwait(),
+        react()
+      ],
+      resolve: {
+        alias: {
+          "@": path.resolve(__dirname, "src"),
+          "scn-ts-core": path.resolve(__dirname, "../../"),
+        },
+      },
+      optimizeDeps: {
+        // Exclude packages that have special loading mechanisms (like wasm)
+        // to prevent Vite from pre-bundling them and causing issues.
+        exclude: ['web-tree-sitter'],
+        // Force pre-bundling of our monorepo packages. As linked dependencies,
+        // Vite doesn't optimize it by default. We need to include it so Vite
+        // discovers its deep CJS dependencies (like graphology) and converts
+        // them to ESM for the dev server. We specifically `exclude` 'web-tree-sitter'
+        // above to prevent Vite from interfering with its unique WASM loading mechanism.
+        // `js-tiktoken` is another CJS-like dependency that needs to be pre-bundled.
+        include: ['scn-ts-core', 'js-tiktoken'],
+      },
+      server: {
+        headers: {
+          // These headers are required for SharedArrayBuffer, which is used by
+          // web-tree-sitter and is good practice for applications using wasm
+          // with threading or advanced memory features.
+          'Cross-Origin-Embedder-Policy': 'require-corp',
+          'Cross-Origin-Opener-Policy': 'same-origin',
+        },
+      },
+    })
+  src/main.ts: >-
+    import { getLanguageForFile } from './languages';
+
+    import { initializeParser as init, parse } from './parser';
+
+    import type { ParserInitOptions, SourceFile, InputFile, ScnTsConfig,
+    AnalyzeProjectOptions, FormattingOptions, FormattingOptionsTokenImpact,
+    SymbolKind } from './types';
+
+    import { analyze } from './analyzer';
+
+    import { formatScn } from './formatter';
+
+    import path from './utils/path';
+
+    import { getPathResolver } from './utils/tsconfig';
+
+    import { resolveGraph } from './graph-resolver';
+
+    import { logger } from './logger';
+
+    import { initializeTokenizer as initTokenizer, countTokens as
+    countTokensInternal } from './tokenizer';
+
+
+    import type { FormattingPreset } from './types';
+
+
+    /**
+     * Public API to initialize the parser. Must be called before any other APIs.
+     */
+    export const initializeParser = (options: ParserInitOptions): Promise<void>
+    => init(options);
+
+
+    /**
+     * Initializes the tokenizer. Call this for consistency, although `countTokens` will auto-initialize on first use.
+     * It's a synchronous and lightweight operation.
+     */
+    export const initializeTokenizer = (): boolean => initTokenizer();
+
+
+    // Types for web demo
+
+    export type { ParserInitOptions, SourceFile, LogLevel, InputFile, TsConfig,
+    ScnTsConfig, AnalyzeProjectOptions, LogHandler, FormattingOptions,
+    FormattingPreset, FormattingOptionsTokenImpact, CodeSymbol, SymbolKind }
+    from './types';
+
+    export type FileContent = InputFile;
+
+
+    // Exports for web demo. The constants are exported from index.ts directly.
+
+    export { logger };
+
+
+    const defaultFormattingOptions: Omit<FormattingOptions, 'preset'> = {
+      showOutgoing: true,
+      showIncoming: true,
+      showIcons: true,
+      showExportedIndicator: true,
+      showPrivateIndicator: true,
+      showModifiers: true,
+      showTags: true,
+      showSymbolIds: true,
+      groupMembers: true,
+      displayFilters: {},
+      showFilePrefix: true,
+      showFileIds: true,
+      showOnlyExports: false,
+    };
+
+
+    export function getFormattingOptionsForPreset(preset: FormattingPreset):
+    FormattingOptions {
+      switch (preset) {
+        case 'minimal':
+          return {
+            preset: 'minimal',
+            ...defaultFormattingOptions,
+            showIcons: false,
+            showExportedIndicator: false,
+            showPrivateIndicator: false,
+            showModifiers: false,
+            showTags: false,
+            showSymbolIds: false,
+            groupMembers: false,
+            displayFilters: { '*': false },
+          };
+        case 'compact':
+          return {
+            preset: 'compact',
+            ...defaultFormattingOptions,
+            showPrivateIndicator: false,
+            showModifiers: false,
+            showTags: false,
+            showSymbolIds: false,
+            displayFilters: {
+              'property': false,
+              'method': false,
+              'constructor': false,
+              'enum_member': false,
+              'import_specifier': false,
+            },
+            showOnlyExports: true,
+          };
+        case 'detailed':
+          return {
+            preset: 'detailed',
+            ...defaultFormattingOptions,
+            groupMembers: false,
+          };
+        case 'verbose':
+          return {
+            preset: 'verbose',
+            ...defaultFormattingOptions,
+            groupMembers: false,
+            displayFilters: { '*': true },
+          };
+        case 'default':
+        default:
+          return {
+            preset: 'default',
+            ...defaultFormattingOptions,
+          };
+      }
+    }
+
+
+    /**
+     * Counts tokens in a string using the cl100k_base model.
+     */
+    export const countTokens = (text: string): number =>
+    countTokensInternal(text);
+
+
+    /**
+     * Generate SCN from analyzed source files
+     */
+    export const generateScn = (analyzedFiles: SourceFile[], options:
+    FormattingOptions = {}): string => {
+        const formattingOptions = options.preset
+            ? { ...getFormattingOptionsForPreset(options.preset), ...options }
+            : options;
+        return formatScn(analyzedFiles, formattingOptions);
+    };
+
+
+    /**
+     * Calculates the token impact of toggling each formatting option.
+     * This can be slow as it re-generates the SCN for each option.
+     * @param analyzedFiles The result from `analyzeProject`.
+     * @param baseOptions The formatting options to calculate deltas from.
+     * @returns An object detailing the token change for toggling each option.
+     */
+    export const calculateTokenImpact = (
+        analyzedFiles: SourceFile[],
+        baseOptions: FormattingOptions
+    ): FormattingOptionsTokenImpact => {
+        logger.debug('Calculating token impact...');
+        const startTime = performance.now();
+
+        const resolvedBaseOptions = baseOptions.preset
+            ? { ...getFormattingOptionsForPreset(baseOptions.preset), ...baseOptions }
+            : baseOptions;
+
+        const baseScn = formatScn(analyzedFiles, resolvedBaseOptions);
+        const baseTokens = countTokensInternal(baseScn);
+
+        const impact: FormattingOptionsTokenImpact = {
+            options: {},
+            displayFilters: {},
+        };
+
+        const simpleOptionKeys: Array<keyof Omit<FormattingOptions, 'displayFilters'>> = [
+            'showOutgoing', 'showIncoming', 'showIcons', 'showExportedIndicator',
+            'showPrivateIndicator', 'showModifiers', 'showTags', 'showSymbolIds',
+            'groupMembers', 'showFilePrefix', 'showFileIds'
+        ];
+
+        for (const key of simpleOptionKeys) {
+            // All boolean options default to true.
+            const currentValue = resolvedBaseOptions[key] ?? true;
+            const newOptions = { ...resolvedBaseOptions, [key]: !currentValue };
+            const newScn = formatScn(analyzedFiles, newOptions);
+            const newTokens = countTokensInternal(newScn);
+            impact.options[key] = newTokens - baseTokens;
+        }
+
+        const allSymbolKinds = new Set<SymbolKind>(analyzedFiles.flatMap(file => file.symbols.map(s => s.kind)));
+
+        for (const kind of allSymbolKinds) {
+            const currentFilterValue = resolvedBaseOptions.displayFilters?.[kind] ?? true;
+            const newOptions = {
+                ...resolvedBaseOptions,
+                displayFilters: { ...(resolvedBaseOptions.displayFilters ?? {}), [kind]: !currentFilterValue }
+            };
+            const newScn = formatScn(analyzedFiles, newOptions);
+            const newTokens = countTokensInternal(newScn);
+            impact.displayFilters[kind] = newTokens - baseTokens;
+        }
+
+        const duration = performance.now() - startTime;
+        logger.debug(`Token impact calculation finished in ${duration.toFixed(2)}ms`);
+
+        return impact;
+    };
+
+
+    /**
+     * Legacy API: Generate SCN from config (for backward compatibility)
+     */
+    export const generateScnFromConfig = async (config: ScnTsConfig):
+    Promise<string> => {
+        const { sourceFiles: analyzedFiles } = await analyzeProject({
+            files: config.files,
+            tsconfig: config.tsconfig,
+            root: config.root,
+        });
+        return formatScn(analyzedFiles, config.formattingOptions);
+    };
+
+
+    /**
+     * Parses and analyzes a project's files to build a dependency graph.
+     */
+    export const analyzeProject = async (
+        {
+            files,
+            tsconfig,
+            root = '/',
+            onProgress,
+            logLevel,
+            signal,
+            include,
+            exclude,
+        }: AnalyzeProjectOptions
+    ): Promise<{ sourceFiles: SourceFile[], analysisTime: number }> => {
+        const startTime = performance.now();
+        if (logLevel) {
+            logger.setLevel(logLevel);
+        }
+        logger.info(`Starting analysis of ${files.length} files...`);
+        const pathResolver = getPathResolver(tsconfig);
+
+        const checkAborted = () => { if (signal?.aborted) throw new DOMException('Aborted', 'AbortError'); };
+        let fileIdCounter = 1;
+
+        onProgress?.({ percentage: 0, message: 'Creating source files...' });
+
+        // Step 1: Create SourceFile objects for all files
+        const sourceFiles = files.map((file) => {
+            checkAborted();
+            const absolutePath = path.join(root, file.path);
+            const sourceFile: SourceFile = {
+                id: fileIdCounter++,
+                relativePath: file.path,
+                absolutePath,
+                sourceCode: file.content,
+                language: getLanguageForFile(file.path)!,
+                symbols: [],
+                parseError: false,
+            };
+            return sourceFile;
+        });
+
+        logger.debug(`Created ${sourceFiles.length} SourceFile objects.`);
+        onProgress?.({ percentage: 10, message: `Parsing ${sourceFiles.length} files...` });
+
+        // Step 2: Parse all files
+        const parsedFiles = sourceFiles.map((file, i) => {
+            checkAborted();
+            if (!file.language || !file.language.wasmPath || file.sourceCode.trim() === '') {
+                return file;
+            }
+            logger.debug(`Parsing ${file.relativePath}`);
+            const tree = parse(file.sourceCode, file.language);
+            if (!tree) {
+                file.parseError = true;
+                logger.warn(`Failed to parse ${file.relativePath}`);
+            } else {
+                file.ast = tree;
+            }
+            const percentage = 10 + (40 * (i + 1) / sourceFiles.length);
+            onProgress?.({ percentage, message: `Parsing ${file.relativePath}` });
+            return file;
+        });
+
+        onProgress?.({ percentage: 50, message: 'Analyzing files...' });
+        logger.info(`Parsing complete. Analyzing symbols and relationships...`);
+
+        // Step 3: Analyze all parsed files
+        const analyzedFiles = parsedFiles.map((file, i) => {
+            checkAborted();
+            if (file.ast) {
+                logger.debug(`Analyzing ${file.relativePath}`);
+                const analyzed = analyze(file);
+                const percentage = 50 + (40 * (i + 1) / sourceFiles.length);
+                onProgress?.({ percentage, message: `Analyzing ${file.relativePath}` });
+                return analyzed;
+            }
+            return file;
+        });
+        
+        onProgress?.({ percentage: 90, message: 'Resolving dependency graph...' });
+        logger.info('Analysis complete. Resolving dependency graph...');
+
+        // Step 4: Resolve the dependency graph across all files
+        checkAborted();
+        const resolvedGraph = resolveGraph(analyzedFiles, pathResolver, root);
+        
+        onProgress?.({ percentage: 100, message: 'Analysis complete.' });
+        logger.info('Graph resolution complete. Project analysis finished.');
+        const analysisTime = performance.now() - startTime;
+        return { sourceFiles: resolvedGraph, analysisTime };
+    };
+approved: false

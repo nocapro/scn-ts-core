@@ -4,7 +4,8 @@
   "type": "module",
   "private": true,
   "dependencies": {
-    "js-tiktoken": "^1.0.21"
+    "js-tiktoken": "^1.0.21",
+    "picomatch": "^4.0.1"
   },
   "scripts": {
     "check": "tsc --build",
@@ -12,8 +13,9 @@
   },
   "devDependencies": {
     "@types/bun": "latest",
-    "web-tree-sitter": "0.25.6",
-    "typescript": "^5.4.5"
+    "@types/picomatch": "^4.0.2",
+    "typescript": "^5.4.5",
+    "web-tree-sitter": "0.25.6"
   },
   "peerDependencies": {
     "typescript": "^5"

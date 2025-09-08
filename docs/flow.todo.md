@@ -1,3 +1,8 @@
+===
+
+auto detect non support files
+isSCNable
+
 === DONE
 
 sidebar
@@ -12,11 +17,13 @@ formatting options;
 1. add search feature
 2. move control from accordion header to proper area within tree
 
-===
+=== DONE
 
-input
+input UI UX:
 
 add glob include exclude feature
+
+give me transaction in two phase, now go for first phase, ask me later for next phase
 
 "src/main.ts",
   "src/types.ts",
@@ -25,7 +32,7 @@ add glob include exclude feature
   "packages/scn-ts-web-demo/src/hooks/useAnalysis.hook.ts",
   "packages/scn-ts-web-demo/src/worker.ts"
 
-=== ON
+=== DONE
 
 add 5 level presets to formatting options;
 the behaviour should be provided by scn-ts-core level api if non exist then create
@@ -46,6 +53,11 @@ the behaviour should be provided by scn-ts-core level api if non exist then crea
 input;
 
 beside json, we want also git repo url
+
+make sure the UX is so cohesive
+
+
+give me transaction in two phase, now go for first phase, ask me later for next phase
 
   "packages/scn-ts-web-demo/src/App.tsx",
   "packages/scn-ts-web-demo/src/hooks/useAnalysis.hook.ts",

@@ -3,7 +3,7 @@ export const ICONS: Record<string, string> = {
     constructor: '~',
     variable: '@', property: '@', enum: '☰', enum_member: '@',
     type_alias: '=:', react_component: '◇', jsx_element: '⛶', styled_component: '~',
-    css_class: '¶', css_id: '¶', css_tag: '¶', css_at_rule: '¶',
+    css_class: '¶', css_id: '¶', css_tag: '¶', css_at_rule: '¶', css_variable: '@',
     go_package: '◇',
     rust_struct: '◇', rust_trait: '{}', rust_impl: '+',
     error: '[error]', default: '?',

@@ -7,12 +7,14 @@ const isIdEligible = (symbol: CodeSymbol): boolean => {
     if (symbol.kind === 'property' || symbol.kind === 'constructor') return false;
     if (symbol.kind === 'variable') return symbol.isExported || symbol.name === 'module.exports' || symbol.name === 'default';
     if (symbol.kind === 'method') return !!symbol.isExported;
+    // CSS symbols should always be eligible
+    if (symbol.kind.startsWith('css_')) return true;
     return true;
 };
 
 const getDisplayIndex = (file: SourceFile, symbol: CodeSymbol): number | null => {
-    const ordered = file.symbols
-        .filter(isIdEligible)
+    const eligible = file.symbols.filter(isIdEligible);
+    const ordered = eligible
         .sort((a, b) => a.range.start.line - b.range.start.line || a.range.start.column - b.range.start.column);
     const index = ordered.findIndex(s => s === symbol);
     return index === -1 ? null : index + 1;
@@ -259,13 +261,14 @@ const formatFile = (file: SourceFile, allFiles: SourceFile[], options: Formattin
             });
         });
         if (incoming.length > 0) headerLines.push(`  ${SCN_SYMBOLS.INCOMING_ARROW} ${Array.from(new Set(incoming)).sort().join(', ')}`);
-    }
+}
     // If file has no exported symbols, only show symbols that are "entry points" for analysis,
-    // which we define as having outgoing dependencies.
+    // which we define as having outgoing dependencies. However, CSS symbols should always be shown
+    // since they represent main structure of CSS files.
     const hasExports = file.symbols.some(s => s.isExported);
     let symbolsToPrint = hasExports
         ? file.symbols.slice()
-        : file.symbols.filter(s => s.dependencies.length > 0);
+        : file.symbols.filter(s => s.dependencies.length > 0 || s.kind.startsWith('css_'));
 
     if (options.showOnlyExports) {
         symbolsToPrint = symbolsToPrint.filter(s => s.isExported);

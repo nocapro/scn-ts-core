@@ -93,6 +93,51 @@ const userProxy = new Proxy(user, {
   }
 });
         `.trim()
+    },
+    {
+        file: 'styles.css',
+        title: 'Advanced CSS',
+        code: `
+:root {
+  --primary-color: #007bff;
+  --base-font-size: 16px;
+}
+
+.card {
+  background-color: white;
+  border: 1px solid #ddd;
+  transition: transform 2s;
+}
+
+.card:hover {
+  transform: translateY(-5px);
+  border-color: var(--primary-color);
+}
+
+.card::before {
+  content: 'Card';
+  position: absolute;
+}
+
+@media (min-width: 768px) {
+  .card {
+    padding: 20px;
+  }
+}
+        `.trim()
+    },
+    {
+        file: 'simple.css',
+        title: 'Simple CSS',
+        code: `
+.btn {
+  color: red;
+}
+
+.btn-primary {
+  background: blue;
+}
+        `.trim()
     }
   ];
 
@@ -111,7 +156,17 @@ const userProxy = new Proxy(user, {
           content: sample.code
         }]
       });
-      const scnOutput = generateScn(analyzedFiles);
+      console.log('Analyzed files:', analyzedFiles.length);
+      console.log('Symbols in first file:', analyzedFiles[0]?.symbols?.length || 0);
+      if (analyzedFiles[0]?.symbols) {
+        console.log('Symbols details:');
+        analyzedFiles[0].symbols.forEach((sym, i) => {
+          console.log(`  ${i}: kind=${sym.kind}, name="${sym.name}", range=${sym.range.start.line}:${sym.range.start.column}`);
+        });
+      }
+      const scnOutput = generateScn(analyzedFiles, { 
+        showOnlyExports: false
+      });
       console.log('SCN Output:');
       console.log(scnOutput);
     } catch (error) {

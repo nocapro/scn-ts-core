@@ -16,8 +16,8 @@ input:
 
          
 expected: |
-  § (1) src/empty.ts
+  § 1 src/empty.ts
 
-  § (2) src/only-comments.ts
+  § 2 src/only-comments.ts
 
-  § (3) src/only-whitespace.ts
+  § 3 src/only-whitespace.ts

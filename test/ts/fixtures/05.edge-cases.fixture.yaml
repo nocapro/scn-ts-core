@@ -22,17 +22,15 @@ input:
       anonFunc();
       new AnonymousClass();
 expected: |
-  § (1) src/empty.ts
+  § 1 src/empty.ts
 
-  § (2) src/anonymous.ts
-    <- (3.0)
-    + ~ (2.1) <anonymous>()
-      <- (3.0)
-    + ◇ (2.2) AnonymousClass
-      <- (3.0)
-      + ~ greet()
+  § 2 src/anonymous.ts
+    < 3
+    + @ 1 AnonymousClass
+      < 3
+    + ~ 2 greet()
+      < 3
 
-  § (3) src/main.ts
-    -> (2.0)
-    -> (2.1)
-    -> (2.2)
+  § 3 src/main.ts
+    > 2
+    > 2

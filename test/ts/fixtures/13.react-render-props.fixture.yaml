@@ -40,22 +40,22 @@ input:
         );
       };
 expected: |
-  § (1) src/components/MouseTracker.tsx
-    <- (2.0)
-    - {} (1.1) MouseTrackerProps
-      <- (1.2)
+  § 1 src/components/MouseTracker.tsx
+    < 2.0
+    - {} 1 MouseTrackerProps
+      < 2
       @ render: #({x:number, y:number})=>React.ReactNode
-    + ◇ (1.2) MouseTracker { props: #MouseTrackerProps }
-      -> (1.1)
-      <- (2.1)
+    + ◇ 2 MouseTracker { props: #MouseTrackerProps }
+      > 1
+      < 2.1
       - ~ handleMouseMove(event: #React.MouseEvent)
       ⛶ div
 
-  § (2) src/App.tsx
-    -> (1.0)
-    + ◇ (2.1) App
+  § 2 src/App.tsx
+    > 1.0
+    + ◇ 1 App
       ⛶ MouseTracker
-        -> (1.2)
+        > 2
         - ~ <anonymous>({x:#, y:#})
           ⛶ <>
             ⛶ h1

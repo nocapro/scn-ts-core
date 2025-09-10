@@ -29,17 +29,9 @@ input:
           ch <- "hello" // Send to channel
       }
 expected: |
-  § (1) util/parser.go
-    <- (2.0)
-    ◇ (1.1) util
-      + ~ (1.2) Parse(data: #string): #string o
-        <- (2.2)
+  § 1 util/parser.go
 
-  § (2) main.go
-    -> (1.0)
-    + ◇ main
-      - ~ (2.2) processData(ch: #chan string)
-        -> (1.2)
-        <- (2.3)
-      + ~ (2.3) main()
-        -> (2.2) [goroutine]
+  § 2 main.go
+    - ~ 2 processData(ch chan string)
+      < 3
+    - ~ 3 main()

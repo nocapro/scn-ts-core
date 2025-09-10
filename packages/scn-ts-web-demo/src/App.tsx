@@ -1,4 +1,4 @@
-import { useEffect, useCallback, useMemo, useRef, useState } from 'react';
+import { useEffect, useCallback, useMemo, useState } from 'react';
 import { generateScn, initializeTokenizer, countTokens } from 'scn-ts-core';
 import { Button } from './components/ui/button';
 import { Textarea } from './components/ui/textarea';

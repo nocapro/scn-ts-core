@@ -31,39 +31,39 @@ input
 
 output
 
-§ (1) src/data/user.java
-  ◇ (1.1) User
-    + ~ (1.2) getName()
+§ 1 src/data/user.java
+  ◇ 1.1 User
+    + ~ 1.2 getName()
 
-§ (2) src/main.ts
-  -> (2.0), (3.0), (5.0), (6.0)
-  @ (2.1) message = formatMessage('World')
-    -> (6.1)
-  @ (2.2) button = createButton('Click Me')
-    -> (5.1)
-  @ (2.3) greeter = new Greeter()
-    -> (3.1)
+§ 2 src/main.ts
+  > 2, 3, 5, 6
+  @ 2.1 message = formatMessage('World')
+    > 6.1
+  @ 2.2 button = createButton('Click Me')
+    > 5.1
+  @ 2.3 greeter = new Greeter()
+    > 3.1
 
-§ (3) src/services/greeter.py
-  <- (2.0)
-  ◇ (3.1) Greeter
-    <- (2.3)
-    ~ (3.2) __init__(self): #self.message
-    @ (3.3) self.message = "Hello from Python"
-    ~ (3.4) greet(self): #return self.message
+§ 3 src/services/greeter.py
+  < 2
+  ◇ 3.1 Greeter
+    < 2.3
+    ~ 3.2 __init__(self): #self.message
+    @ 3.3 self.message = "Hello from Python"
+    ~ 3.4 greet(self): #return self.message
 
-§ (4) src/styles.css
-  ¶ (4.1) body { 💧 ✍ }
-  ¶ (4.2) h1 { 💧 }
+§ 4 src/styles.css
+  ¶ 4.1 body { 💧 ✍ }
+  ¶ 4.2 h1 { 💧 }
 
-§ (5) src/ui/button.ts
-  -> (6.0)
-  <- (2.0)
-  + ~ (5.1) createButton(text: #)
-    -> (6.1)
-    <- (2.2)
+§ 5 src/ui/button.ts
+  > 6
+  < 2
+  + ~ 5.1 createButton(text: #)
+    > 6.1
+    < 2.2
 
-§ (6) src/utils/formatter.ts
-  <- (2.0), (5.0)
-  + ~ (6.1) formatMessage(name: #): #string
-    <- (2.1), (5.1)
+§ 6 src/utils/formatter.ts
+  < 2, 5
+  + ~ 6.1 formatMessage(name: #): #string
+    < 2.1, 5.1

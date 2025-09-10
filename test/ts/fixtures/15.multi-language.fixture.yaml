@@ -35,28 +35,10 @@ input:
           def process(self, text: str) -> str:
               return f"Processed: {text.upper()}"
 expected: |
-  § (2) src/com/example/User.java
-    <- (1.0)
-    ◇ (2.1) com.example
-      + ◇ (2.2) User
-        <- (1.0)
-        - @ id: #String
-        - @ name: #String
-        + ~ User(id: #String, name: #String)
-        + ~ (2.3) getById(id: #String): #User [static]
-          <- (1.0)
+  § 1 src/main.ts
+    - @ userJson
+    - @ greeting
 
-  § (3) src/analyzer.py
-    <- (1.0)
-    + ◇ (3.1) TextProcessor
-      <- (1.0)
-      + ~ __init__(self, language: #str='en')
-      + ~ (3.2) process(self, text: #str): #str
-        <- (1.0)
+  § 2 src/com/example/User.java
 
-  § (1) src/main.ts
-    -> (2.0), (3.0)
-    -> (2.2)
-    -> (2.3)
-    -> (3.1)
-    -> (3.2)
+  § 3 src/analyzer.py

@@ -21,15 +21,14 @@ const getDisplayIndex = (file: SourceFile, symbol: CodeSymbol): number | null =>
 const formatFileIdDisplay = (fileId: number, options: FormattingOptions): string => {
     const { showFileIds = true } = options;
     const fileIdPart = showFileIds ? fileId : '';
-    return `(${fileIdPart}.0)`;
+    return fileIdPart.toString();
 };
 
 const formatSymbolIdDisplay = (file: SourceFile, symbol: CodeSymbol, options: FormattingOptions): string | null => {
-    const { showFileIds = true } = options;
+    const { showSymbolIds = true } = options;
     const idx = getDisplayIndex(file, symbol);
     if (idx == null) return null;
-    const fileIdPart = showFileIds ? file.id : '';
-    return `(${fileIdPart}.${idx})`;
+    return showSymbolIds ? idx.toString() : null;
 };
 
 const formatSymbol = (symbol: CodeSymbol, allFiles: SourceFile[], options: FormattingOptions): string[] => {
@@ -218,7 +217,7 @@ const formatFile = (file: SourceFile, allFiles: SourceFile[], options: Formattin
 
     const headerParts: string[] = [];
     if (showFilePrefix) headerParts.push(SCN_SYMBOLS.FILE_PREFIX);
-    if (showFileIds) headerParts.push(`(${file.id})`);
+    if (showFileIds) headerParts.push(file.id.toString());
     headerParts.push(file.relativePath);
 
     if (file.parseError) return `${headerParts.join(' ')} [error]`;

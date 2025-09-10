@@ -1,12 +1,11 @@
 import { initializeParser as init } from './parser';
-import type { ParserInitOptions, SourceFile, InputFile, ScnTsConfig, AnalyzeProjectOptions, FormattingOptions, FormattingOptionsTokenImpact, SymbolKind } from './types';
+import type { ParserInitOptions, SourceFile, InputFile, ScnTsConfig, AnalyzeProjectOptions, FormattingOptions, FormattingOptionsTokenImpact } from './types';
 import { formatScn } from './formatter';
 import { logger } from './logger';
 import { initializeTokenizer as initTokenizer, countTokens as countTokensInternal } from './tokenizer';
 import { getFormattingOptionsForPreset, calculateTokenImpact } from './options';
 import { analyzeProject } from './project-analyzer';
 
-import type { FormattingPreset } from './types';
 
 /**
  * Public API to initialize the parser. Must be called before any other APIs.

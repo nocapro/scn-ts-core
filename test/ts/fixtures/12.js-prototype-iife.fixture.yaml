@@ -27,22 +27,22 @@ input:
       const gen = window.idGenerator();
       console.log(gen.next().value);
 expected: |
-  § (1) src/legacy-widget.js
-    <- (2.0)
-    ~ (1.1) <anonymous>()
-      - ~ (1.2) Widget(name: #)
-        <- (1.1)
+  § 1 src/legacy-widget.js
+    < 0
+    ~ 1.1 <anonymous>()
+      - ~ 1.2 Widget(name: #)
+        < 1
         @ name
         + ~ render()
-          <- (2.0)
-      - ~ (1.3) idGenerator*()
-        <- (1.1)
+          < 0
+      - ~ 1.3 idGenerator*()
+        < 1
       + @ window.Widget
-        -> (1.2)
+        > 2
       + @ window.idGenerator
-        -> (1.3)
+        > 3
 
-  § (2) src/app.js
-    -> (1.0)
-    -> (1.2)
-    -> (1.3)
+  § 2 src/app.js
+    > 1.0
+    > 1.2
+    > 1.3

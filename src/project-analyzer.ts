@@ -1,6 +1,6 @@
 import { getLanguageForFile } from './languages';
 import { parse } from './parser';
-import type { SourceFile, InputFile, AnalyzeProjectOptions } from './types';
+import type { SourceFile, AnalyzeProjectOptions } from './types';
 import { analyze } from './analyzer';
 import path from './utils/path';
 import { getPathResolver } from './utils/tsconfig';

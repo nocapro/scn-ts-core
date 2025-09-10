@@ -30,17 +30,17 @@ input:
         return <button onClick={() => setCount(c => c + 1)}>Clicked {count}</button>;
       }
 expected: |
-  § (1) src/actions/db.ts [server]
-    <- (2.0)
-    + ~ (1.1) getUsername(id: #number): #Promise<string> ...
-      <- (2.1)
+  § 1 src/actions/db.ts [server]
+    < 0
+    + ~ 1.1 getUsername(id: #number): #Promise<string> ...
+      < 1
 
-  § (2) src/components/UsernameDisplay.tsx [server]
-    -> (1.0)
-    + ◇ (2.1) UsernameDisplay { props: { userId:# } } ...
-      -> (1.1)
+  § 2 src/components/UsernameDisplay.tsx [server]
+    > 1.0
+    + ◇ 2.1 UsernameDisplay { props: { userId:# } } ...
+      > 1.1
       ⛶ p
 
-  § (3) src/components/InteractiveButton.tsx [client]
+  § 3 src/components/InteractiveButton.tsx [client]
     + ◇ InteractiveButton
       ⛶ button

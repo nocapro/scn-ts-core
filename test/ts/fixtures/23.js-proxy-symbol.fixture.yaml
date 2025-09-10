@@ -36,23 +36,23 @@ input:
       const name = userProxy.fullName;
       document.body.innerHTML = styler`Hello, ${name}!`;
 expected: |
-  § (1) src/utils.js
-    <- (2.0), (3.0)
-    + @ (1.1) hiddenProp [symbol]
-      <- (2.0)
-    + ~ (1.2) styler(strings: #, ...values: #)
-      <- (3.0)
+  § 1 src/utils.js
+    < 0, 3.0
+    + @ 1 hiddenProp [symbol]
+      < 0
+    + ~ 1.2 styler(strings: #, ...values: #)
+      < 0
 
-  § (2) src/model.js
-    -> (1.0)
-    <- (3.0)
+  § 2 src/model.js
+    > 1.0
+    < 3.0
     - @ user
-      -> (1.1)
-    + @ (2.1) userProxy [proxy]
-      <- (3.0)
+      > 1.1
+    + @ 2.1 userProxy [proxy]
+      < 3.0
       - ~ get(target: #, prop: #)
 
-  § (3) src/main.js
-    -> (2.0), (1.0)
-    -> (2.1)
-    -> (1.2) [tagged]
+  § 3 src/main.js
+    > 2.0, 1.0
+    > 2.1
+    > 1.2 [tagged]

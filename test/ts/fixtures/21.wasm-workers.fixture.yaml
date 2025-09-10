@@ -29,18 +29,10 @@ input:
         console.log('Worker result:', e.data);
       };
 expected: |
-  § (1) src/wasm/calculator.c
-    <- (3.0)
-    ~ add(a: #int, b: #int): #int
-      <- (3.0)
+  § 1 src/wasm/calculator.c
 
-  § (2) src/workers/heavy_task.js
-    <- (3.0)
-    @ self.onmessage
-    @ self.postMessage
+  § 2 src/workers/heavy_task.js
+    - @ result
 
-  § (3) src/main.js
-    -> (1.0) [wasm]
-    -> (2.0) [worker]
-    ~ <anonymous>() ...
-      -> add
+  § 3 src/main.js
+    - @ myWorker

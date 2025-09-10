@@ -47,36 +47,36 @@ input:
       console.log(user.id);
       console.log(BaseEntity.getSpeciesName());
 expected: |
-  § (1) src/core/base.ts
-    <- (2.0), (3.0)
-    + ◇ (1.1) BaseEntity [abstract]
-      <- (2.1), (3.0)
+  § 1 src/core/base.ts
+    < 0, 3.0
+    + ◇ 1 BaseEntity [abstract]
+      < 1, 3.0
       + @ id: #string [readonly]
-        <- (2.2), (3.0)
+        < 2, 3.0
       + @ species: #string [static]
       - ~ constructor(id: #string)
-        <- (2.2)
+        < 2
       ~ getDescription(): #string [abstract]
-        <- (2.2)
-      + ~ (1.2) getSpeciesName(): #string [static] o
-        <- (3.0)
+        < 2
+      + ~ 1.2 getSpeciesName(): #string [static] o
+        < 0
 
-  § (2) src/models/user.ts
-    -> (1.0)
-    <- (3.0)
-    + ◇ (2.1) User < (1.1)
-      <- (3.0)
+  § 2 src/models/user.ts
+    > 1.0
+    < 3.0
+    + ◇ 2.1 User < 1.1
+      < 3.0
       - @ secret: #string
-      + ~ (2.2) constructor(id: #string, secret: #string)
-        -> (1.1)
+      + ~ 2.2 constructor(id: #string, secret: #string)
+        > 1.1
       + ~ getDescription(): #string o
-        -> (1.1)
-        <- (3.0)
+        > 1.1
+        < 3.0
       - ~ getSecret(): #string o
 
-  § (3) src/main.ts
-    -> (2.0), (1.0)
-    -> (2.1)
-    -> (2.2)
-    -> (1.1)
-    -> (1.2)
+  § 3 src/main.ts
+    > 2.0, 1.0
+    > 2.1
+    > 2.2
+    > 1.1
+    > 1.2

@@ -39,28 +39,28 @@ input:
       const client = new ApiClient('secret-key');
       client.fetchUser(123).then(user => console.log(user.name));
 expected: |
-  § (1) src/models/user.ts
-    <- (2.0)
-    + {} (1.1) User
-      <- (2.2)
+  § 1 src/models/user.ts
+    < 2.0
+    + {} 1 User
+      < 2.2
       + @ id: #number
       + @ name: #string
-    + =: (1.2) UserId #number|string
-      <- (2.2)
+    + =: 2 UserId #number|string
+      < 2.2
 
-  § (2) src/services/apiClient.ts
-    -> (1.0)
-    <- (3.0)
-    + ◇ (2.1) ApiClient
-      <- (3.0)
+  § 2 src/services/apiClient.ts
+    > 1.0
+    < 3.0
+    + ◇ 1 ApiClient
+      < 3.0
       - @ apiKey: #string
       + ~ constructor(key: #string)
-      + ~ (2.2) fetchUser(id: #UserId): #Promise<User> ...!
-        -> (1.1), (1.2)
-        <- (3.0)
+      + ~ 2 fetchUser(id: #UserId): #Promise<User> ...!
+        > 1, 2
+        < 3.0
       - ~ _log(message: #string): #void
 
-  § (3) src/main.ts
-    -> (2.0)
-    -> (2.1)
-    -> (2.2)
+  § 3 src/main.ts
+    > 1
+    > 1
+    > 2

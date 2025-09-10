@@ -34,33 +34,31 @@ input:
       export * from './types';
       export { NavigationService } from './services';
 expected: |
-  § (2) src/decorators.ts
-    <- (4.0)
-    + ~ (2.1) Injectable()
-      <- (4.1)
+  § 1 src/types.ts
+    < 3
+    + {} 1 Vehicle
+      < 3, 2
+      + ~ 2 drive(): #void
+        < 3
+    + ◇ 3 Car
+      < 2
+      + ~ 4 drive()
+        < 3
 
-  § (1) src/types.ts
-    <- (3.0), (5.0)
-    + {} (1.1) Vehicle
-      <- (3.2)
-      ~ drive()
-    + ◇ (1.2) Car < (1.1)
-      <- (3.2)
-      + ~ drive()
+  § 2 src/decorators.ts
+    < 4
+    + ~ 1 Injectable()
+      < 4
 
-  § (3) src/utils.ts
-    -> (1.0)
-    + ~ createInstance<T>(constructor: #new()=>T): #T
-    + ~ (3.2) isCar(v: #Vehicle): #v is Car
-      -> (1.1), (1.2)
+  § 3 src/utils.ts
+    > 1
+    + ~ 1 createInstance(constructor: #new (): #T
+    + ~ 2 isCar(v: #Vehicle): #v is Car
+      > 1, 3
 
-  § (4) src/services.ts
-    -> (2.0)
-    <- (5.0)
-    + ◇ (4.1) NavigationService
-      -> (2.1)
-      <- (5.0)
-      + ~ route(path: #string)
+  § 4 src/services.ts
+    > 2
+    + ◇ 1 NavigationService
+      + ~ 2 route(path: #string)
 
-  § (5) src/index.ts
-    -> (1.0), (4.0)
+  § 5 src/index.ts

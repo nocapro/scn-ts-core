@@ -21,18 +21,5 @@ input:
           item.draw();
       }
 expected: |
-  § (1) src/lib.rs
-    + ◇ (1.1) Point
-      -> Debug [macro]
-      <- (1.3)
-      @ x: #i32
-      @ y: #i32
-    + {} (1.2) Drawable
-      <- (1.3), (1.4)
-      ~ draw(&self)
-    + (1.3) impl Drawable for Point
-      -> (1.2), (1.1)
-      + ~ draw(&self)
-        <- (1.4)
-    + ~ (1.4) render(item: &#impl Drawable)
-      -> (1.2), (1.3)
+  § 1 src/lib.rs
+    - + 3 impl Drawable for Point

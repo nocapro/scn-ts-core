@@ -25,26 +25,25 @@ input:
       import { funcA } from './moduleA';
       funcA();
 expected: |
-  § (3) src/utils.ts
-    <- (1.0), (2.0)
-    + @ (3.1) util
-      <- (1.1), (2.1)
-      @ shouldRun
+  § 3 src/utils.ts
+    < 1, 2
+    + @ 1 util
+      < 1, 1
 
-  § (1) src/moduleA.ts
-    -> (2.0), (3.0)
-    <- (2.1), (4.0)
-    + ~ (1.1) funcA()
-      -> (2.1), (3.1)
-      <- (2.1), (4.0)
+  § 4 src/main.ts
+    > 1
+    > 1
 
-  § (2) src/moduleB.ts
-    -> (1.0), (3.0)
-    <- (1.1)
-    + ~ (2.1) funcB()
-      -> (1.1), (3.1)
-      <- (1.1)
+  § 1 src/moduleA.ts
+    > 2, 3
+    < 2, 4
+    + ~ 1 funcA()
+      > 1, 1
+      < 1, 4
 
-  § (4) src/main.ts
-    -> (1.0)
-    -> (1.1)
+  § 2 src/moduleB.ts
+    > 1, 3
+    < 1
+    + ~ 1 funcB()
+      > 1, 1
+      < 1

@@ -11,6 +11,8 @@ export type AnalysisServiceAPI = {
     formattingOptions: FormattingOptions,
     onProgress: (progress: ProgressData) => void,
     onLog: (log: LogEntry) => void,
+    includePattern?: string,
+    excludePattern?: string,
   ) => Promise<{ result: SourceFile[]; analysisTime: number, tokenImpact: FormattingOptionsTokenImpact }>;
   cancel: () => Promise<void>;
   cleanup: () => void;
@@ -30,8 +32,10 @@ export function createAnalysisService(): AnalysisServiceAPI {
     formattingOptions: FormattingOptions,
     onProgress: (progress: ProgressData) => void,
     onLog: (log: LogEntry) => void,
+    includePattern?: string,
+    excludePattern?: string,
   ): Promise<{ result: SourceFile[]; analysisTime: number, tokenImpact: FormattingOptionsTokenImpact }> => {
-    return workerApi.analyze({ filesInput, logLevel, formattingOptions }, Comlink.proxy(onProgress), Comlink.proxy(onLog));
+    return workerApi.analyze({ filesInput, logLevel, formattingOptions, includePattern, excludePattern }, Comlink.proxy(onProgress), Comlink.proxy(onLog));
   };
 
   const cancel = async (): Promise<void> => {

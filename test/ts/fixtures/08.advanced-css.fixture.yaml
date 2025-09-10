@@ -11,7 +11,7 @@ input:
       .card {
         background-color: white;
         border: 1px solid #ddd;
-        transition: transform 0.2s;
+        transition: transform 2s;
       }
 
       .card:hover {
@@ -30,15 +30,15 @@ input:
         }
       }
 expected: |
-  § (1) src/styles.css
-    ¶ (1.1) :root { 💧 }
-      @ (1.2) --primary-color
-        <- (1.4)
+  § 1 src/styles.css
+    ¶ 1.1 :root { 💧 }
+      @ 1.2 --primary-color
+        < 4
       @ --base-font-size
-    ¶ (1.3) .card { 💧 }
-      <- (1.6)
-    ¶ (1.4) .card:hover { 📐 💧 }
-      -> (1.2)
-    ¶ (1.5) .card::before { 📐 }
-    ¶ (1.6) @media(min-width: 768px) .card { 📐 }
-      -> (1.3)
+    ¶ 1.3 .card { 💧 }
+      < 6
+    ¶ 1.4 .card:hover { 📐 💧 }
+      > 2
+    ¶ 1.5 .card::before { 📐 }
+    ¶ 1.6 @media(min-width: 768px) .card { 📐 }
+      > 3

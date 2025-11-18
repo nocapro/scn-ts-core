@@ -1,19 +1,43 @@
 {
   "name": "scn-ts-core",
-  "module": "src/index.ts",
+  "version": "1.0.0",
+  "description": "A TypeScript core library for Source Code Navigator - analyzes and processes TypeScript/JavaScript projects with tokenization support",
+  "keywords": ["typescript", "javascript", "ast", "parser", "tokenizer", "tree-sitter", "code-analysis"],
+  "author": "arman <arman@noca.pro>",
+  "homepage": "https://github.com/nocapro/scn-ts-core#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/nocapro/scn-ts-core.git"
+  },
+  "bugs": {
+    "url": "https://github.com/nocapro/scn-ts-core/issues"
+  },
+  "license": "MIT",
+  "module": "dist/index.js",
+  "types": "dist/index.d.ts",
   "type": "module",
-  "private": true,
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
   "dependencies": {
     "js-tiktoken": "^1.0.21",
     "picomatch": "^4.0.1"
   },
   "scripts": {
+    "build": "tsup",
+    "build:dev": "tsup --watch",
     "check": "tsc --build",
-    "test": "bun test"
+    "test": "bun test",
+    "clean": "rm -rf dist",
+    "prepublishOnly": "npm run clean && npm run build"
   },
   "devDependencies": {
     "@types/bun": "latest",
     "@types/picomatch": "^4.0.2",
+    "tsup": "^8.0.2",
     "typescript": "^5.4.5",
     "web-tree-sitter": "0.25.6"
   },

@@ -1,5 +1,5 @@
 import { initializeParser as init } from './parser';
-import type { ParserInitOptions, SourceFile, InputFile, ScnTsConfig, AnalyzeProjectOptions, FormattingOptions, FormattingOptionsTokenImpact } from './types';
+import type { ParserInitOptions, SourceFile, InputFile, ScnTsConfig, FormattingOptions } from './types';
 import { formatScn } from './formatter';
 import { logger } from './logger';
 import { initializeTokenizer as initTokenizer, countTokens as countTokensInternal } from './tokenizer';

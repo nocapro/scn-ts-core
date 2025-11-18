@@ -1,0 +1,28 @@
+# Development files
+*.test.ts
+*.spec.ts
+test/
+tests/
+
+# Build configuration
+tsconfig.json
+tsup.config.ts
+bun.lock
+.prettierrc
+.eslintrc*
+
+# Documentation source
+docs/
+*.md
+
+# Development tools
+node_modules/
+.git/
+.gitignore
+
+# CI/CD
+.github/
+.vscode/
+
+# Source files (only include built files)
+src/

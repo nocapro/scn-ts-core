@@ -4,7 +4,7 @@
 
 **A hyper-efficient, language-agnostic representation of your codebase's structure, API, and inter-file relationships. Unlock unparalleled context for Large Language Models (LLMs) and advanced code analysis, using a fraction of the tokens.**
 
-[![npm version](https://img.shields.io/npm/v/scn-ts.svg)](https://www.npmjs.com/package/scn-ts)
+[![npm version](https://img.shields.io/npm/v/scn-ts-core.svg)](https://www.npmjs.com/package/scn-ts-core)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.x-blue.svg)](https://www.typescriptlang.org/)
 
@@ -108,13 +108,13 @@ To use `scn-ts`, ensure you have Node.js (or Bun) installed.
 
 ```bash
 # Using npm
-npm install -g scn-ts
+npm install -g scn-ts-core
 
 # Using yarn
-yarn global add scn-ts
+yarn global add scn-ts-core
 
 # Using pnpm
-pnpm install -g scn-ts
+pnpm install -g scn-ts-core
 
 # Using Bun
 bun install -g scn-ts
@@ -213,7 +213,7 @@ Integrate `scn-ts` directly into your build scripts, custom tools, or even web a
 #### Node.js Usage (File System)
 
 ```typescript
-import { generateScn, ScnTsConfig } from 'scn-ts';
+import { generateScn, ScnTsConfig } from 'scn-ts-core';
 import * as fs from 'node:fs/promises';
 
 async function generateProjectScn() {
@@ -251,7 +251,7 @@ npx scn-ts copy-wasm ./public/wasm
 
 ```typescript
 // my-browser-app.ts
-import { initializeParser, generateScn, ScnTsConfig } from 'scn-ts';
+import { initializeParser, generateScn, ScnTsConfig } from 'scn-ts-core';
 
 // In-memory file data (e.g., from a file upload, API, or Monaco editor)
 const files = [
